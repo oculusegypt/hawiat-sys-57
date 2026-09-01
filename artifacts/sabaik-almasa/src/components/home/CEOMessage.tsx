@@ -34,7 +34,7 @@ export function CEOMessage() {
                 <img 
                   src={authorImage} 
                   alt={`${authorName} — ${authorTitle}`}
-                    className="w-full h-full object-contain"
+                    className="w-full h-full object-cover object-[52%_center]"
                    width={320}
                    height={320}
                    loading="lazy"
