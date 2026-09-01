@@ -4,8 +4,11 @@ import path from 'path';
 const dbPath = path.resolve('data/sabaik.db');
 const db = new Database(dbPath);
 
-const siteName = "مؤسسة تقي جروب";
-const phone = "0536312121";
+const readSetting = (key) => String(
+  db.prepare("SELECT value FROM site_settings WHERE key = ? LIMIT 1").get(key)?.value || "",
+).trim();
+const siteName = readSetting("company_name") || "سبائك الماسه";
+const phone = readSetting("company_phone");
 
 // Generate rich, premium, comprehensive Arabic SEO content for each page topic
 const pageContentGenerators = {

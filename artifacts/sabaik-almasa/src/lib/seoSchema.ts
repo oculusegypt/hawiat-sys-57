@@ -315,7 +315,7 @@ export function serviceSchema({
       ...localBusinessSchema({ companyName, phoneNumbers, address, city, region, country }),
       ...(businessProfile ? { hasMap: businessProfile, sameAs: [businessProfile] } : {}),
     },
-    "areaServed": { "@type": "City", "name": city || "الرياض" },
+  ...(city ? { "areaServed": { "@type": "City", "name": city } } : {}),
     "inLanguage": "ar",
   }
 }

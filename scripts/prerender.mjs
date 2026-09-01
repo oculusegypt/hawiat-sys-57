@@ -30,46 +30,26 @@ const distPublic = join(ROOT, "artifacts/sabaik-almasa/dist/public");
 const settingRows = db.prepare("SELECT key, value FROM site_settings").all();
 const settingMap = Object.fromEntries(settingRows.map(row => [row.key, row.value]));
 const SEO_DEFAULTS = {
-  companyName: "المنشأة",
-  description: "المنشأة توفر تأجير حاويات الأنقاض والنفايات ونقل مخلفات البناء والهدم وعقود النظافة الإلكترونية للمنشآت داخل الرياض.",
+  companyName: "سبائك الماسه",
+  description: "",
   image: "/images/container-large.png",
-  priceRange: "$$",
+  priceRange: "",
 };
-// Keep the homepage's search-facing identity aligned with the latest
-// production archive while leaving the operational company name unchanged.
+const siteCompanyName = settingMap.company_name?.trim() || SEO_DEFAULTS.companyName;
+// Keep the homepage title search-focused while the schema identity comes from
+// the configured company name above.
 const HOMEPAGE_SEO_TITLE = "تأجير حاويات الرياض | طلب الحاويات ومخلفات البناء والهدم";
-const HOMEPAGE_SCHEMA_NAME = "تأجير حاويات الرياض";
-const GOLDEN_SEO_KEYWORDS = [
-  "حاويات نفايات للمطاعم",
-  "حاويات مخلفات المنشآت",
-  "حاوية مطعم الرياض",
-  "خدمات تأجير حاويات بالرياض",
-  "حاويات أنقاض",
-  "حاويات نفايات",
-  "نقل مخلفات البناء",
-  "عقود نظافة بلدي",
-  "تأجير حاويات أنقاض",
-  "تأجير حاويات نفايات",
-  "تأجير حاويات الرياض",
-  "طلب الحاويات",
-  "الحاويات",
-  "تأجير حاويات نفايات للمطاعم",
-  "نقل مخلفات البناء والهدم",
-  "حاوية 20 ياردة",
-  "حاوية انقاض 20 يارده",
-  "حاوية انقاض 12 يارده",
-  "حاوية 12 يارده نفايات",
-  "إدارة مخلفات مطاعم",
-  "حاويات نفايات مقاهي",
-  "تأجير الحاويات بالرياض",
-];
-const GOLDEN_SEO_KEYWORDS_TEXT = GOLDEN_SEO_KEYWORDS.join("، ");
+const HOMEPAGE_SCHEMA_NAME = siteCompanyName;
+const GOLDEN_SEO_KEYWORDS = [];
+const GOLDEN_SEO_KEYWORDS_TEXT = "";
 // The administrator-configured public URL is the only production origin.
 const SITE_URL = requirePublicOrigin({ settings: settingMap });
-const siteCompanyName = settingMap.company_name?.trim() || SEO_DEFAULTS.companyName;
 const HOMEPAGE_SEO_DESCRIPTION = `تأجير حاويات الرياض وطلب الحاويات في الرياض لمخلفات البناء والهدم والمطاعم والمنشآت، مع حاويات نفايات وأنقاض وتوصيل وسحب سريع من ${siteCompanyName}.`;
 function normalizeMetaDescription(value, context = "") {
-  let text = String(value || "").replace(/\s+/g, " ").trim() || SEO_DEFAULTS.description;
+  let text = String(value || "").replace(/\s+/g, " ").trim();
+  if (!text) {
+    text = `${siteCompanyName} لخدمات تأجير الحاويات ونقل مخلفات البناء والهدم.`;
+  }
   if (text.length < 120) {
     const addition = context
       ? ` تعرف على تفاصيل ${context} والمقاسات المناسبة وخيارات التوصيل والسحب.`
@@ -151,10 +131,9 @@ const siteDescription = normalizeMetaDescription(
   "تأجير الحاويات ونقل مخلفات البناء في الرياض",
 );
 const siteLogo = settingMap.company_logo?.trim() || "";
-const DEFAULT_ANALYTICS_ID = "G-B6TYSZHY0T";
 const siteAnalyticsId = /^G-[A-Z0-9]+$/i.test(settingMap.analytics_google_tag_id?.trim() || "")
   ? settingMap.analytics_google_tag_id.trim()
-  : DEFAULT_ANALYTICS_ID;
+  : "";
 let sitePhones = [];
 try {
   const parsed = JSON.parse(settingMap.company_phones || "[]");
@@ -1111,7 +1090,10 @@ function updateIndexSeo(html) {
   }
   next = replace(next, /<title>[\s\S]*?<\/title>/i, `<title>${esc(title)}</title>`);
   next = replace(next, /(<meta\s+name="description"\s+content=")[^"]*(")/i, `$1${esc(description)}$2`);
-  next = upsert(next, /<meta\s+name=["']keywords["'][^>]*>/i, `<meta name="keywords" content="${esc(GOLDEN_SEO_KEYWORDS_TEXT)}" />`);
+  const configuredKeywords = String(settingMap.seo_meta_keywords || "").trim();
+  if (configuredKeywords) {
+    next = upsert(next, /<meta\s+name=["']keywords["'][^>]*>/i, `<meta name="keywords" content="${esc(configuredKeywords)}" />`);
+  }
   next = replace(next, /(<meta\s+name="author"\s+content=")[^"]*(")/i, `$1${esc(siteCompanyName)}$2`);
   next = upsert(next, /<meta\s+name=["']site-public-url["'][^>]*>/i, `<meta name="site-public-url" content="${esc(SITE_URL)}" />`);
   next = upsert(next, /<link\s+rel=["']canonical["'][^>]*>/i, `<link rel="canonical" href="${esc(publicUrl("/"))}" />`);

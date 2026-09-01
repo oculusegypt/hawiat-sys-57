@@ -74,7 +74,7 @@ export function resolveServiceTypeFromContainer(c: { category?: any; name?: any;
 
 export function PackageCard({ container: c, companyName: configuredCompanyName, onRequest }: PackageCardProps) {
   const { companyName: contextCompanyName, phoneWhatsapp, phoneCall, phones } = useSiteSettings()
-  const companyName = configuredCompanyName || contextCompanyName || "الشركة"
+  const companyName = configuredCompanyName || contextCompanyName || "سبائك الماسه"
   const displayName = normalizeCompanyText(c.name, companyName)
   const displayDescription = normalizeCompanyText(c.description, companyName)
   const displaySuitableFor = normalizeCompanyText(c.suitableFor ?? "", companyName)

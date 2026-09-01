@@ -197,7 +197,7 @@ function SectionBlock({
                   {phoneWhatsapp && contactCopy?.whatsappText && (
                     <a href={waHref} target="_blank" rel="noreferrer"
                       className="flex items-center justify-center gap-2 bg-green-500 hover:bg-green-600 text-white px-6 py-3 rounded-lg font-bold transition-colors shadow-md">
-                      تواصل عبر واتساب (555888767)
+                       {contactCopy.whatsappText.replace(/\(\s*[^)]*\)/, `(${phoneWhatsapp})`)}
                     </a>
                   )}
                   {phoneCall && contactCopy?.callText && (
@@ -284,7 +284,8 @@ export default function Home() {
   } = siteSettings
 
   const homeTitle = "تأجير حاويات الرياض | طلب الحاويات ومخلفات البناء والهدم"
-  const homeDescription = `تأجير حاويات الرياض وطلب الحاويات في الرياض لمخلفات البناء والهدم والمطاعم والمنشآت، مع حاويات نفايات وأنقاض وتوصيل وسحب سريع من ${companyName || "المنشأة"}.`
+  const resolvedCompanyName = companyName || "سبائك الماسه"
+  const homeDescription = `تأجير حاويات الرياض وطلب الحاويات في الرياض لمخلفات البناء والهدم والمطاعم والمنشآت، مع حاويات نفايات وأنقاض وتوصيل وسحب سريع من ${resolvedCompanyName}.`
   const normalizedHiddenSections = new Set(hiddenSections.map(canonicalHomeSectionId))
 
   useDocumentSEO({
@@ -295,8 +296,8 @@ export default function Home() {
     ogImageAlt: "تأجير حاويات الأنقاض والنفايات بالرياض مع التوصيل والسحب",
   })
   const homeSchema = homepageSchema({
-    companyName: companyName || "المنشأة",
-    siteName: "تأجير حاويات الرياض",
+    companyName: resolvedCompanyName,
+    siteName: resolvedCompanyName,
     description: homeDescription,
     logo: logoUrl,
     image: SEO_DEFAULTS.image,

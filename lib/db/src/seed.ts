@@ -17,8 +17,13 @@ import { serviceRequestsTable } from "./schema/serviceRequests.js";
 import { conversationsTable, messagesTable } from "./schema/conversations.js";
 import * as crypto from "crypto";
 
-const SITE_NAME = process.env.SITE_NAME?.trim() || "الشركة";
+const SITE_NAME = process.env.SITE_NAME?.trim() || "سبائك الماسه";
 const PASSWORD_SALT = "cleanflow-password-salt";
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD?.trim();
+
+if (!ADMIN_PASSWORD) {
+  throw new Error("ADMIN_PASSWORD must be set before running the database seed.");
+}
 
 function hashPassword(password: string): string {
   return crypto.createHash("sha256").update(password + PASSWORD_SALT).digest("hex");
@@ -41,7 +46,7 @@ function seedAll() {
   // --- Admin User ---
   db.insert(adminsTable).values({
     username: "admin",
-    passwordHash: hashPassword("taqi2024"),
+    passwordHash: hashPassword(ADMIN_PASSWORD),
     name: "مدير النظام",
   }).run();
 

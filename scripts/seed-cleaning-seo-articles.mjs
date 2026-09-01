@@ -13,9 +13,9 @@ const siteNameRow = db.prepare("SELECT value FROM site_settings WHERE key = 'com
 const SITE_NAME = String(siteNameRow?.value || "").trim() || "الشركة";
 const AUTHOR = `${SITE_NAME} لخدمات التنظيف بالرياض`;
 const replaceLegacyNames = (value) => String(value || "")
-  .replace(/مؤسسة\s+تقي جروب\s+الماسة/g, SITE_NAME)
-  .replace(/شركة\s+تقي جروب\s+الماسة/g, SITE_NAME)
-  .replace(/تقي جروب\s+الماسة/g, SITE_NAME)
+  .replace(/مؤسسة\s+سبائك\s+الماسة/g, SITE_NAME)
+  .replace(/شركة\s+سبائك\s+الماسة/g, SITE_NAME)
+  .replace(/سبائك\s+الماسة/g, SITE_NAME)
   .replace(/مؤسسة\s+السهم\s+كلين/g, SITE_NAME)
   .replace(/السهم\s+كلين/g, SITE_NAME);
 

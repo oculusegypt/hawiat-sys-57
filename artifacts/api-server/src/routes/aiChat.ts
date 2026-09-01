@@ -310,7 +310,7 @@ async function getConfiguredCompanyPhones(): Promise<string[]> {
 // ─── Flow Handlers ───────────────────────────────────────────────────────────
 
 async function getWelcomeMessage(): Promise<BotResponse> {
-  const siteName = (await getSetting("company_name")).trim() || "المنشأة";
+  const siteName = (await getSetting("company_name")).trim() || "سبائك الماسه";
   return {
     reply:
       `أهلاً وسهلاً! 👋 أنا المساعد الذكي لـ **${siteName}** — متخصصون في تأجير حاويات الأنقاض والنفايات ونقل المخلفات بالرياض.\n\nكيف أقدر أساعدك اليوم؟`,
@@ -367,7 +367,7 @@ async function handleMainMenu(message: string, intent: string, state: FlowState,
   }
 
   if (intent === "about") {
-    const siteName = (await getSetting("company_name")).trim() || "الشركة";
+    const siteName = (await getSetting("company_name")).trim() || "سبائك الماسه";
     return {
       reply:
         `🏢 **${siteName} لخدمات التنظيف**\n\n📅 التأسيس: 2018 — الرياض\n📋 السجل التجاري: 7010655533\n⭐ خبرة +8 سنوات\n✅ +1500 مشروع منجز\n\nمتخصصون في تنظيف المنازل والفلل والمكاتب وجلي الرخام وغسيل المجالس بالبخار بالرياض.`,

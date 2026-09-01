@@ -63,8 +63,8 @@ export function seoImageForPath(path: string): string {
   return fallbacks[hashPath(normalized) % fallbacks.length]
 }
 
-export function seoImageAlt(title: string, companyName = "المنشأة"): string {
-  return `${title.replace(/\s*\|.*$/, "").trim()} — ${companyName || "المنشأة"} لتأجير الحاويات بالرياض`
+export function seoImageAlt(title: string, companyName = "سبائك الماسه"): string {
+  return `${title.replace(/\s*\|.*$/, "").trim()} — ${companyName || "سبائك الماسه"} لتأجير الحاويات بالرياض`
 }
 
 export { SEO_MEDIA }

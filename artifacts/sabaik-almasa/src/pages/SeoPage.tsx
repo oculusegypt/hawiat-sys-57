@@ -160,7 +160,7 @@ export default function SeoPage() {
         const description = resolvedData.seoDescription || resolvedData.excerpt
          const canonical = siteUrl(`/page/${entityPath({ slug: resolvedData.slug, title: resolvedData.title, id: resolvedData.id, fallback: "page" })}`)
         const image = toAbsoluteAsset(resolvedData.ogImage || resolvedData.coverImage) || siteUrl(seoImageForPath(`/page/${resolvedData.slug}`))
-        const resolvedTitle = normalizeCompanyText(`${title} | ${companyName || "الشركة"}`)
+        const resolvedTitle = normalizeCompanyText(`${title} | ${companyName || "سبائك الماسه"}`)
         document.title = resolvedTitle
         setMeta("description", description)
          setMeta("keywords", pageSpecificSeoKeywords({
@@ -232,7 +232,7 @@ export default function SeoPage() {
         description: page.seoDescription || page.excerpt,
         url: pageCanonical,
         image: pageImage,
-        companyName: companyName || "المنشأة",
+        companyName: companyName || "سبائك الماسه",
         about: page.targetKeyword || page.title,
       }),
       breadcrumbSchema([

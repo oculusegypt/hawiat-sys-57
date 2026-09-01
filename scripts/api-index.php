@@ -1184,9 +1184,6 @@ try {
             'مؤسسة سبائك الماسه' => $companyName,
             'سبائك الماسة' => $companyName,
             'سبائك الماسه' => $companyName,
-            'مؤسسة تقي جروب' => $companyName,
-            'شركة تقي جروب' => $companyName,
-            'تقي جروب' => $companyName,
             'منصة حاويات' => $companyName,
         ];
         foreach ($replacements as $legacy => $replacement) {

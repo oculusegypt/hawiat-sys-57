@@ -227,8 +227,10 @@ const DEFAULTS: SiteSettings = {
 
 const SiteSettingsContext = createContext<SiteSettings>(DEFAULTS)
 
-export function normalizeCompanyText(value: string, companyName = "الشركة"): string {
-  const resolvedName = companyName.trim() || "الشركة"
+const DEFAULT_COMPANY_NAME = "سبائك الماسه"
+
+export function normalizeCompanyText(value: string, companyName = DEFAULT_COMPANY_NAME): string {
+  const resolvedName = companyName.trim() || DEFAULT_COMPANY_NAME
   const shouldReplace = (term: string) => resolvedName !== term && !resolvedName.includes(term)
   let normalized = value
     .replace(/\{\{company_name\}\}/g, resolvedName)
@@ -243,11 +245,8 @@ export function normalizeCompanyText(value: string, companyName = "الشركة"
   for (const term of [
     "مؤسسة سبائك الماسة",
     "مؤسسة سبائك الماسه",
-    "مؤسسة تقي جروب",
-    "شركة تقي جروب",
     "سبائك الماسة",
     "سبائك الماسه",
-    "تقي جروب",
     "منصة حاويات",
   ]) {
     if (shouldReplace(term)) normalized = normalized.replaceAll(term, resolvedName)
@@ -355,7 +354,9 @@ async function fetchSettings(): Promise<FetchedSiteSettings> {
     ? true
     : trackingValue === true || trackingValue === "true" || trackingValue === 1 || trackingValue === "1"
 
-  const compName = typeof data.company_name === "string" && data.company_name.trim() ? data.company_name.trim() : "الشركة"
+  const compName = typeof data.company_name === "string" && data.company_name.trim()
+    ? data.company_name.trim()
+    : DEFAULT_COMPANY_NAME
   return {
     logoUrl: typeof data.company_logo === "string" ? data.company_logo.trim() : "",
     companyName: compName,

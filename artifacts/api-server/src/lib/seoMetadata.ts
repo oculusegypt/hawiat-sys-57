@@ -171,7 +171,7 @@ function generatedKeywords(source: SeoSource, displayName: string, keyword: stri
 }
 
 export function generateSeoMetadata(source: SeoSource): SeoMetadata {
-  const companyName = plainText(source.companyName) || "الشركة";
+  const companyName = plainText(source.companyName) || "سبائك الماسه";
   const displayName = plainText(source.title) || plainText(source.name) || "خدمات الحاويات";
   const keyword = plainText(source.targetKeyword) || displayName;
   const slug = normalizeSlug(
@@ -212,7 +212,7 @@ export async function backfillSeoMetadata(): Promise<{ updated: number }> {
     .from(siteSettingsTable)
     .where(eq(siteSettingsTable.key, "company_name"))
     .limit(1);
-  const companyName = plainText(companySetting?.value) || "الشركة";
+  const companyName = plainText(companySetting?.value) || "سبائك الماسه";
   const updateIfNeeded = async (
     table: typeof servicesTable | typeof packagesTable | typeof postsTable | typeof seoPagesTable,
     kind: SeoEntityKind,

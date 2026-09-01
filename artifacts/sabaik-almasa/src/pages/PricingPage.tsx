@@ -51,7 +51,7 @@ export default function PricingPage() {
     [data],
   )
   const title = companyName ? `أسعار الحاويات بالرياض | ${companyName}` : "أسعار الحاويات بالرياض"
-  const description = `تعرف على المقاسات والأسعار والملاحظات المسجلة فعلياً لحاويات ${companyName || "المنشأة"}، ثم اطلب الحاوية المناسبة لموقعك في الرياض.`
+  const description = `تعرف على المقاسات والأسعار والملاحظات المسجلة فعلياً لحاويات ${companyName || "سبائك الماسه"}، ثم اطلب الحاوية المناسبة لموقعك في الرياض.`
   const whatsappHref = phoneWhatsapp
     ? `https://wa.me/966${phoneWhatsapp.replace(/^0/, "")}?text=${encodeURIComponent("أريد الاستفسار عن مقاسات وأسعار الحاويات")}`
     : ""

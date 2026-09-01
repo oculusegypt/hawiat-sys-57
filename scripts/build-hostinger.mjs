@@ -490,17 +490,8 @@ copyFileSync(ARCHIVE_SOURCE_DB, DEST_DB);
   ];
 
   db.transaction(() => {
-    const publicOrigin = "https://sabaik.net";
-    if (publicOrigin) {
-      db.prepare(
-        "INSERT INTO site_settings (key, value, updated_at) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
-      ).run("site_public_url", publicOrigin, new Date().toISOString());
-      console.log(`  ✅ تم حفظ رابط الموقع العام داخل الإعدادات: ${publicOrigin}`);
-    }
-
-    // Make the archive enforce the same public identity rule as the Node
-    // database. Existing duplicate legacy slugs are repaired by id order in
-    // the archive copy only; the source database is never rewritten here.
+    // Repair only the archive's structural slug constraint. No company,
+    // contact, SEO, map, or editorial values are created or rewritten here.
     for (const table of ["services", "packages"]) {
       const rows = db.prepare(
         `SELECT id, seo_slug FROM ${table} WHERE seo_slug IS NOT NULL AND trim(seo_slug) <> '' ORDER BY id ASC`,
@@ -520,6 +511,10 @@ copyFileSync(ARCHIVE_SOURCE_DB, DEST_DB);
       );
     }
 
+    if (false) {
+    // Legacy editorial and upload-path normalization is intentionally disabled.
+    // The build must not alter values stored by the administrator.
+    /*
     // Resolve all legacy editorial mentions to the administrator-configured
     // company name before the SQLite file is packaged. This keeps imported blog
     // content and testimonials aligned with site settings on shared hosting.
@@ -532,7 +527,7 @@ copyFileSync(ARCHIVE_SOURCE_DB, DEST_DB);
       "مؤسسة سبائك الماسه",
       "سبائك الماسة",
       "سبائك الماسه",
-      "تقي جروب",
+      "سبائك الماسه",
     ];
     for (const table of db
       .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
@@ -573,6 +568,8 @@ copyFileSync(ARCHIVE_SOURCE_DB, DEST_DB);
       }
     }
     console.log(`  ✅ تم توحيد روابط الصور المرفوعة إلى /uploads/ (${normalizedUploadCells} خلية)`);
+    */
+    }
 
     // ── جداول order → sort_order ─────────────────────────────────────────────
     for (const table of SORT_ORDER_TABLES) {

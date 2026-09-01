@@ -260,7 +260,7 @@ export default function BlogPost() {
     const description = post.seoDescription || post.excerpt
     const resolvedTitle = normalizeCompanyText(title)
     const resolvedDescription = normalizeCompanyText(description)
-    const resolvedAuthor = normalizeCompanyText(post.author || companyName || "الشركة")
+    const resolvedAuthor = normalizeCompanyText(post.author || companyName || "سبائك الماسه")
     const resolvedContent = normalizeArticleContent(normalizeCompanyText(post.content || ""))
     const faqItems = extractArticleFaqItems(resolvedContent)
     const schemas: object[] = [
@@ -335,9 +335,9 @@ export default function BlogPost() {
         const desc      = d.seoDescription || d.excerpt
 
         if (!isLoaded) return
-        const resolvedTitle = normalizeCompanyText(`${title} | مدونة ${companyName || "الشركة"}`)
+        const resolvedTitle = normalizeCompanyText(`${title} | مدونة ${companyName || "سبائك الماسه"}`)
         const resolvedDescription = normalizeCompanyText(desc)
-        const resolvedAuthor = normalizeCompanyText(d.author || companyName || "الشركة")
+        const resolvedAuthor = normalizeCompanyText(d.author || companyName || "سبائك الماسه")
         document.title = resolvedTitle
 
         setMeta("description",        resolvedDescription)

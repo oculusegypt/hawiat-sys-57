@@ -48,11 +48,11 @@ for (const targetDir of TARGET_DIRS) {
     const legacyLatin = ["Sa", "ba", "ik", " Almasa"].join("");
     if (content.includes(legacyArabic) || content.includes(legacyArabicAlt) || content.includes(previousReplacement) || content.includes(legacyLatin)) {
       const updated = content
-        .replaceAll(legacyArabic, "مؤسسة تقي جروب")
-        .replaceAll(legacyArabicAlt, "مؤسسة تقي جروب")
-        .replaceAll(`مؤسسة ${previousReplacement}`, "مؤسسة تقي جروب")
-        .replaceAll(previousReplacement, "تقي جروب")
-        .replaceAll(legacyLatin, "Taqi Group");
+        .replaceAll(legacyArabic, "سبائك الماسه")
+        .replaceAll(legacyArabicAlt, "سبائك الماسه")
+        .replaceAll(`مؤسسة ${previousReplacement}`, "سبائك الماسه")
+        .replaceAll(previousReplacement, "سبائك الماسه")
+        .replaceAll(legacyLatin, "Sabaik Almasa");
       
       fs.writeFileSync(file, updated, "utf8");
       modifiedCount++;

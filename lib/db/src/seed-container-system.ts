@@ -99,7 +99,7 @@ const extendedDemo = [
 
   const organizationSettings = {
     company_name: "تأجير حاويات الرياض",
-    company_name_en: "Taqi Group Establishment",
+    company_name_en: "Sabaik Almasa",
     company_phone_call: "0536312121",
     company_phone_whatsapp: "0536312121",
     company_phones: JSON.stringify(["0536312121"]),
