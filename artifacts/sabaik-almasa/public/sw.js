@@ -1,4 +1,4 @@
-/* Web Push service worker for CleanFlow admin notifications. */
+/* Web Push service worker for Sabaik Almasa admin notifications. */
 self.addEventListener("install", () => {
   void self.skipWaiting();
 });
@@ -39,11 +39,11 @@ self.addEventListener("push", (event) => {
     const options = {
       body: data.message || "لديك إشعار جديد في لوحة الإدارة",
       // Keep notification assets square so Android does not crop the identity.
-      icon: new URL("images/container-small.png", self.registration.scope).href,
-      badge: new URL("images/container-small.png", self.registration.scope).href,
+      icon: new URL("images/container-small.webp", self.registration.scope).href,
+      badge: new URL("images/container-small.webp", self.registration.scope).href,
       dir: "rtl",
       lang: "ar",
-      tag: data.id ? `cleanflow-notification-${data.id}` : "cleanflow-notification",
+      tag: data.id ? `sabaik-notification-${data.id}` : "sabaik-notification",
       renotify: true,
       silent: false,
       data: { url: targetPath, notificationId: data.id, refId: data.refId, refType: data.refType },

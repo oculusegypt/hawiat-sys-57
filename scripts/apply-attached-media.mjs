@@ -16,10 +16,10 @@ const Database = require("better-sqlite3");
 const SOURCE_DB = join(ROOT, "data", "sabaik.db");
 
 const MEDIA = [
-  "/images/container-small.png",
-  "/images/container-large.png",
-  "/images/waste-small.png",
-  "/images/electric-compactor.jpeg",
+  "/images/container-small.webp",
+  "/images/container-large.webp",
+  "/images/waste-small.webp",
+  "/images/electric-compactor.webp",
 ];
 
 const PACKAGE_MEDIA = new Map([
@@ -38,7 +38,7 @@ function replaceImageUrls(value, fallbackIndex) {
   if (typeof value !== "string" || !value) return value;
   let nextIndex = Number(fallbackIndex) || 0;
   return value.replace(
-    /(?:\/(?:api\/)?uploads\/|\/images\/)(?!container-small\.png|container-large\.png|waste-small\.png|electric-compactor\.jpeg)[^"'\\\s?#<>)]+/giu,
+    /(?:\/(?:api\/)?uploads\/|\/images\/)(?!container-small\.webp|container-large\.webp|waste-small\.webp|electric-compactor\.webp)[^"'\\\s?#<>)]+/giu,
     () => mediaFor(nextIndex++),
   );
 }

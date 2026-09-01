@@ -235,13 +235,20 @@ function seoMetaValue(string $html, string $name): string {
 }
 
 function seoCanonicalValue(string $html): string {
+    $values = seoCanonicalValues($html);
+    return $values[0] ?? '';
+}
+
+function seoCanonicalValues(string $html): array {
+    $values = [];
     preg_match_all('/<link\b[^>]*>/i', $html, $matches);
     foreach ($matches[0] ?? [] as $tag) {
         if (strcasecmp(seoHtmlAttribute($tag, 'rel'), 'canonical') === 0) {
-            return seoHtmlAttribute($tag, 'href');
+            $value = seoHtmlAttribute($tag, 'href');
+            if ($value !== '') $values[] = $value;
         }
     }
-    return '';
+    return $values;
 }
 
 function seoOrigin(string $value): string {
@@ -381,6 +388,7 @@ function seoMetricsSnapshot(PDO $pdo): array {
     $descriptions = 0;
     $qualityDescriptions = 0;
     $withCanonical = 0;
+    $canonicalPages = [];
     $withSchema = 0;
     $faqPages = 0;
     $linkedPages = 0;
@@ -392,10 +400,12 @@ function seoMetricsSnapshot(PDO $pdo): array {
         if (basename($file) === 'index.html' && dirname($file) === $productionRoot) $homepageHtml = $html;
         if (preg_match('/<meta\b[^>]*name=["\']robots["\'][^>]*content=["\'][^"\']*noindex/i', $html)) continue;
         $pages[] = $html;
-        $canonical = seoCanonicalValue($html);
-        if ($canonical !== '') {
+        $canonicalValues = seoCanonicalValues($html);
+        $canonical = $canonicalValues[0] ?? '';
+        if (count($canonicalValues) === 1 && $canonical !== '') {
             $withCanonical++;
             $canonicalUrls[] = $canonical;
+            $canonicalPages[] = $file;
         }
         $description = seoMetaValue($html, 'description');
         if ($description !== '') {
@@ -441,38 +451,32 @@ function seoMetricsSnapshot(PDO $pdo): array {
         return is_array($parts) && ($parts['scheme'] ?? '') === 'https' && !preg_match('/\s|[<>]/', $url);
     }));
 
-    $mediaFiles = array_values(array_filter($files, fn($file) => str_contains(str_replace('\\', '/', $file), '/images/seo/') && preg_match('/\.(png|jpe?g|webp|gif|svg)$/i', $file)));
-    $mediaPaths = [];
-    foreach ($mediaFiles as $mediaFile) {
-        $mediaPaths[] = '/images/' . ltrim(str_replace(str_replace('\\', '/', $productionRoot) . '/images/', '', str_replace('\\', '/', $mediaFile)), '/');
+    $mediaManifest = [];
+    $mediaManifestPath = $productionRoot . '/seo-media-manifest.json';
+    if (is_file($mediaManifestPath)) {
+        $decodedManifest = json_decode((string)@file_get_contents($mediaManifestPath), true);
+        foreach (($decodedManifest['assets'] ?? []) as $asset) {
+            if (is_array($asset) && !empty($asset['path'])) $mediaManifest[] = trim((string)$asset['path']);
+        }
     }
-    $referencedMedia = 0;
-    foreach (array_values(array_unique($mediaPaths)) as $mediaPath) {
+    $mediaPaths = array_values(array_unique(array_filter($mediaManifest)));
+    $mediaFiles = [];
+    foreach ($mediaPaths as $mediaPath) {
+        $mediaFile = $productionRoot . '/' . ltrim($mediaPath, '/');
+        if (is_file($mediaFile) && preg_match('/\.(png|jpe?g|webp|gif|svg)$/i', $mediaFile)) $mediaFiles[] = $mediaFile;
+    }
+    $referencedMediaPaths = [];
+    foreach ($mediaPaths as $mediaPath) {
         foreach ($files as $file) {
             if (!preg_match('/\.(html?|css|js|json|xml|txt|php|webmanifest)$/i', $file)) continue;
+            if ($file === $mediaManifestPath) continue;
             if (str_contains((string)@file_get_contents($file), $mediaPath)) {
-                $referencedMedia++;
+                $referencedMediaPaths[] = $mediaPath;
                 break;
             }
         }
     }
-
-    $legacyFiles = [];
-    foreach ($files as $file) {
-        if (str_contains(str_replace('\\', '/', $file), '/api/')) continue;
-        if (!preg_match('/\.(html?|css|js|json|xml|txt|php|webmanifest)$/i', $file)) continue;
-        // These are machine-readable release manifests, not public copy.
-        // Their internal artifact identifiers must not trigger a branding
-        // warning for rendered pages.
-        if (in_array(basename($file), [
-            'BUILD_INFO.json',
-            'UPLOAD_INSTRUCTIONS.txt',
-            'seo-inventory.json',
-            'seo-media-manifest.json',
-        ], true)) continue;
-        $text = (string)@file_get_contents($file);
-        if (preg_match('/sabaik|سبائك|الماسة/iu', $text)) $legacyFiles[] = $file;
-    }
+    $referencedMedia = count(array_unique($referencedMediaPaths));
 
     $setting = function (string $key) use ($pdo): string {
         try {
@@ -486,8 +490,27 @@ function seoMetricsSnapshot(PDO $pdo): array {
     $companyName = $setting('company_name');
     $companyCity = $setting('company_city');
     $companyPhone = $setting('company_phone_call') ?: $setting('company_phone_whatsapp');
+    $companyAddress = $setting('company_address');
+    $legacyFiles = [];
+    foreach ($files as $file) {
+        if (str_contains(str_replace('\\', '/', $file), '/api/')) continue;
+        if (!preg_match('/\.(html?|css|js|json|xml|txt|php|webmanifest)$/i', $file)) continue;
+        if (in_array(basename($file), [
+            'BUILD_INFO.json',
+            'UPLOAD_INSTRUCTIONS.txt',
+            'seo-inventory.json',
+            'seo-media-manifest.json',
+        ], true)) continue;
+        $text = (string)@file_get_contents($file);
+        if (preg_match('/cleanflow|taqi\s*group|تاكي/iu', $text)) $legacyFiles[] = $file;
+    }
     $contactConsistent = $companyName !== '' && $companyCity !== '' && $companyPhone !== ''
-        && str_contains($homepageHtml, $companyCity) && str_contains($homepageHtml, $companyPhone);
+        && $companyAddress !== ''
+        && str_contains($homepageHtml, $companyName)
+        && str_contains($homepageHtml, $companyCity)
+        && str_contains($homepageHtml, $companyPhone)
+        && str_contains($homepageHtml, $companyAddress)
+        && str_contains($homepageHtml, '"@type":"LocalBusiness"');
     $origins = array_values(array_unique(array_filter(array_merge(
         [$siteUrl, seoOrigin(seoMetaValue($homepageHtml, 'site-public-url'))],
         array_map('seoOrigin', $sitemapUrls),
@@ -1289,7 +1312,7 @@ try {
             $kindKeywords,
             ['تأجير الحاويات بالرياض', 'نقل مخلفات البناء بالرياض', 'حاويات أنقاض بالرياض', 'نقل المخلفات بالرياض'],
         ))));
-        $image = seoAutoText($source['ogImage'] ?? '') ?: seoAutoText($source['coverImage'] ?? '') ?: seoAutoText($source['imageUrl'] ?? '') ?: '/images/container-small.png';
+        $image = seoAutoText($source['ogImage'] ?? '') ?: seoAutoText($source['coverImage'] ?? '') ?: seoAutoText($source['imageUrl'] ?? '') ?: '/images/container-small.webp';
         if ($kind === 'service') $prefix = '/services';
         elseif ($kind === 'container') $prefix = '/containers';
         elseif ($kind === 'post') $prefix = '/blog';
@@ -1507,7 +1530,7 @@ try {
             $lines[] = '    <lastmod>' . $today . '</lastmod>';
             $lines[] = '    <changefreq>' . $sp['freq'] . '</changefreq>';
             $lines[] = '    <priority>' . $sp['priority'] . '</priority>';
-            if ($sp['path'] === '') $addImageTags(['/images/container-large.png', '/images/container-small.png'], 'الصفحة الرئيسية');
+            if ($sp['path'] === '') $addImageTags(['/images/container-large.webp', '/images/container-small.webp'], 'الصفحة الرئيسية');
             $lines[] = '  </url>';
         }
 
@@ -1520,7 +1543,7 @@ try {
             $lines[] = '    <lastmod>' . $today . '</lastmod>';
             $lines[] = '    <changefreq>monthly</changefreq>';
             $lines[] = '    <priority>0.8</priority>';
-            $addImageTags(['/images/container-small.png'], 'خدمات الشركة في ' . $nh);
+            $addImageTags(['/images/container-small.webp'], 'خدمات الشركة في ' . $nh);
             $lines[] = '  </url>';
         }
 
@@ -1576,7 +1599,7 @@ try {
         $lines[] = '    <lastmod>' . $today . '</lastmod>';
         $lines[] = '    <changefreq>weekly</changefreq>';
         $lines[] = '    <priority>0.8</priority>';
-            $addImageTags(['/images/container-small.png'], 'مدونة الشركة');
+            $addImageTags(['/images/container-small.webp'], 'مدونة الشركة');
         $lines[] = '  </url>';
         }
 
@@ -1598,7 +1621,7 @@ try {
             $addImageTags(
                 $imageCandidates(
                     $post['cover_image'] ?? '',
-                     $post['og_image'] ?? '/images/container-small.png'
+                     $post['og_image'] ?? '/images/container-small.webp'
                 ),
                 (string)$post['title']
             );
@@ -2866,9 +2889,9 @@ try {
                     } catch (\Exception $e2) {}
                 }
                 $fallbackImages = [
-                    'debris' => '/images/container-large.png',
-                    'waste' => '/images/waste-small.png',
-                    'contract' => '/images/container-small.png',
+                    'debris' => '/images/container-large.webp',
+                    'waste' => '/images/waste-small.webp',
+                    'contract' => '/images/container-small.webp',
                 ];
                 return array_map(function($c) use ($categoryMeta, $fallbackImages) {
                     $cat = $c['category'] ?? 'debris';
@@ -2881,7 +2904,7 @@ try {
                     }
                     $img = !empty($c['image_url']) && !str_contains($c['image_url'], 'package-0') && !str_contains($c['image_url'], 'cleaning')
                         ? $c['image_url']
-                        : ($fallbackImages[$cat] ?? '/images/container-small.png');
+                        : ($fallbackImages[$cat] ?? '/images/container-small.webp');
 
                     return [
                         'id' => 'container_' . $c['id'],
@@ -2915,7 +2938,7 @@ try {
                         'category' => 'all',
                         'title' => 'جميع مقاسات وأنواع الحاويات',
                         'description' => 'استعرض كافة حاويات الأنقاض والنفايات والمكابس المتاحة',
-                        'image' => '/images/container-small.png',
+                        'image' => '/images/container-small.webp',
                         'emoji' => '📦'
                     ]
                 ];
@@ -2930,7 +2953,7 @@ try {
                         'category' => $cat,
                         'title' => $meta['title'],
                         'description' => $meta['description'],
-                        'image' => $first ? $first['image'] : '/images/container-small.png',
+                        'image' => $first ? $first['image'] : '/images/container-small.webp',
                         'emoji' => $meta['emoji']
                     ];
                 }

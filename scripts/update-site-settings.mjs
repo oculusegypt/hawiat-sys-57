@@ -14,6 +14,7 @@ const dbs = [
 
 const updates = [
   { key: "site_public_url", value: "https://sabaik.net" },
+  { key: "company_name_en", value: "Sabaik Almasa Establishment" },
   { key: "seo_meta_title", value: "تأجير حاويات ونقل مخلفات البناء بالرياض | {{company_name}}" },
   { key: "seo_meta_description", value: "{{company_name}} لتأجير حاويات الأنقاض والنفايات ونقل مخلفات البناء بالرياض، مع توصيل وسحب منسق وحلول مناسبة للمشاريع والمنشآت." },
   { key: "seo_meta_keywords", value: "تأجير حاويات بالرياض, حاويات أنقاض, حاويات نفايات, نقل مخلفات البناء, مكابس نفايات, عقود مواقع, {{company_name}}" },

@@ -1,8 +1,8 @@
 export const ATTACHED_MEDIA = {
-  smallContainer: "/images/container-small.png",
-  largeContainer: "/images/container-large.png",
-  smallWaste: "/images/waste-small.png",
-  electricCompactor: "/images/electric-compactor.jpeg",
+  smallContainer: "/images/container-small.webp",
+  largeContainer: "/images/container-large.webp",
+  smallWaste: "/images/waste-small.webp",
+  electricCompactor: "/images/electric-compactor.webp",
 } as const
 
 export const ATTACHED_MEDIA_LIST = [
