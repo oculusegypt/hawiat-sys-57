@@ -342,7 +342,6 @@ function seoProductionFiles(string $root): array {
             if (
                 str_contains($path, '/assets/')
                 || str_contains($path, '/cleanflow-platform/')
-                || str_contains($path, '/taqi-group-platform/')
             ) continue;
             $files[] = $path;
         }
@@ -684,7 +683,7 @@ try {
     }
 
     function generateToken(int $adminId): string {
-        $tokenSecret = getenv('SESSION_SECRET') ?: '5f293533895dc47bc49687298ec0f280a9ebad4fcb013007738110c78ddb0a60';
+        $tokenSecret = getenv('SESSION_SECRET') ?: '1e823d8ef607b5ade758e79de9e7382bf02be613967eb5b931d46f155288442c';
         $payload = json_encode(['adminId' => $adminId, 'ts' => (int)(microtime(true) * 1000)]);
         $b64 = base64url_encode((string)$payload);
         $sig = base64url_encode(hash_hmac('sha256', $b64, $tokenSecret, true));
@@ -696,7 +695,7 @@ try {
             $parts = explode('.', $token);
             if (count($parts) !== 2) return null;
             [$b64, $sig] = $parts;
-            $tokenSecret = getenv('SESSION_SECRET') ?: '5f293533895dc47bc49687298ec0f280a9ebad4fcb013007738110c78ddb0a60';
+            $tokenSecret = getenv('SESSION_SECRET') ?: '1e823d8ef607b5ade758e79de9e7382bf02be613967eb5b931d46f155288442c';
             $expectedSig = base64url_encode(hash_hmac('sha256', $b64, $tokenSecret, true));
             if (!hash_equals($sig, $expectedSig)) return null;
             $payload = json_decode(base64url_decode($b64), true);
@@ -1645,7 +1644,7 @@ try {
     // Hostinger deployment settings and Patch upload. This is intentionally
     // implemented here (PHP/FTP) because production has no Node.js process.
     function hostingerPatchKey(): string {
-        $secret = getenv('SESSION_SECRET') ?: '5f293533895dc47bc49687298ec0f280a9ebad4fcb013007738110c78ddb0a60';
+        $secret = getenv('SESSION_SECRET') ?: '1e823d8ef607b5ade758e79de9e7382bf02be613967eb5b931d46f155288442c';
         return hash('sha256', 'hostinger-ftp:' . $secret, true);
     }
 

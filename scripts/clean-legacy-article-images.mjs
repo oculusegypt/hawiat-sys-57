@@ -46,6 +46,9 @@ const LEGACY_IMAGE_REPLACEMENTS = new Map([
   ["/images/container-debris-large.webp", "/images/container-large.png"],
   ["/images/container-debris-medium.webp", "/images/container-small.png"],
   ["/images/container-debris-small.webp", "/images/container-small.png"],
+  ["/images/seo/taqi-services.jpg", "/images/container-small.png"],
+  ["/images/seo/taqi-containers.jpg", "/images/container-large.png"],
+  ["/images/seo/taqi-blog.jpg", "/images/waste-small.png"],
 ]);
 const LEGACY_UPLOAD_PREFIXES = [
   "1784880738437", "1784880757820", "1784882025820", "1784882033731",

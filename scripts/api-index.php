@@ -342,7 +342,6 @@ function seoProductionFiles(string $root): array {
             if (
                 str_contains($path, '/assets/')
                 || str_contains($path, '/cleanflow-platform/')
-                || str_contains($path, '/taqi-group-platform/')
             ) continue;
             $files[] = $path;
         }
