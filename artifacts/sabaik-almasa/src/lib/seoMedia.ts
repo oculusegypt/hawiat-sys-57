@@ -1,16 +1,16 @@
 const SEO_MEDIA = {
-  home: "/images/container-large.png",
-  services: "/images/container-small.png",
-  containers: "/images/container-large.png",
-  pricing: "/images/electric-compactor.jpeg",
-  areas: "/images/waste-small.png",
-  blog: "/images/container-small.png",
-  about: "/images/container-large.png",
-  contact: "/images/electric-compactor.jpeg",
-  faq: "/images/waste-small.png",
-  partners: "/images/container-small.png",
-  whyUs: "/images/container-large.png",
-  legal: "/images/electric-compactor.jpeg",
+  home: "/images/container-large.webp",
+  services: "/images/container-small.webp",
+  containers: "/images/container-large.webp",
+  pricing: "/images/electric-compactor.webp",
+  areas: "/images/waste-small.webp",
+  blog: "/images/container-small.webp",
+  about: "/images/container-large.webp",
+  contact: "/images/electric-compactor.webp",
+  faq: "/images/waste-small.webp",
+  partners: "/images/container-small.webp",
+  whyUs: "/images/container-large.webp",
+  legal: "/images/electric-compactor.webp",
 } as const
 
 const PATH_MEDIA: Array<[string, string]> = [

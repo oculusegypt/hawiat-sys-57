@@ -33,18 +33,18 @@ export const STATIC_SEO_ROUTES = Object.freeze([
 ]);
 
 export const SEO_MEDIA_MANIFEST = Object.freeze([
-  ["home", "/images/container-large.png", ["/"]],
-  ["services", "/images/container-small.png", ["/services", "/why-us/what-we-do"]],
-  ["containers", "/images/container-large.png", ["/containers"]],
-  ["pricing", "/images/electric-compactor.jpeg", ["/pricing"]],
-  ["areas", "/images/waste-small.png", ["/areas"]],
-  ["blog", "/images/container-small.png", ["/blog"]],
-  ["about", "/images/container-large.png", ["/about", "/why-us/experience"]],
-  ["contact", "/images/electric-compactor.jpeg", ["/contact", "/why-us/commitment"]],
-  ["faq", "/images/waste-small.png", ["/faq"]],
-  ["partners", "/images/container-small.png", ["/partners"]],
-  ["why-us", "/images/container-large.png", ["/why-us/leadership"]],
-  ["legal", "/images/electric-compactor.jpeg", ["/privacy", "/terms"]],
+  ["home", "/images/container-large.webp", ["/"]],
+  ["services", "/images/container-small.webp", ["/services", "/why-us/what-we-do"]],
+  ["containers", "/images/container-large.webp", ["/containers"]],
+  ["pricing", "/images/electric-compactor.webp", ["/pricing"]],
+  ["areas", "/images/waste-small.webp", ["/areas"]],
+  ["blog", "/images/container-small.webp", ["/blog"]],
+  ["about", "/images/container-large.webp", ["/about", "/why-us/experience"]],
+  ["contact", "/images/electric-compactor.webp", ["/contact", "/why-us/commitment"]],
+  ["faq", "/images/waste-small.webp", ["/faq"]],
+  ["partners", "/images/container-small.webp", ["/partners"]],
+  ["why-us", "/images/container-large.webp", ["/why-us/leadership"]],
+  ["legal", "/images/electric-compactor.webp", ["/privacy", "/terms"]],
 ]);
 
 function tableExists(db, tableName) {

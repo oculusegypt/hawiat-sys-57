@@ -12,6 +12,7 @@ const dbs = [
   join(ROOT, "data", "sabaik_7dbd.db")
 ];
 
+
 for (const dbPath of dbs) {
   try {
     const db = new Database(dbPath);
@@ -22,3 +23,4 @@ for (const dbPath of dbs) {
     console.error(`Error reading ${dbPath}:`, err);
   }
 }
+console.log("✅ No changes were made to the database.");

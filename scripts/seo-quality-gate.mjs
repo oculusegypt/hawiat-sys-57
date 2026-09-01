@@ -233,7 +233,7 @@ if (archiveDir) {
     "robots.txt",
     "api/index.php",
     "images/logo.png",
-    "images/container-large.png",
+    "images/container-large.webp",
     "cleanflow-platform/index.html",
   ]) requireFile(join(archiveDir, file), `archive ${file}`);
 

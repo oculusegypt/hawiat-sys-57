@@ -25,6 +25,7 @@ interface HtmlPage {
   file: string;
   html: string;
   canonical: string;
+  canonicalCount: number;
   description: string;
   robots: string;
   jsonLdTypes: string[];
@@ -110,10 +111,12 @@ function getMeta(html: string, key: string, property = false): string {
   return tag ? getAttribute(tag, "content") : "";
 }
 
-function getCanonical(html: string): string {
+function getCanonicals(html: string): string[] {
   const tags = html.match(/<link\b[^>]*>/gi) ?? [];
-  const tag = tags.find((candidate) => getAttribute(candidate, "rel").toLowerCase() === "canonical");
-  return tag ? getAttribute(tag, "href") : "";
+  return tags
+    .filter((candidate) => getAttribute(candidate, "rel").toLowerCase() === "canonical")
+    .map((candidate) => getAttribute(candidate, "href"))
+    .filter(Boolean);
 }
 
 function getJsonLdTypes(html: string): string[] {
@@ -160,7 +163,8 @@ function parsePage(file: string, siteUrl: string): HtmlPage {
   return {
     file,
     html,
-    canonical: getCanonical(html),
+    canonical: getCanonicals(html)[0] ?? "",
+    canonicalCount: getCanonicals(html).length,
     description: getMeta(html, "description"),
     robots: getMeta(html, "robots"),
     jsonLdTypes,
@@ -256,10 +260,15 @@ export async function getSeoMetrics(): Promise<SeoMetricsSnapshot> {
   const homepageHtml = homepage ? readText(homepage) : "";
   const siteUrl = sitemapOrigin || getOrigin(getMeta(homepageHtml, "site-public-url"));
   const pages = htmlFiles.map((file) => parsePage(file, siteUrl)).filter((page) => !/noindex/i.test(page.robots));
-  const canonicalUrls = unique(pages.map((page) => page.canonical).filter(Boolean));
+  const canonicalUrls = unique(
+    pages
+      .filter((page) => page.canonicalCount === 1)
+      .map((page) => page.canonical)
+      .filter(Boolean),
+  );
   const descriptions = pages.map((page) => page.description).filter(Boolean);
   const qualityDescriptions = descriptions.filter((description) => description.length >= 120 && description.length <= 160);
-  const pagesWithCanonical = pages.filter((page) => Boolean(page.canonical));
+  const pagesWithCanonical = pages.filter((page) => page.canonicalCount === 1 && Boolean(page.canonical));
   const pagesWithSchema = pages.filter((page) => page.jsonLdTypes.length > 0);
   const faqEligiblePages = pages.filter((page) => isFaqEligiblePage(page, production.root));
   const faqPages = faqEligiblePages.filter((page) => page.faq);
@@ -275,14 +284,22 @@ export async function getSeoMetrics(): Promise<SeoMetricsSnapshot> {
     }
   });
 
-  const mediaFiles = allFiles.filter((file) =>
-    path.dirname(file).endsWith(`${path.sep}images${path.sep}seo`) &&
-    SEO_MEDIA_EXTENSIONS.test(file),
-  );
-  const mediaPaths = unique(mediaFiles.map((file) => `/images/${path.relative(path.join(production.root, "images"), file).replaceAll(path.sep, "/")}`));
+  const mediaManifestFile = path.join(production.root, "seo-media-manifest.json");
+  const mediaManifest = (() => {
+    try {
+      const parsed = JSON.parse(readText(mediaManifestFile)) as { assets?: Array<{ path?: string }> };
+      return (parsed.assets ?? []).map((asset) => asset.path?.trim() ?? "").filter(Boolean);
+    } catch {
+      return [];
+    }
+  })();
+  const mediaPaths = unique(mediaManifest);
+  const mediaFiles = mediaPaths
+    .map((mediaPath) => path.join(production.root, mediaPath.replace(/^\/+/, "")))
+    .filter((file) => SEO_MEDIA_EXTENSIONS.test(file) && fs.existsSync(file));
   const referencedMedia = unique(
     allFiles
-      .filter((file) => TEXT_EXTENSIONS.test(file))
+      .filter((file) => TEXT_EXTENSIONS.test(file) && file !== mediaManifestFile)
       .flatMap((file) => {
         const text = readText(file);
         return mediaPaths.filter((mediaPath) => text.includes(mediaPath));
@@ -295,10 +312,13 @@ export async function getSeoMetrics(): Promise<SeoMetricsSnapshot> {
     !file.includes(`${path.sep}cleanflow-platform${path.sep}`) &&
     !["BUILD_INFO.json", "UPLOAD_INSTRUCTIONS.txt"].includes(path.basename(file)),
   );
-  const legacyFiles = publicFiles.filter((file) => LEGACY_BRANDING.test(readText(file)));
   const settingsName = (await getSetting("company_name")).trim();
   const settingsCity = (await getSetting("company_city")).trim();
   const settingsPhone = (await getSetting("company_phone_call")).trim() || (await getSetting("company_phone_whatsapp")).trim();
+  const legacyBranding = settingsName
+    ? new RegExp(`(?:cleanflow|taqi\\s*group|تاكي)(?![^<]{0,80}${settingsName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")})`, "iu")
+    : LEGACY_BRANDING;
+  const legacyFiles = publicFiles.filter((file) => legacyBranding.test(readText(file)));
   const homepageJson = getJsonLdTypes(homepageHtml);
   const contactConsistent = Boolean(
     settingsName &&

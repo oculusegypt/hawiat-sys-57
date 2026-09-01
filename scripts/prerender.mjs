@@ -278,14 +278,14 @@ function seoPageImage(page) {
   if (configured) return absoluteImg(configured);
   const text = `${page.slug || ""} ${page.title || ""} ${page.target_keyword || ""}`.toLowerCase();
   const keywordMedia = [
-    [["سعر", "أسعار", "تكلفة", "pricing"], "/images/electric-compactor.jpeg"],
-    [["حي", "أحياء", "مناطق", "تغطية", "ضواحي", "areas"], "/images/waste-small.png"],
-    [["سؤال", "أسئلة", "faq"], "/images/waste-small.png"],
-    [["مطاعم", "مصانع", "مستودعات", "منشآت"], "/images/container-small.png"],
-    [["حاويات", "أنقاض", "مخلفات", "هدم", "بناء", "ترميم", "رفع", "نقل"], "/images/container-large.png"],
+    [["سعر", "أسعار", "تكلفة", "pricing"], "/images/electric-compactor.webp"],
+    [["حي", "أحياء", "مناطق", "تغطية", "ضواحي", "areas"], "/images/waste-small.webp"],
+    [["سؤال", "أسئلة", "faq"], "/images/waste-small.webp"],
+    [["مطاعم", "مصانع", "مستودعات", "منشآت"], "/images/container-small.webp"],
+    [["حاويات", "أنقاض", "مخلفات", "هدم", "بناء", "ترميم", "رفع", "نقل"], "/images/container-large.webp"],
   ];
   const match = keywordMedia.find(([keywords]) => keywords.some(keyword => text.includes(keyword)));
-  return absoluteImg(match?.[1] || "/images/container-small.png");
+  return absoluteImg(match?.[1] || "/images/container-small.webp");
 }
 
 function imageMimeType(url) {

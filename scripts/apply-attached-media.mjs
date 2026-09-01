@@ -20,10 +20,10 @@ const SOURCE_DB = join(ROOT, "data", "sabaik.db");
 const APPLY = process.argv.includes("--apply");
 
 const MEDIA = [
-  "/images/container-small.png",
-  "/images/container-large.png",
-  "/images/waste-small.png",
-  "/images/electric-compactor.jpeg",
+  "/images/container-small.webp",
+  "/images/container-large.webp",
+  "/images/waste-small.webp",
+  "/images/electric-compactor.webp",
 ];
 
 const PACKAGE_MEDIA = new Map([
@@ -32,6 +32,7 @@ const PACKAGE_MEDIA = new Map([
   ["حاوية نفايات صغيرة", MEDIA[2]],
   ["مكبس نفايات كهربائي", MEDIA[3]],
 ]);
+
 
 const db = new Database(SOURCE_DB);
 try {
