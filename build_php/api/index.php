@@ -684,7 +684,7 @@ try {
     }
 
     function generateToken(int $adminId): string {
-        $tokenSecret = getenv('SESSION_SECRET') ?: 'a1fadc42c6bedcfbff44ce7e7c9798318e62c16618268d8aeffa56b39859f449';
+        $tokenSecret = getenv('SESSION_SECRET') ?: '5f293533895dc47bc49687298ec0f280a9ebad4fcb013007738110c78ddb0a60';
         $payload = json_encode(['adminId' => $adminId, 'ts' => (int)(microtime(true) * 1000)]);
         $b64 = base64url_encode((string)$payload);
         $sig = base64url_encode(hash_hmac('sha256', $b64, $tokenSecret, true));
@@ -696,7 +696,7 @@ try {
             $parts = explode('.', $token);
             if (count($parts) !== 2) return null;
             [$b64, $sig] = $parts;
-            $tokenSecret = getenv('SESSION_SECRET') ?: 'a1fadc42c6bedcfbff44ce7e7c9798318e62c16618268d8aeffa56b39859f449';
+            $tokenSecret = getenv('SESSION_SECRET') ?: '5f293533895dc47bc49687298ec0f280a9ebad4fcb013007738110c78ddb0a60';
             $expectedSig = base64url_encode(hash_hmac('sha256', $b64, $tokenSecret, true));
             if (!hash_equals($sig, $expectedSig)) return null;
             $payload = json_decode(base64url_decode($b64), true);
@@ -1184,9 +1184,6 @@ try {
             'مؤسسة سبائك الماسه' => $companyName,
             'سبائك الماسة' => $companyName,
             'سبائك الماسه' => $companyName,
-            'مؤسسة تقي جروب' => $companyName,
-            'شركة تقي جروب' => $companyName,
-            'تقي جروب' => $companyName,
             'منصة حاويات' => $companyName,
         ];
         foreach ($replacements as $legacy => $replacement) {
@@ -1648,7 +1645,7 @@ try {
     // Hostinger deployment settings and Patch upload. This is intentionally
     // implemented here (PHP/FTP) because production has no Node.js process.
     function hostingerPatchKey(): string {
-        $secret = getenv('SESSION_SECRET') ?: 'a1fadc42c6bedcfbff44ce7e7c9798318e62c16618268d8aeffa56b39859f449';
+        $secret = getenv('SESSION_SECRET') ?: '5f293533895dc47bc49687298ec0f280a9ebad4fcb013007738110c78ddb0a60';
         return hash('sha256', 'hostinger-ftp:' . $secret, true);
     }
 

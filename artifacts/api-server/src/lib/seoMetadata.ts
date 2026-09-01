@@ -43,10 +43,10 @@ const GOLDEN_KEYWORDS = [
 ];
 
 const FALLBACK_IMAGES: Record<SeoEntityKind, string> = {
-  service: "/images/seo/taqi-services.jpg",
-  container: "/images/seo/taqi-containers.jpg",
-  post: "/images/seo/taqi-blog.jpg",
-  page: "/images/seo/taqi-services.jpg",
+  service: "/images/container-small.png",
+  container: "/images/container-large.png",
+  post: "/images/waste-small.png",
+  page: "/images/container-small.png",
 };
 
 const ROUTE_PREFIXES: Record<SeoEntityKind, string> = {

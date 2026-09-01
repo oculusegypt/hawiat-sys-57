@@ -112,10 +112,10 @@ function getStaticPages(base: string, siteName: string) {
     ]},
     { path: "/pricing",                        priority: "0.95", freq: "weekly",  images: [] },
     { path: "/containers",                     priority: "0.9",  freq: "weekly",  images: [
-      { loc: `${base}/images/seo/taqi-containers.jpg`, title: "حاويات الأنقاض والنفايات بالرياض" },
+      { loc: `${base}/images/container-large.png`, title: "حاويات الأنقاض والنفايات بالرياض" },
     ]},
     { path: "/services",                       priority: "0.95", freq: "weekly",  images: [
-      { loc: `${base}/images/seo/taqi-services.jpg`, title: "خدمات الرياض" },
+      { loc: `${base}/images/container-small.png`, title: "خدمات الرياض" },
     ]},
     { path: "/contact",                        priority: "0.85", freq: "monthly", images: [] },
     { path: "/partners",                       priority: "0.75", freq: "monthly", images: [] },
@@ -359,7 +359,7 @@ async function buildXml(baseUrl: string): Promise<{ xml: string; totalUrls: numb
     lines.push(`    <changefreq>monthly</changefreq>`);
     lines.push(`    <priority>0.75</priority>`);
     lines.push(`    <xhtml:link rel="alternate" hreflang="ar" href="${escapeXml(url)}"/>`);
-    const articleImage = post.coverImage || post.ogImage || "/images/seo/taqi-blog.jpg";
+    const articleImage = post.coverImage || post.ogImage || "/images/waste-small.png";
     if (articleImage) {
       const imgLoc = articleImage.startsWith("http") ? articleImage : `${baseUrl}${articleImage}`;
       lines.push(`    <image:image>`);
