@@ -16,6 +16,7 @@ import type { Container } from "@workspace/api-client-react"
 import { entityPath, entitySlug } from "@/lib/friendlySlug"
 import { mergeGoldenSeoKeywords } from "@/lib/seoKeywords"
 import { useDocumentSchema } from "@/hooks/useDocumentSchema"
+import { getContainerImage } from "@/components/home/packages/PackageCard"
 
 const API_BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") || ""
 interface Post {
@@ -24,6 +25,10 @@ interface Post {
   publishedAt: string | null; updatedAt: string | null; readTime: number; viewCount: number
   seoTitle: string; seoDescription: string; seoKeywords: string
   ogImage: string; canonicalUrl: string
+}
+
+function postImage(post: { coverImage?: string | null; ogImage?: string | null }): string {
+  return post.coverImage?.trim() || post.ogImage?.trim() || "/images/container-large.png"
 }
 
 function formatDate(iso: string | null): string {
@@ -151,7 +156,7 @@ function ArticleContainers({ onOpen }: { onOpen: (size?: string) => void }) {
           <div key={c.size} className="bg-white border border-gray-100 rounded-2xl overflow-hidden shadow-sm hover:shadow-md hover:border-primary/20 transition-all group flex flex-col justify-between">
             <div className="h-36 overflow-hidden bg-gray-100">
               <img
-                 src={c.imageUrl || "/images/container-small.png"}
+                  src={getContainerImage(c)}
                  alt={`${c.name} - ${c.size}`}
                 className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                   onError={(e) => { e.currentTarget.src = "/images/container-small.png" }}
@@ -185,7 +190,7 @@ function ArticleContainers({ onOpen }: { onOpen: (size?: string) => void }) {
 // ─── Related Posts ─────────────────────────────────────────────────────────────
 interface RelatedPost {
   id: number; title: string; slug: string; excerpt: string
-  coverImage: string; category: string; publishedAt: string | null; readTime: number
+  coverImage: string; ogImage?: string; category: string; publishedAt: string | null; readTime: number
 }
 
 function RelatedPosts({ category, currentSlug }: { category: string; currentSlug: string }) {
@@ -213,12 +218,13 @@ function RelatedPosts({ category, currentSlug }: { category: string; currentSlug
         {posts.map(p => (
           <Link key={p.id} href={`/blog/${entityPath({ slug: p.slug, title: p.title, id: p.id, fallback: "post" })}`}>
             <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden shadow-sm hover:shadow-md hover:border-primary/20 transition-all group cursor-pointer">
-              {p.coverImage && (
+              {postImage(p) && (
                 <div className="h-36 overflow-hidden">
                   <img
-                    src={p.coverImage.startsWith("http") ? p.coverImage : `${API_BASE}${p.coverImage}`}
+                    src={postImage(p).startsWith("http") ? postImage(p) : `${API_BASE}${postImage(p)}`}
                     alt={p.title}
                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                    onError={(e) => { e.currentTarget.src = "/images/container-small.png" }}
                   />
                 </div>
               )}
@@ -255,7 +261,7 @@ export default function BlogPost() {
   const [notFound, setNotFound] = useState(false)
   const blogSchema = post && isLoaded ? (() => {
     const canonical = siteUrl(`/blog/${entityPath({ slug: post.slug, title: post.title, id: post.id, fallback: "post" })}`)
-    const ogImg = siteUrl(sitePath(post.ogImage || post.coverImage || "/images/container-large.png"))
+    const ogImg = siteUrl(sitePath(postImage(post)))
     const title = post.seoTitle || post.title
     const description = post.seoDescription || post.excerpt
     const resolvedTitle = normalizeCompanyText(title)
@@ -330,7 +336,7 @@ export default function BlogPost() {
 
         // ── Inject SEO meta tags ──────────────────────────────────────────
         const canonical = siteUrl(`/blog/${entityPath({ slug: d.slug, title: d.title, id: d.id, fallback: "post" })}`)
-        const ogImg     = siteUrl(sitePath(d.ogImage || d.coverImage || "/images/container-large.png"))
+        const ogImg     = siteUrl(sitePath(postImage(d)))
         const title     = d.seoTitle || d.title
         const desc      = d.seoDescription || d.excerpt
 
@@ -435,12 +441,13 @@ export default function BlogPost() {
       </div>
 
       {/* Cover image */}
-      {post.coverImage && (
+      {postImage(post) && (
         <div className="w-full max-h-[36rem] min-h-64 overflow-hidden bg-[#12384b] flex items-center justify-center">
           <img
-            src={post.coverImage.startsWith("http") ? post.coverImage : `${API_BASE}${post.coverImage}`}
+            src={postImage(post).startsWith("http") ? postImage(post) : `${API_BASE}${postImage(post)}`}
             alt={resolvedPost.title}
             className="w-full max-h-[36rem] object-contain"
+            onError={(e) => { e.currentTarget.src = "/images/container-large.png" }}
           />
         </div>
       )}

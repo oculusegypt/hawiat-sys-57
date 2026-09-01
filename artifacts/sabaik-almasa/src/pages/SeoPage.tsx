@@ -65,6 +65,10 @@ function toAbsoluteAsset(value: string): string {
   return siteUrl(sitePath(value))
 }
 
+function pageManagedImage(page: Pick<SeoPageData, "coverImage" | "ogImage">): string {
+  return page.coverImage?.trim() || page.ogImage?.trim() || ""
+}
+
 function PublicCta({
   onOpen,
   phoneCall,
@@ -159,7 +163,7 @@ export default function SeoPage() {
         const title = resolvedData.seoTitle || resolvedData.title
         const description = resolvedData.seoDescription || resolvedData.excerpt
          const canonical = siteUrl(`/page/${entityPath({ slug: resolvedData.slug, title: resolvedData.title, id: resolvedData.id, fallback: "page" })}`)
-        const image = toAbsoluteAsset(resolvedData.ogImage || resolvedData.coverImage) || siteUrl(seoImageForPath(`/page/${resolvedData.slug}`))
+        const image = toAbsoluteAsset(pageManagedImage(resolvedData)) || siteUrl(seoImageForPath(`/page/${resolvedData.slug}`))
         const resolvedTitle = normalizeCompanyText(`${title} | ${companyName || "سبائك الماسه"}`)
         document.title = resolvedTitle
         setMeta("description", description)
@@ -221,7 +225,7 @@ export default function SeoPage() {
     ? siteUrl(`/page/${entityPath({ slug: page.slug, title: page.title, id: page.id, fallback: "page" })}`)
     : ""
   const pageImage = page
-    ? toAbsoluteAsset(page.ogImage || page.coverImage) || siteUrl(seoImageForPath(`/page/${page.slug}`))
+    ? toAbsoluteAsset(pageManagedImage(page)) || siteUrl(seoImageForPath(`/page/${page.slug}`))
     : ""
   useDocumentSchema("seo-page-schema", page ? {
     "@graph": [
@@ -280,7 +284,7 @@ export default function SeoPage() {
     )
   }
 
-  const image = toAbsoluteAsset(page.ogImage || page.coverImage) || siteUrl(seoImageForPath(`/page/${page.slug}`))
+  const image = toAbsoluteAsset(pageManagedImage(page)) || siteUrl(seoImageForPath(`/page/${page.slug}`))
   const readableExcerpt = readableSeoExcerpt(page.excerpt)
   const activeServices = (services as Service[]).filter(service => service.isActive)
   const whatsappHref = phoneWhatsapp

@@ -3,7 +3,7 @@ import { useGetServices } from "@workspace/api-client-react"
 import { Truck, Factory, Trash2, Leaf, Box, Settings, ShieldCheck, Flame, ClipboardCheck, FileText, Wrench } from "lucide-react"
 import { useSiteSettings } from "@/context/SiteSettingsContext"
 import { ServiceCard } from "@/components/home/services/ServiceCard"
-import { mediaForIndex } from "@/lib/siteMedia"
+import { firstManagedImage, mediaForIndex } from "@/lib/siteMedia"
 
 // Map string icons from DB to actual lucide components
 const iconMap: Record<string, any> = {
@@ -24,14 +24,6 @@ const iconMap: Record<string, any> = {
   "ClipboardCheck": ClipboardCheck,
   "FileText": FileText,
   "Wrench": Wrench,
-}
-
-function parseImages(raw: any, fallback?: string | null): string[] {
-  try {
-    const arr = JSON.parse(raw ?? "[]")
-    if (Array.isArray(arr) && arr.length > 0) return arr.filter(Boolean)
-  } catch {}
-  return fallback ? [fallback] : []
 }
 
 export function ServicesSection() {
@@ -65,7 +57,8 @@ export function ServicesSection() {
         <div className="service-grid grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           {services.filter(s => s.isActive !== false).map((service, index) => {
             const raw = service as any
-            const images = [mediaForIndex(service.id + index)]
+            const managedImage = firstManagedImage(raw.imageUrl, raw.images)
+            const images = [managedImage || mediaForIndex(service.id + index)]
             const Icon = iconMap[service.icon] || Settings
 
             return (

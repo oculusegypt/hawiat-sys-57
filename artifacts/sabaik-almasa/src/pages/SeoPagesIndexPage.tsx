@@ -16,6 +16,8 @@ type SeoDirectoryPage = {
   slug: string
   excerpt?: string
   category?: string
+  coverImage?: string
+  ogImage?: string
   publishedAt?: string | null
 }
 
@@ -23,12 +25,13 @@ export default function SeoPagesIndexPage() {
   const { companyName } = useSiteSettings()
   const [pages, setPages] = useState<SeoDirectoryPage[]>([])
   const [loading, setLoading] = useState(true)
+  const [managedOgImage, setManagedOgImage] = useState("")
 
   useDocumentSEO({
     title: `فهرس الأدلة والصفحات | ${companyName || "سبائك الماسه"}`,
     description: `فهرس الأدلة التخصصية من ${companyName || "سبائك الماسه"} لاختيار الحاوية المناسبة وتنظيم رفع ونقل مخلفات البناء والأنقاض من المنازل والمشاريع داخل مدينة الرياض.`,
     canonical: `${getSiteUrl().replace(/\/$/, "")}/pages`,
-    ogImage: "/images/container-large.png",
+    ogImage: managedOgImage || "/images/container-large.png",
     ogImageAlt: "أدلة تأجير الحاويات ونقل المخلفات في الرياض",
   })
 
@@ -38,13 +41,18 @@ export default function SeoPagesIndexPage() {
       .then((response) => response.ok ? response.json() : [])
       .then((data: unknown) => {
         if (cancelled) return
-        setPages(Array.isArray(data) ? data.filter((page): page is SeoDirectoryPage => (
+        const validPages = Array.isArray(data) ? data.filter((page): page is SeoDirectoryPage => (
           Boolean(page)
           && typeof page === "object"
           && typeof (page as SeoDirectoryPage).id === "number"
           && Boolean((page as SeoDirectoryPage).title)
           && Boolean((page as SeoDirectoryPage).slug)
-        )) : [])
+        )) : []
+        setPages(validPages)
+        const firstManagedImage = validPages
+          .map((page) => page.coverImage?.trim() || page.ogImage?.trim() || "")
+          .find(Boolean)
+        setManagedOgImage(firstManagedImage || "")
         setLoading(false)
       })
       .catch(() => {

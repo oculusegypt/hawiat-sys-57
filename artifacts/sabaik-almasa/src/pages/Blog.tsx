@@ -11,7 +11,7 @@ const API_BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") || ""
 
 interface Post {
   id: number; title: string; slug: string; excerpt: string
-  coverImage: string; author: string; category: string; tags: string
+  coverImage: string; ogImage?: string; author: string; category: string; tags: string
   publishedAt: string | null; readTime: number; viewCount: number
 }
 
@@ -22,6 +22,10 @@ interface PostsResponse {
 function formatDate(iso: string | null): string {
   if (!iso) return ""
   return new Date(iso).toLocaleDateString("ar-SA", { year: "numeric", month: "long", day: "numeric" })
+}
+
+function postImage(post: Pick<Post, "coverImage" | "ogImage">): string {
+  return post.coverImage?.trim() || post.ogImage?.trim() || "/images/container-small.png"
 }
 
 export default function Blog() {
@@ -164,12 +168,12 @@ export default function Blog() {
                   <article className="bg-white rounded-2xl overflow-hidden shadow-sm border border-gray-100 hover:shadow-md hover:-translate-y-1 transition-all cursor-pointer group h-full flex flex-col">
                     {/* Cover */}
                     <div className="aspect-[16/10] min-h-56 bg-gradient-to-br from-primary/10 to-secondary/10 relative overflow-hidden shrink-0">
-                      {post.coverImage ? (
+                      {postImage(post) ? (
                         <img
-                          src={post.coverImage.startsWith("http") ? post.coverImage : `${API_BASE}${post.coverImage}`}
+                          src={postImage(post).startsWith("http") ? postImage(post) : `${API_BASE}${postImage(post)}`}
                           alt={post.title}
                           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                        onError={(e) => { e.currentTarget.src = "/images/container-small.png" }}
+                          onError={(e) => { e.currentTarget.src = "/images/container-small.png" }}
                         />
                       ) : (
                         <div className="absolute inset-0 flex items-center justify-center">

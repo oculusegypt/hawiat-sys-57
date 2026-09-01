@@ -34,17 +34,10 @@ import { normalizeSeoDescription } from "@/lib/seoText"
 import { entityPath, entitySlug, legacyEntitySlug } from "@/lib/friendlySlug"
 import { breadcrumbSchema, pageSchema, serviceSchema } from "@/lib/seoSchema"
 import { useDocumentSchema } from "@/hooks/useDocumentSchema"
+import { ATTACHED_MEDIA, firstManagedImage } from "@/lib/siteMedia"
 
 function normalizeSlug(value: string): string {
   return decodeURIComponent(value).trim().toLowerCase()
-}
-
-function parseImages(raw: string | undefined, fallback?: string | null): string[] {
-  try {
-    const images = JSON.parse(raw || "[]")
-    if (Array.isArray(images)) return images.filter((image): image is string => typeof image === "string" && image.length > 0)
-  } catch {}
-  return fallback ? [fallback] : []
 }
 
 function findService(services: Service[], slug: string): Service | undefined {
@@ -184,7 +177,7 @@ export default function ServiceDetail() {
   }, [services, slug])
 
   const images = useMemo(
-    () => service ? parseImages(service.images, service.imageUrl) : [],
+    () => service ? [firstManagedImage(service.imageUrl, service.images) || ATTACHED_MEDIA.smallContainer] : [],
     [service],
   )
   const resolvedCompany = companyName || ""

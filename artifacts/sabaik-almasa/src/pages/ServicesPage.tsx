@@ -9,6 +9,7 @@ import { ServiceCard } from "@/components/home/services/ServiceCard"
 import { useDocumentSEO } from "@/hooks/useDocumentSEO"
 import { useSiteSettings } from "@/context/SiteSettingsContext"
 import { siteUrl } from "@/lib/siteUrl"
+import { firstManagedImage, mediaForIndex } from "@/lib/siteMedia"
 
 const iconMap: Record<string, typeof Settings> = {
   truck: Truck, Truck, factory: Factory, Factory, trash2: Trash2, Trash2,
@@ -16,20 +17,9 @@ const iconMap: Record<string, typeof Settings> = {
   ShieldCheck, FileText, Wrench,
 }
 
-function serviceImages(service: Service): string[] {
-  if (typeof service.images === "string") {
-    try {
-      const parsed = JSON.parse(service.images)
-      if (Array.isArray(parsed)) {
-        const validImages = parsed.filter((image): image is string => typeof image === "string" && image.trim().length > 0)
-        if (validImages.length > 0) return validImages
-      }
-    } catch {
-      // The API may contain a single legacy image URL.
-      if (service.images.trim()) return [service.images.trim()]
-    }
-  }
-  return service.imageUrl ? [service.imageUrl] : []
+function serviceImages(service: Service, index = 0): string[] {
+  const managedImage = firstManagedImage(service.imageUrl, service.images)
+  return [managedImage || mediaForIndex(service.id + index)]
 }
 
 export default function ServicesPage() {

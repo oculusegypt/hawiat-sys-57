@@ -17,11 +17,16 @@ interface Post {
   tags: string
   publishedAt: string | null
   readTime: number
+  ogImage?: string
 }
 
 function formatDate(iso: string | null): string {
   if (!iso) return ""
   return new Date(iso).toLocaleDateString("ar-SA", { year: "numeric", month: "long", day: "numeric" })
+}
+
+function postImage(post: Pick<Post, "coverImage" | "ogImage">): string {
+  return post.coverImage?.trim() || post.ogImage?.trim() || "/images/container-small.png"
 }
 
 export function BlogSection() {
@@ -91,15 +96,16 @@ export function BlogSection() {
                 <article className={`bg-white rounded-2xl overflow-hidden shadow-sm border border-gray-100 hover:shadow-md hover:-translate-y-1 transition-all cursor-pointer group ${i === 0 ? "md:col-span-1" : ""}`}>
                   {/* Cover */}
                   <div className="relative aspect-[16/10] min-h-56 bg-gradient-to-br from-primary/10 to-secondary/10 overflow-hidden">
-                    {post.coverImage ? (
+                    {postImage(post) ? (
                       <img
-                        src={post.coverImage.startsWith("http") ? post.coverImage : `${API_BASE}${post.coverImage}`}
+                        src={postImage(post).startsWith("http") ? postImage(post) : `${API_BASE}${postImage(post)}`}
                         alt={post.title}
                         className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                         width={960}
                         height={600}
                         loading="lazy"
                         decoding="async"
+                        onError={(e) => { e.currentTarget.src = "/images/container-small.png" }}
                       />
                     ) : (
                       <div className="absolute inset-0 flex items-center justify-center">
