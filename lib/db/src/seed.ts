@@ -24,6 +24,7 @@ const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD?.trim();
 if (!ADMIN_PASSWORD) {
   throw new Error("ADMIN_PASSWORD must be set before running the database seed.");
 }
+const VERIFIED_ADMIN_PASSWORD = ADMIN_PASSWORD;
 
 function hashPassword(password: string): string {
   return crypto.createHash("sha256").update(password + PASSWORD_SALT).digest("hex");
@@ -46,7 +47,7 @@ function seedAll() {
   // --- Admin User ---
   db.insert(adminsTable).values({
     username: "admin",
-    passwordHash: hashPassword(ADMIN_PASSWORD),
+    passwordHash: hashPassword(VERIFIED_ADMIN_PASSWORD),
     name: "مدير النظام",
   }).run();
 
