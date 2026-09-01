@@ -623,7 +623,7 @@ function RecordsPanel({ kind, records, allRecords = records, loading, onAdd, onD
   )
 }
 
-function ContainerPOS({ records, onDetails, onEdit, onAdd }: { records: ContainerSystemRecord[]; onDetails: (record: ContainerSystemRecord) => void; onEdit: (record: ContainerSystemRecord) => void; onAdd: () => void }) {
+function ContainerPOS({ records, onDetails, onEdit, onDelete, onAdd }: { records: ContainerSystemRecord[]; onDetails: (record: ContainerSystemRecord) => void; onEdit: (record: ContainerSystemRecord) => void; onDelete: (record: ContainerSystemRecord) => void; onAdd: () => void }) {
   return (
     <Card className="border-slate-200/80 shadow-[0_8px_28px_rgba(15,44,58,.05)]">
       <CardHeader className="border-b border-slate-100 px-4 py-4 sm:px-5">
@@ -642,7 +642,7 @@ function ContainerPOS({ records, onDetails, onEdit, onAdd }: { records: Containe
                 <ContainerStatusImage status={record.payload.status ?? record.status} code={code} className="h-full w-full object-contain" numberClassName="top-[45.5%]" />
                 <div className="absolute right-3 top-3"><RecordStatus status={record.status} /></div>
               </div>
-              <div className="space-y-3 p-4"><div><p className="font-black text-slate-900">{String(payload.typeName ?? payload.containerType ?? "حاوية تشغيلية")}</p><p className="mt-1 text-xs text-slate-500">{String(payload.size ?? payload.capacity ?? "الحجم غير محدد")}</p></div><div className="grid grid-cols-2 gap-2 text-xs"><div className="rounded-xl bg-slate-50 p-2"><span className="block text-[10px] text-slate-400">الموقع</span><span className="mt-1 block truncate font-bold text-slate-700">{location}</span></div><div className="rounded-xl bg-slate-50 p-2"><span className="block text-[10px] text-slate-400">العميل / التفريغ</span><span className="mt-1 block truncate font-bold text-slate-700">{nextEmptying || customer}</span></div></div><div className="flex gap-2"><Button variant="outline" size="sm" onClick={() => onDetails(record)} className="flex-1 gap-1 text-xs text-cyan-800"><FileText size={14} /> التفاصيل</Button><Button variant="outline" size="sm" onClick={() => onEdit(record)} className="gap-1 text-xs"><FilePenLine size={14} /> تعديل</Button></div></div>
+              <div className="space-y-3 p-4"><div><p className="font-black text-slate-900">{String(payload.typeName ?? payload.containerType ?? "حاوية تشغيلية")}</p><p className="mt-1 text-xs text-slate-500">{String(payload.size ?? payload.capacity ?? "الحجم غير محدد")}</p></div><div className="grid grid-cols-2 gap-2 text-xs"><div className="rounded-xl bg-slate-50 p-2"><span className="block text-[10px] text-slate-400">الموقع</span><span className="mt-1 block truncate font-bold text-slate-700">{location}</span></div><div className="rounded-xl bg-slate-50 p-2"><span className="block text-[10px] text-slate-400">العميل / التفريغ</span><span className="mt-1 block truncate font-bold text-slate-700">{nextEmptying || customer}</span></div></div><div className="flex gap-2"><Button variant="outline" size="sm" onClick={() => onDetails(record)} className="flex-1 gap-1 text-xs text-cyan-800"><FileText size={14} /> التفاصيل</Button><Button variant="outline" size="sm" onClick={() => onEdit(record)} className="gap-1 text-xs"><FilePenLine size={14} /> تعديل</Button><Button variant="ghost" size="icon" onClick={() => onDelete(record)} className="h-9 w-9 shrink-0 text-rose-500 hover:bg-rose-50 hover:text-rose-700" title="حذف الحاوية" aria-label="حذف الحاوية" data-testid={`button-delete-container-${record.id}`}><Trash2 size={15} /></Button></div></div>
             </div>
           })}
         </div>}
@@ -1093,7 +1093,7 @@ function RecordDetails({ record, allRecords, serviceRequests = [], open, onOpenC
   )
 }
 
-function ContainerSearchPanel({ records, loading, onDetails, onEdit }: { records: ContainerSystemRecord[]; loading: boolean; onDetails: (record: ContainerSystemRecord) => void; onEdit: (record: ContainerSystemRecord) => void }) {
+function ContainerSearchPanel({ records, loading, onDetails, onEdit, onDelete }: { records: ContainerSystemRecord[]; loading: boolean; onDetails: (record: ContainerSystemRecord) => void; onEdit: (record: ContainerSystemRecord) => void; onDelete: (record: ContainerSystemRecord) => void }) {
   const searchableRecords = records.filter(record =>
     record.status !== "archived" &&
     ["container", "container_asset", "contract", "container_assignment", "appointment", "work_order"].includes(record.kind),
@@ -1131,7 +1131,7 @@ function ContainerSearchPanel({ records, loading, onDetails, onEdit }: { records
                   <span className="truncate text-slate-500" dir="ltr">{String(payload.customerPhone ?? payload.phone ?? "—")}</span>
                   <span className="text-slate-500">{String(payload.startDate ?? payload.rentalStartDate ?? "—")}</span>
                   <span className="text-slate-500">{String(payload.endDate ?? payload.rentalEndDate ?? "—")}</span>
-                  <div className="flex items-center gap-1.5"><RecordStatus status={String(payload.status ?? record.status)} />{record.kind !== "container_movement" && <Button type="button" variant="ghost" size="icon" onClick={() => onEdit(record)} className="h-8 w-8 text-slate-400 hover:bg-cyan-50 hover:text-cyan-800" title="تعديل السجل"><FilePenLine size={14} /></Button>}</div>
+                  <div className="flex items-center gap-1.5"><RecordStatus status={String(payload.status ?? record.status)} />{record.kind !== "container_movement" && <Button type="button" variant="ghost" size="icon" onClick={() => onEdit(record)} className="h-8 w-8 text-slate-400 hover:bg-cyan-50 hover:text-cyan-800" title="تعديل السجل"><FilePenLine size={14} /></Button>}{["container", "container_asset"].includes(record.kind) && <Button type="button" variant="ghost" size="icon" onClick={() => onDelete(record)} className="h-8 w-8 text-rose-400 hover:bg-rose-50 hover:text-rose-700" title="حذف الحاوية" aria-label="حذف الحاوية" data-testid={`button-delete-search-container-${record.id}`}><Trash2 size={14} /></Button>}</div>
                 </div>
               })}
             </div>
@@ -1234,6 +1234,20 @@ export default function ContainerSystem() {
   const archiveRecord = (record: ContainerSystemRecord) => {
     if (!window.confirm(`هل تريد أرشفة السجل ${record.reference || `#${record.id}`}؟`)) return
     archiveMutation.mutate({ id: record.id }, { onSuccess: () => { invalidate(); showSuccess("تمت أرشفة السجل") }, onError: () => toast({ title: "تعذر أرشفة السجل", variant: "destructive" }) })
+  }
+  const deleteContainerRecord = (record: ContainerSystemRecord) => {
+    if (!["container", "container_asset"].includes(record.kind)) return
+    const payload = record.payload as Record<string, unknown>
+    const code = String(payload.assetCode ?? payload.containerCode ?? payload.code ?? record.reference ?? `#${record.id}`)
+    if (!window.confirm(`هل تريد حذف الحاوية ${code}؟ سيتم إخفاؤها من الأصول ونتائج البحث مع الاحتفاظ بالعقود والحركات المرتبطة بها.`)) return
+    archiveMutation.mutate({ id: record.id }, {
+      onSuccess: () => {
+        invalidate()
+        setDetailRecord(current => current?.id === record.id ? null : current)
+        showSuccess("تم حذف الحاوية من الأصول ونتائج البحث")
+      },
+      onError: () => toast({ title: "تعذر حذف الحاوية", variant: "destructive" }),
+    })
   }
   const openRecordDetails = (record: ContainerSystemRecord) => {
     if (record.kind === "customer") {
@@ -1523,12 +1537,12 @@ export default function ContainerSystem() {
               : view === "financial_cycle" ? <FinancialCycleWorkspace records={snapshot?.records ?? records} onAdd={openCreate} onOpenSettlements={() => { setView("settlements"); setSearch("") }} />
               : view === "system_settings" ? <SettingsPage records={snapshot?.records ?? records} organization={organization} onSave={saveSettings} />
              : view === "audit" ? <AuditLog audits={auditQuery.data ?? []} loading={auditQuery.isLoading} />
-              : view === "container_search" ? <ContainerSearchPanel records={records} loading={loading} onDetails={openRecordDetails} onEdit={openEdit} />
+              : view === "container_search" ? <ContainerSearchPanel records={records} loading={loading} onDetails={openRecordDetails} onEdit={openEdit} onDelete={deleteContainerRecord} />
               : view === "bookings" ? <DispatchCalendar records={snapshot?.records ?? records} onOpenAppointment={openRecordDetails} />
               : view === "invoice"
                 ? <InvoiceWorkspace records={records} onAdd={() => openCreate("invoice")} onDetails={record => navigate(`/admin/container-system/invoice/${record.id}/details`)} onEdit={openEdit} onArchive={archiveRecord} />
               : view === "container"
-               ? <ContainerPOS records={records} onAdd={() => openCreate("container")} onDetails={openRecordDetails} onEdit={openEdit} />
+               ? <ContainerPOS records={records} onAdd={() => openCreate("container")} onDetails={openRecordDetails} onEdit={openEdit} onDelete={deleteContainerRecord} />
                 : <RecordsPanel kind={collectionKind ?? "customer"} records={records} allRecords={snapshot?.records ?? records} loading={loading} onAdd={() => openCreate(collectionKind ?? "customer")} onDetails={openRecordDetails} onEdit={openEdit} onArchive={archiveRecord} />}
         </main>
       </div>
@@ -1552,7 +1566,7 @@ export default function ContainerSystem() {
         onOpenChange={open => setDialog(current => ({ ...current, open }))}
         onSubmit={submitRecord}
       />
-      {archiveMutation.isPending && <div className="fixed bottom-5 left-5 z-50 flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-3 text-xs font-bold text-white shadow-xl" data-testid="status-archive-loading"><Loader2 size={14} className="animate-spin" /> جارٍ أرشفة السجل...</div>}
+      {archiveMutation.isPending && <div className="fixed bottom-5 left-5 z-50 flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-3 text-xs font-bold text-white shadow-xl" data-testid="status-archive-loading"><Loader2 size={14} className="animate-spin" /> جارٍ تحديث السجل...</div>}
     </div>
   )
 }
