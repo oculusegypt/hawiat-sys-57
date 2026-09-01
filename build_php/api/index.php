@@ -20,6 +20,24 @@ header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: GET, POST, PATCH, PUT, DELETE, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type, Authorization, Idempotency-Key, X-Requested-With, X-HTTP-Method-Override');
 
+// Hostinger shared plans may still run PHP 7.4. Keep the production API
+// parseable and functional there instead of relying on PHP 8-only helpers.
+if (!function_exists('str_starts_with')) {
+    function str_starts_with(string $haystack, string $needle): bool {
+        return $needle === '' || substr($haystack, 0, strlen($needle)) === $needle;
+    }
+}
+if (!function_exists('str_ends_with')) {
+    function str_ends_with(string $haystack, string $needle): bool {
+        return $needle === '' || substr($haystack, -strlen($needle)) === $needle;
+    }
+}
+if (!function_exists('str_contains')) {
+    function str_contains(string $haystack, string $needle): bool {
+        return $needle === '' || strpos($haystack, $needle) !== false;
+    }
+}
+
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'OPTIONS') {
     http_response_code(200);
     exit;
@@ -114,6 +132,70 @@ function publicSettingsPayload(PDO $pdo): array {
     return $settings;
 }
 
+function normalizeStructuredScopePath($value): string {
+    $raw = trim((string)($value ?: '/'));
+    if ($raw === '*') return '*';
+    $raw = preg_split('/[?#]/', $raw, 2)[0] ?: '/';
+    $withSlash = substr($raw, 0, 1) === '/' ? $raw : '/' . $raw;
+    $normalized = preg_replace('#/{2,}#', '/', $withSlash);
+    return rtrim((string)$normalized, '/') ?: '/';
+}
+
+function publicStructuredData(PDO $pdo, $scopePath): array {
+    $scopePath = normalizeStructuredScopePath($scopePath);
+    $origin = configuredPublicOrigin($pdo);
+    $graph = [];
+    $seen = [];
+    $stmt = $pdo->query("SELECT id, scope_path, schema_type, title, description, payload, is_active, sort_order FROM structured_content WHERE is_active = 1 ORDER BY sort_order ASC, id ASC");
+    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+        $rowScope = normalizeStructuredScopePath($row['scope_path'] ?? '/');
+        if ($rowScope !== $scopePath && $rowScope !== '*') continue;
+        $schemaType = (string)($row['schema_type'] ?? '');
+        $payload = json_decode((string)($row['payload'] ?? '{}'), true);
+        if (!is_array($payload)) $payload = [];
+        $nodeId = $origin . ($rowScope === '*' ? '/' : $scopePath) . '#' . $schemaType;
+        if (isset($seen[$nodeId])) continue;
+
+        if ($schemaType === 'FAQPage') {
+            $items = is_array($payload['items'] ?? null) ? $payload['items'] : (is_array($payload['mainEntity'] ?? null) ? $payload['mainEntity'] : []);
+            $mainEntity = [];
+            foreach ($items as $item) {
+                if (!is_array($item) || ($item['enabled'] ?? true) === false) continue;
+                $question = trim(strip_tags((string)($item['question'] ?? $item['q'] ?? $item['name'] ?? '')));
+                $answer = trim(strip_tags((string)($item['answer'] ?? $item['a'] ?? $item['text'] ?? '')));
+                if ($question === '' || $answer === '') continue;
+                $mainEntity[] = [
+                    '@type' => 'Question',
+                    'name' => $question,
+                    'acceptedAnswer' => ['@type' => 'Answer', 'text' => $answer],
+                ];
+            }
+            if (!$mainEntity) continue;
+            $node = [
+                '@type' => 'FAQPage',
+                '@id' => $nodeId,
+                'mainEntity' => $mainEntity,
+            ];
+        } else {
+            $node = ['@type' => $schemaType, '@id' => $nodeId];
+            foreach ($payload as $key => $value) {
+                if ($key === '@context' || $key === '@type' || $key === '@id') continue;
+                if ($key === 'url' || $key === 'image') {
+                    $value = (string)$value;
+                    if ($value !== '' && (substr($value, 0, 1) === '/' || preg_match('#^https?://#i', $value))) $node[$key] = $value;
+                } else {
+                    $node[$key] = $value;
+                }
+            }
+        }
+        if ((string)($row['title'] ?? '') !== '' && !isset($node['name'])) $node['name'] = strip_tags((string)$row['title']);
+        if ((string)($row['description'] ?? '') !== '' && !isset($node['description'])) $node['description'] = strip_tags((string)$row['description']);
+        $seen[$nodeId] = true;
+        $graph[] = $node;
+    }
+    return ['@context' => 'https://schema.org', '@graph' => $graph];
+}
+
 function seoMetricStatus(int $matched, int $total): string {
     if ($total < 1) return 'not_verified';
     $ratio = $matched / $total;
@@ -180,7 +262,7 @@ function seoIsInternalLink(string $href, string $siteUrl): bool {
     return $origin === $siteUrl;
 }
 
-function seoCollectEntityTypes(mixed $value, array &$types): void {
+function seoCollectEntityTypes($value, array &$types): void {
     if (!is_array($value)) return;
     if (array_key_exists('@type', $value)) {
         $candidates = is_array($value['@type']) ? $value['@type'] : [$value['@type']];
@@ -602,7 +684,7 @@ try {
     }
 
     function generateToken(int $adminId): string {
-        $tokenSecret = getenv('SESSION_SECRET') ?: '89fcd8545a8d573ba32930a7b4f62a27ec1fa625ad4e40c096e178a2547d1ed4';
+        $tokenSecret = getenv('SESSION_SECRET') ?: '68bc65bb8d39a5948e07a23fe8bdfeccd6442a360f3b89585ed887cdd9f82c45';
         $payload = json_encode(['adminId' => $adminId, 'ts' => (int)(microtime(true) * 1000)]);
         $b64 = base64url_encode((string)$payload);
         $sig = base64url_encode(hash_hmac('sha256', $b64, $tokenSecret, true));
@@ -614,7 +696,7 @@ try {
             $parts = explode('.', $token);
             if (count($parts) !== 2) return null;
             [$b64, $sig] = $parts;
-            $tokenSecret = getenv('SESSION_SECRET') ?: '89fcd8545a8d573ba32930a7b4f62a27ec1fa625ad4e40c096e178a2547d1ed4';
+            $tokenSecret = getenv('SESSION_SECRET') ?: '68bc65bb8d39a5948e07a23fe8bdfeccd6442a360f3b89585ed887cdd9f82c45';
             $expectedSig = base64url_encode(hash_hmac('sha256', $b64, $tokenSecret, true));
             if (!hash_equals($sig, $expectedSig)) return null;
             $payload = json_decode(base64url_decode($b64), true);
@@ -1154,18 +1236,19 @@ try {
         if (seoAutoText($source['capacity'] ?? '') !== '') $details[] = 'بسعة ' . seoAutoText($source['capacity']);
         if (seoAutoText($source['category'] ?? '') !== '') $details[] = 'ضمن خدمات ' . seoAutoText($source['category']);
         $detailText = $details ? ' ' . implode('، ', $details) . '.' : '';
-        $prefix = match ($kind) {
-            'service' => "خدمة {$displayName} في الرياض من {$companyName}.",
-            'container' => "استأجر {$displayName} في الرياض من {$companyName}.",
-            'post' => "اقرأ {$displayName} من مدونة {$companyName} لمعرفة " . ($keyword ?: 'أفضل حلول تأجير الحاويات ونقل المخلفات') . " في الرياض.",
-            default => "{$displayName} في الرياض من {$companyName}.",
-        };
-        $suffix = match ($kind) {
-            'service' => 'تواصل معنا لتحديد الموعد وطلب الخدمة ونقل المخلفات بطريقة منظمة.',
-            'container' => 'نوفر التوصيل والسحب ونقل الأنقاض والمخلفات من موقعك في الموعد المتفق عليه.',
-            'post' => 'دليل عملي محدث يساعدك على اختيار الحل المناسب وطلب الخدمة بثقة.',
-            default => 'معلومات عملية وخطوات واضحة لاختيار الحاوية أو خدمة نقل المخلفات المناسبة.',
-        };
+        if ($kind === 'service') {
+            $prefix = "خدمة {$displayName} في الرياض من {$companyName}.";
+            $suffix = 'تواصل معنا لتحديد الموعد وطلب الخدمة ونقل المخلفات بطريقة منظمة.';
+        } elseif ($kind === 'container') {
+            $prefix = "استأجر {$displayName} في الرياض من {$companyName}.";
+            $suffix = 'نوفر التوصيل والسحب ونقل الأنقاض والمخلفات من موقعك في الموعد المتفق عليه.';
+        } elseif ($kind === 'post') {
+            $prefix = "اقرأ {$displayName} من مدونة {$companyName} لمعرفة " . ($keyword ?: 'أفضل حلول تأجير الحاويات ونقل المخلفات') . " في الرياض.";
+            $suffix = 'دليل عملي محدث يساعدك على اختيار الحل المناسب وطلب الخدمة بثقة.';
+        } else {
+            $prefix = "{$displayName} في الرياض من {$companyName}.";
+            $suffix = 'معلومات عملية وخطوات واضحة لاختيار الحاوية أو خدمة نقل المخلفات المناسبة.';
+        }
         $value = trim($prefix . ' ' . $body . $detailText);
         if ($value === '') $value = $suffix;
         if (function_exists('mb_strlen') ? mb_strlen($value, 'UTF-8') < 120 : strlen($value) < 120) $value .= ' ' . $suffix;
@@ -1180,20 +1263,26 @@ try {
         $slug = seoAutoNormalizeSlug($source['seoSlug'] ?? $source['slug'] ?? $displayName, $kind . '-' . ((int)($source['id'] ?? 0) ?: 'new'));
         $title = seoAutoPlainText($source['seoTitle'] ?? '');
         if ($title === '') {
-            $title = match ($kind) {
-                'service' => "{$displayName} بالرياض | تأجير حاويات ونقل مخلفات",
-                'container' => "تأجير {$displayName}" . (seoAutoText($source['size'] ?? '') ? ' ' . seoAutoText($source['size']) : '') . " بالرياض | {$companyName}",
-                'post' => "{$displayName} | دليل تأجير الحاويات بالرياض",
-                default => "{$displayName} | خدمات الحاويات بالرياض",
-            };
+            if ($kind === 'service') {
+                $title = "{$displayName} بالرياض | تأجير حاويات ونقل مخلفات";
+            } elseif ($kind === 'container') {
+                $title = "تأجير {$displayName}" . (seoAutoText($source['size'] ?? '') ? ' ' . seoAutoText($source['size']) : '') . " بالرياض | {$companyName}";
+            } elseif ($kind === 'post') {
+                $title = "{$displayName} | دليل تأجير الحاويات بالرياض";
+            } else {
+                $title = "{$displayName} | خدمات الحاويات بالرياض";
+            }
         }
         $keywords = array_filter(array_map('trim', preg_split('/[,،|]/u', seoAutoText($source['seoKeywords'] ?? '')) ?: []));
-        $kindKeywords = match ($kind) {
-            'post' => ["مدونة {$companyName}", 'دليل الحاويات', 'أسعار الحاويات بالرياض'],
-            'page' => ['خدمات الحاويات', 'طلب حاوية بالرياض', 'حلول المخلفات بالرياض'],
-            'container' => ['حاويات للإيجار بالرياض', 'حاويات مخلفات البناء', 'أسعار تأجير الحاويات'],
-            default => ["خدمات {$companyName}", 'تأجير حاويات', 'خدمة نقل المخلفات'],
-        };
+        if ($kind === 'post') {
+            $kindKeywords = ["مدونة {$companyName}", 'دليل الحاويات', 'أسعار الحاويات بالرياض'];
+        } elseif ($kind === 'page') {
+            $kindKeywords = ['خدمات الحاويات', 'طلب حاوية بالرياض', 'حلول المخلفات بالرياض'];
+        } elseif ($kind === 'container') {
+            $kindKeywords = ['حاويات للإيجار بالرياض', 'حاويات مخلفات البناء', 'أسعار تأجير الحاويات'];
+        } else {
+            $kindKeywords = ["خدمات {$companyName}", 'تأجير حاويات', 'خدمة نقل المخلفات'];
+        }
         $keywords = array_values(array_unique(array_filter(array_merge(
             [$keyword, $displayName],
             $keywords,
@@ -1201,7 +1290,10 @@ try {
             ['تأجير الحاويات بالرياض', 'نقل مخلفات البناء بالرياض', 'حاويات أنقاض بالرياض', 'نقل المخلفات بالرياض'],
         ))));
         $image = seoAutoText($source['ogImage'] ?? '') ?: seoAutoText($source['coverImage'] ?? '') ?: seoAutoText($source['imageUrl'] ?? '') ?: '/images/container-small.png';
-        $prefix = match ($kind) { 'service' => '/services', 'container' => '/containers', 'post' => '/blog', default => '/page' };
+        if ($kind === 'service') $prefix = '/services';
+        elseif ($kind === 'container') $prefix = '/containers';
+        elseif ($kind === 'post') $prefix = '/blog';
+        else $prefix = '/page';
         return [
             'seoTitle' => seoAutoCap($title, 60),
             'seoDescription' => seoAutoDescription($source, $displayName, $keyword, $companyName),
@@ -1556,7 +1648,7 @@ try {
     // Hostinger deployment settings and Patch upload. This is intentionally
     // implemented here (PHP/FTP) because production has no Node.js process.
     function hostingerPatchKey(): string {
-        $secret = getenv('SESSION_SECRET') ?: '89fcd8545a8d573ba32930a7b4f62a27ec1fa625ad4e40c096e178a2547d1ed4';
+        $secret = getenv('SESSION_SECRET') ?: '68bc65bb8d39a5948e07a23fe8bdfeccd6442a360f3b89585ed887cdd9f82c45';
         return hash('sha256', 'hostinger-ftp:' . $secret, true);
     }
 
@@ -3187,6 +3279,18 @@ try {
         exit;
     }
 
+    // Public structured data: GET /api/structured-data?path=/.
+    // Keep this route in parity with the Express API so the browser receives
+    // JSON-LD instead of an HTML error document.
+    if ($path === '/structured-data' && $method === 'GET') {
+        try {
+            echo json_encode(publicStructuredData($pdo, $_GET['path'] ?? '/'), JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+        } catch (\Throwable $e) {
+            echo json_encode(['@context' => 'https://schema.org', '@graph' => []], JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+        }
+        exit;
+    }
+
     // Admin settings remain available to the authenticated admin route above.
     if ($path === '/admin/settings' && $method === 'GET') {
         try {
@@ -4763,8 +4867,8 @@ try {
                 $periodKey = 'monthly';
                 $periodFrom = $nowDate->modify('-30 days');
             }
-            $fromIso = $periodFrom?->format('Y-m-d\TH:i:s.v\Z');
-            $toIso = $periodTo?->format('Y-m-d\TH:i:s.v\Z');
+            $fromIso = $periodFrom ? $periodFrom->format('Y-m-d\TH:i:s.v\Z') : null;
+            $toIso = $periodTo ? $periodTo->format('Y-m-d\TH:i:s.v\Z') : null;
             $inPeriod = static function (string $value, ?string $from, ?string $to): bool {
                 return (!$from || $value >= $from) && (!$to || $value <= $to);
             };

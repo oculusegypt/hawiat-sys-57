@@ -214,7 +214,7 @@ run(
 run(
   "pnpm --filter @workspace/cleanflow-platform run build",
   "بناء صفحة CleanFlow Platform",
-  { PORT: "19040", BASE_PATH: "/taqi-group-platform/", NODE_ENV: "production" }
+  { PORT: "19040", BASE_PATH: "/cleanflow-platform/", NODE_ENV: "production" }
 );
 
 // ── 1b. Pre-rendering — HTML ثابت لكل مقال وخدمة وحاوية ─────────────────────
@@ -435,26 +435,19 @@ console.log("  ✅ تم تجهيز ملف PHP API في build_php/api/index.php �
 console.log("  ✅ assets/ + sitemap.xml + الملفات الثابتة + الصفحات المُولَّدة مسبقاً (prerendered) نُسخت");
 
 // ── 2b. نسخ صفحة المنصة التسويقية ─────────────────────────────────────────────
-step("نسخ صفحة المنصة التسويقية → build_php/taqi-group-platform/");
+step("نسخ صفحة المنصة التسويقية → build_php/cleanflow-platform/");
 const platformDist = join(ROOT, "artifacts/sabaik-platform/dist/public");
 rmSync(join(ROOT, "build_php/hawiat-platform"), { recursive: true, force: true });
-const platformTarget = join(ROOT, "build_php/taqi-group-platform");
+rmSync(join(ROOT, "build_php/taqi-group-platform"), { recursive: true, force: true });
+const platformTarget = join(ROOT, "build_php/cleanflow-platform");
 rmSync(platformTarget, { recursive: true, force: true });
 mkdirSync(platformTarget, { recursive: true });
 cpSync(platformDist, platformTarget, { recursive: true });
-// The artifact is previewed under /cleanflow-platform/ while older public
-// links and the production SEO inventory use /taqi-group-platform/. Ship both
-// directories so either established URL remains reachable on static hosting.
-const platformCompatibilityTarget = join(ROOT, "build_php/cleanflow-platform");
-rmSync(platformCompatibilityTarget, { recursive: true, force: true });
-mkdirSync(platformCompatibilityTarget, { recursive: true });
-cpSync(platformDist, platformCompatibilityTarget, { recursive: true });
 const publicOriginForPlatform = archivePublicOrigin();
 if (!publicOriginForPlatform) {
   throw new Error("لم يمكن تحديد نطاق HTTPS عام لإعادة ضبط SEO الخاصة بمنصة CleanFlow");
 }
 rewritePlatformOrigin(platformTarget, publicOriginForPlatform);
-rewritePlatformOrigin(platformCompatibilityTarget, publicOriginForPlatform);
 console.log("  ✅ صفحة المنصة + الشعار + الأصول نُسخت");
 
 // ── 3. WAL checkpoint ─────────────────────────────────────────────────────────
@@ -550,6 +543,10 @@ copyFileSync(ARCHIVE_SOURCE_DB, DEST_DB);
       for (const column of textColumns) {
         const safeColumn = String(column.name).replaceAll('"', '""');
         for (const legacyName of legacyNames) {
+          // Do not replace a shorter legacy fragment that is already part of
+          // the configured current company name, otherwise the name is
+          // duplicated (for example, مؤسسة سبائك الماسة).
+          if (legacyName === siteName || siteName.includes(legacyName)) continue;
           db.prepare(`UPDATE "${safeTable}" SET "${safeColumn}" = REPLACE("${safeColumn}", ?, ?) WHERE "${safeColumn}" LIKE ?`)
             .run(legacyName, siteName, `%${legacyName}%`);
         }
@@ -915,6 +912,8 @@ step("إنشاء الأرشيف cleanflow-services-hostinger.zip");
 const zipPath = join(ROOT, "cleanflow-services-hostinger.zip");
 const compatibilityZipPath = join(ROOT, "taqi-group-hostinger.zip");
 rmSync(zipPath, { force: true });
+// This filename belonged to a previous product. Never recreate it as a
+// misleading compatibility archive.
 rmSync(compatibilityZipPath, { force: true });
 
 if (process.platform === "win32") {
@@ -926,13 +925,9 @@ if (process.platform === "win32") {
 }
 
 if (existsSync(zipPath)) {
-  // Keep the former filename as an exact compatibility copy so an existing
-  // upload workflow cannot accidentally select an older archive.
-  copyFileSync(zipPath, compatibilityZipPath);
   const sizeKb = Math.round(statSync(zipPath).size / 1024);
   console.log(`\n${"═".repeat(60)}`);
   console.log(`✅ الأرشيف الرسمي جاهز: cleanflow-services-hostinger.zip (${sizeKb} KB)`);
-  console.log("✅ نسخة توافقية مطابقة: taqi-group-hostinger.zip");
   console.log(`${"═".repeat(60)}\n`);
   run(
     "pnpm --filter @workspace/scripts run seo-quality-gate",

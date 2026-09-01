@@ -152,13 +152,13 @@ export function buildSeoInventory(db) {
   }
 
   entries.push({
-    path: "/taqi-group-platform/",
-    canonical: "/taqi-group-platform/",
+    path: "/cleanflow-platform/",
+    canonical: "/cleanflow-platform/",
     pageType: "platform",
     indexability: INDEXABILITY.SEPARATE_ARTIFACT,
     prerenderRequired: false,
     sitemapEligible: false,
-    artifact: "taqi-group-platform",
+    artifact: "cleanflow-platform",
   });
 
   return entries;

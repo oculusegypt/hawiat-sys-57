@@ -9,13 +9,13 @@ declare(strict_types=1);
  * the existing admin UI works on shared hosting without Node.js.
  */
 
-function hsJson(mixed $value, int $status = 200): never {
+function hsJson($value, int $status = 200): void {
     http_response_code($status);
     echo json_encode($value, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
     exit;
 }
 
-function hsPayload(string|null $value): array {
+function hsPayload($value): array {
     if (!$value) return [];
     $decoded = json_decode($value, true);
     return is_array($decoded) ? $decoded : [];

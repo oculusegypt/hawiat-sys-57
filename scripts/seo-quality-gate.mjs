@@ -234,7 +234,7 @@ if (archiveDir) {
     "api/index.php",
     "images/logo.png",
     "images/container-large.png",
-    "taqi-group-platform/index.html",
+    "cleanflow-platform/index.html",
   ]) requireFile(join(archiveDir, file), `archive ${file}`);
 
   // `/api/uploads` is an upload action only. Public image URLs must always
@@ -333,10 +333,9 @@ if (archiveDir) {
     }
   };
   walk(archiveDir);
-  // The operational platform is shipped beside the public site, sometimes
-  // under both its current and compatibility directory names, but it is a
-  // separate artifact with its own navigation and SEO contract. Keep both
-  // platform copies out of the main site's canonical/sitemap inventory.
+  // The operational platform is shipped beside the public site as a separate
+  // artifact with its own navigation and SEO contract. Keep it out of the
+  // main site's canonical/sitemap inventory.
   const isMainSiteHtml = (file) => {
     const relative = file.replace(`${archiveDir}/`, "");
     return !relative.startsWith("taqi-group-platform/") && !relative.startsWith("cleanflow-platform/");

@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-09-01T01:14:41.969Z",
+  "generatedAt": "2026-09-01T01:40:51.262Z",
   "siteUrl": "https://sabaik.net",
   "entries": [
     {
@@ -1680,13 +1680,13 @@
       "title": "تأجير حاويات بالرياض"
     },
     {
-      "path": "/taqi-group-platform/",
-      "canonical": "/taqi-group-platform/",
+      "path": "/cleanflow-platform/",
+      "canonical": "/cleanflow-platform/",
       "pageType": "platform",
       "indexability": "SEPARATE_ARTIFACT",
       "prerenderRequired": false,
       "sitemapEligible": false,
-      "artifact": "taqi-group-platform"
+      "artifact": "cleanflow-platform"
     }
   ],
   "indexableRoutes": [
