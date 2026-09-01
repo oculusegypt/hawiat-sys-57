@@ -637,7 +637,7 @@ try {
                     'application' => 'ok',
                 ],
             ], JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
-        } catch (Throwable) {
+        } catch (Throwable $healthError) {
             http_response_code(503);
             echo json_encode([
                 'status' => 'degraded',
@@ -1120,7 +1120,7 @@ try {
             $row = $pdo->query("SELECT value FROM site_settings WHERE key = 'company_name' LIMIT 1")->fetch(PDO::FETCH_ASSOC);
             $name = trim((string)($row['value'] ?? ''));
             if ($name !== '') return $name;
-        } catch (Throwable) {}
+        } catch (Throwable $normalizationError) {}
         return 'المنشأة';
     }
 
@@ -1156,7 +1156,7 @@ try {
                     $result[$field] = substr(trim((string)($payload[$field] ?? '')), 0, 120);
                 }
             }
-        } catch (Throwable) {}
+        } catch (Throwable $metadataError) {}
         if (count($cache) >= 2000) array_shift($cache);
         return $cache[$ip] = $result;
     }
@@ -1331,7 +1331,7 @@ try {
         foreach ($configs as [$table, $kind, $titleColumn]) {
             try {
                 $rows = $pdo->query("SELECT * FROM \"{$table}\" ORDER BY id ASC")->fetchAll(PDO::FETCH_ASSOC);
-            } catch (Throwable) {
+            } catch (Throwable $seoError) {
                 continue;
             }
             $used = [];
@@ -1405,7 +1405,7 @@ try {
                     $stmt = $pdo->prepare("UPDATE \"{$table}\" SET " . implode(', ', $fields) . " WHERE id = :id");
                     $stmt->execute($params);
                     $updated++;
-                } catch (Throwable) {
+                } catch (Throwable $htmlError) {
                     // A single legacy row must not take the public API down.
                 }
             }
@@ -3291,6 +3291,34 @@ try {
         exit;
     }
 
+    // Legacy/public FAQ contract used by the home page: GET /api/structured-content.
+    if ($path === '/structured-content' && $method === 'GET') {
+        try {
+            $scopePath = normalizeStructuredScopePath($_GET['path'] ?? '/');
+            $stmt = $pdo->query("SELECT id, scope_path, schema_type, title, description, payload, is_active, sort_order FROM structured_content WHERE is_active = 1 ORDER BY sort_order ASC, id ASC");
+            $records = [];
+            foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+                $rowScope = normalizeStructuredScopePath($row['scope_path'] ?? '/');
+                if ($rowScope !== $scopePath && $rowScope !== '*') continue;
+                $payload = json_decode((string)($row['payload'] ?? '{}'), true);
+                $records[] = [
+                    'id' => (int)$row['id'],
+                    'scopePath' => $rowScope,
+                    'schemaType' => (string)($row['schema_type'] ?? ''),
+                    'title' => (string)($row['title'] ?? ''),
+                    'description' => (string)($row['description'] ?? ''),
+                    'payload' => is_array($payload) ? $payload : [],
+                    'isActive' => (bool)$row['is_active'],
+                    'sortOrder' => (int)$row['sort_order'],
+                ];
+            }
+            echo json_encode($records, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+        } catch (\Throwable $structuredContentError) {
+            echo json_encode([], JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+        }
+        exit;
+    }
+
     // Admin settings remain available to the authenticated admin route above.
     if ($path === '/admin/settings' && $method === 'GET') {
         try {
@@ -4970,7 +4998,7 @@ try {
                 $durations = [];
                 foreach ($rows as $row) {
                     if (empty($row[$start]) || empty($row[$end])) continue;
-                    try { $durations[] = (new DateTimeImmutable((string)$row[$end]))->getTimestamp() - (new DateTimeImmutable((string)$row[$start]))->getTimestamp(); } catch (Throwable) {}
+                    try { $durations[] = (new DateTimeImmutable((string)$row[$end]))->getTimestamp() - (new DateTimeImmutable((string)$row[$start]))->getTimestamp(); } catch (Throwable $durationError) {}
                 }
                 return $durations ? round(array_sum($durations) / count($durations) / 3600, 1) : 0;
             };

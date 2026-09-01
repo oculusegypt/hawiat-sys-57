@@ -299,10 +299,10 @@ function hsEnsureSchema(PDO $pdo): void {
         actor_id INTEGER,
         created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     )");
-    try { $pdo->exec("ALTER TABLE container_system_records ADD COLUMN operation_key TEXT"); } catch (Throwable) { /* already exists */ }
+    try { $pdo->exec("ALTER TABLE container_system_records ADD COLUMN operation_key TEXT"); } catch (Throwable $migrationError) { /* already exists */ }
     try {
         $pdo->exec("UPDATE container_system_records SET operation_key = json_extract(payload, '$.operationKey') WHERE operation_key IS NULL AND json_extract(payload, '$.operationKey') IS NOT NULL");
-    } catch (Throwable) { /* legacy SQLite without JSON1 */ }
+    } catch (Throwable $jsonError) { /* legacy SQLite without JSON1 */ }
     $pdo->exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_container_system_records_operation_key ON container_system_records(kind, operation_key) WHERE operation_key IS NOT NULL AND operation_key <> '' AND status <> 'archived'");
     hsFinancialTables($pdo);
     $columns = $pdo->query("PRAGMA table_info(service_requests)")->fetchAll(PDO::FETCH_ASSOC);
