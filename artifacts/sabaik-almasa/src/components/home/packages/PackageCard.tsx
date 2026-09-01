@@ -33,6 +33,12 @@ function parseImages(raw: unknown): string[] {
 }
 
 export function getContainerImage(container: Container): string {
+  const configuredImage = container.imageUrl?.trim()
+  if (configuredImage) return configuredImage
+
+  const additionalImages = parseImages(container.images)
+  if (additionalImages[0]) return additionalImages[0]
+
   return mediaForContainerName(container.name)
 }
 
@@ -88,13 +94,14 @@ export function PackageCard({ container: c, companyName: configuredCompanyName, 
 
   const categoryArabic = ARABIC_CATEGORY_NAMES[c.category || ""] || "حاوية متاحة"
   const detailHref = `/containers/${entityPath({ slug: c.seoSlug, title: c.name, id: c.id, fallback: "container" })}`
+  const imageUrl = getContainerImage(c)
 
   return (
     <article className="inventory-card bg-white rounded-3xl overflow-hidden flex flex-col justify-between group" data-testid={`card-container-${c.id}`}>
       <div className="inventory-media relative overflow-hidden bg-slate-100">
-        {getContainerImage(c) ? (
+        {imageUrl ? (
           <img
-            src={getContainerImage(c)}
+            src={imageUrl}
              alt={displayName}
             data-testid={`img-container-${c.id}`}
             className="w-full h-full object-cover group-hover:scale-108 transition-transform duration-700"
