@@ -664,6 +664,54 @@ console.log(`  ✅ uploads/ يحتوي على جميع الملفات المرف
 // ── 7. كتابة .htaccess مع إصلاح Authorization header ─────────────────────────
 step("كتابة ملفات .htaccess");
 
+// Compatibility HTML files intentionally carry `noindex` while they are
+// available as a safety net for old links. Do not let crawlers receive those
+// files as successful pages: redirect every one to the canonical URL declared
+// in its HTML. This is stronger than relying on a canonical tag alone and
+// prevents Google Search Console from reporting the old URL as a noindex page.
+function compatibilityRedirectRules(root) {
+  const rules = [];
+  const seen = new Set();
+  const walk = (directory) => {
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      const file = join(directory, entry.name);
+      if (entry.isDirectory()) {
+        walk(file);
+        continue;
+      }
+      if (entry.name !== "index.html") continue;
+      const relative = file
+        .slice(root.length + 1)
+        .replace(/\/index\.html$/u, "")
+        .replace(/\\/g, "/");
+      if (!relative || relative.startsWith("cleanflow-platform/")) continue;
+      const html = readFileSync(file, "utf8");
+      if (!/<meta\b[^>]*name=["']robots["'][^>]*content=["'][^"']*noindex/i.test(html)) continue;
+      const canonical = html.match(/<link\b[^>]*rel=["']canonical["'][^>]*href=["']([^"']+)["']/i)?.[1] || "";
+      let target;
+      try {
+        const parsed = new URL(canonical);
+        if (parsed.origin !== archivePublicOrigin()) continue;
+        target = parsed.pathname || "/";
+      } catch {
+        continue;
+      }
+      const source = `/${relative}`;
+      const key = `${source} ${target}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      // These generated paths contain Arabic, digits and hyphens. Escape the
+      // few characters that have special meaning in a RewriteRule pattern.
+      const pattern = relative.replace(/[\\.^$|?*+()[\]{}]/g, "\\$&");
+      rules.push(`  RewriteRule ^${pattern}/?$ ${target} [R=301,L,NE]`);
+    }
+  };
+  walk(root);
+  return rules.sort().join("\n");
+}
+
+const compatibilityRedirects = compatibilityRedirectRules(buildPhpDir);
+
 writeFileSync(join(ROOT, "build_php/.htaccess"), `DirectoryIndex index.html index.php
 
 <IfModule mod_rewrite.c>
@@ -681,6 +729,10 @@ writeFileSync(join(ROOT, "build_php/.htaccess"), `DirectoryIndex index.html inde
   # image URL before it can enter the PHP API and return a misleading 500.
   RewriteCond %{REQUEST_METHOD} ^(?:GET|HEAD)$
   RewriteRule ^api/uploads/(.+)$ /uploads/$1 [R=301,L,NE]
+
+  # Canonicalize old ASCII and /pages/ compatibility URLs before serving their
+  # noindex HTML copies. The generated targets are the URLs listed in sitemap.
+${compatibilityRedirects || "  # No compatibility redirects were generated."}
 
   # Directory indexes can be disabled by the host. Resolve public SEO hubs
   # explicitly so /blog/ and /areas/ never become a 403 or SPA soft fallback.
