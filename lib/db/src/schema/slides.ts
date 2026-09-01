@@ -8,6 +8,7 @@ export const heroSlidesTable = sqliteTable("hero_slides", {
   subtitle: text("subtitle").notNull(),
   imageUrl: text("image_url").notNull(),
   ctaText: text("cta_text"),
+  linkUrl: text("link_url").notNull().default(""),
   order: integer("order").notNull().default(0),
   isActive: integer("is_active", { mode: "boolean" }).notNull().default(true),
   createdAt: text("created_at").$defaultFn(() => new Date().toISOString()).notNull(),

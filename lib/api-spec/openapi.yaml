@@ -1539,6 +1539,7 @@ components:
         subtitle: { type: string }
         imageUrl: { type: string }
         ctaText: { type: ["string", "null"] }
+        linkUrl: { type: string, description: "Optional URL opened when the slide image is clicked" }
         order: { type: integer }
         isActive: { type: boolean }
         createdAt: { type: string }
@@ -1551,6 +1552,7 @@ components:
         subtitle: { type: string }
         imageUrl: { type: string }
         ctaText: { type: ["string", "null"] }
+        linkUrl: { type: string, description: "Optional URL opened when the slide image is clicked" }
         order: { type: integer }
         isActive: { type: boolean }
 

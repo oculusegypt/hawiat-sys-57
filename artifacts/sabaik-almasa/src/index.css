@@ -435,6 +435,7 @@ section[id] {
 }
 
 .hero-slide-overlay {
+  pointer-events: none;
   background:
     radial-gradient(
       ellipse 55% 42% at 50% 50%,

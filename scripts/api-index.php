@@ -4280,6 +4280,7 @@ try {
                     'subtitle' => $s['subtitle'] ?? '',
                     'imageUrl' => $s['image_url'] ?? '',
                     'ctaText' => $s['cta_text'] ?? '',
+                    'linkUrl' => $s['link_url'] ?? '',
                     'order' => (int)($s['sort_order'] ?? 0),
                     'isActive' => (bool)$s['is_active']
                 ];
@@ -4296,13 +4297,14 @@ try {
         $subtitle = $input['subtitle'] ?? '';
         $imageUrl = $input['imageUrl'] ?? '';
         $ctaText = $input['ctaText'] ?? '';
+        $linkUrl = $input['linkUrl'] ?? '';
         $order = (int)($input['order'] ?? $input['sort_order'] ?? 0);
         $isActive = isset($input['isActive']) ? ($input['isActive'] ? 1 : 0) : 1;
-        $stmt = $pdo->prepare("INSERT INTO hero_slides (title, subtitle, image_url, cta_text, sort_order, is_active) VALUES (:t, :st, :img, :cta, :so, :ia)");
-        $stmt->execute([':t' => $title, ':st' => $subtitle, ':img' => $imageUrl, ':cta' => $ctaText, ':so' => $order, ':ia' => $isActive]);
+        $stmt = $pdo->prepare("INSERT INTO hero_slides (title, subtitle, image_url, cta_text, link_url, sort_order, is_active) VALUES (:t, :st, :img, :cta, :link, :so, :ia)");
+        $stmt->execute([':t' => $title, ':st' => $subtitle, ':img' => $imageUrl, ':cta' => $ctaText, ':link' => $linkUrl, ':so' => $order, ':ia' => $isActive]);
         $newId = (int)$pdo->lastInsertId();
         http_response_code(201);
-        echo json_encode(['id' => $newId, 'title' => $title, 'subtitle' => $subtitle, 'imageUrl' => $imageUrl, 'ctaText' => $ctaText, 'order' => $order, 'isActive' => (bool)$isActive], JSON_UNESCAPED_UNICODE);
+        echo json_encode(['id' => $newId, 'title' => $title, 'subtitle' => $subtitle, 'imageUrl' => $imageUrl, 'ctaText' => $ctaText, 'linkUrl' => $linkUrl, 'order' => $order, 'isActive' => (bool)$isActive], JSON_UNESCAPED_UNICODE);
         exit;
     }
 
@@ -4310,7 +4312,7 @@ try {
         $id = (int)$m[1];
         $fields = [];
         $params = [':id' => $id];
-        $map = ['title' => 'title', 'subtitle' => 'subtitle', 'imageUrl' => 'image_url', 'ctaText' => 'cta_text', 'order' => 'sort_order', 'sort_order' => 'sort_order'];
+        $map = ['title' => 'title', 'subtitle' => 'subtitle', 'imageUrl' => 'image_url', 'ctaText' => 'cta_text', 'linkUrl' => 'link_url', 'order' => 'sort_order', 'sort_order' => 'sort_order'];
         foreach ($map as $jKey => $dbCol) {
             if (array_key_exists($jKey, $input)) {
                 $fields[] = "{$dbCol} = :{$jKey}";
@@ -4329,7 +4331,7 @@ try {
         $stmt->execute([':id' => $id]);
         $s = $stmt->fetch();
         if ($s) {
-            echo json_encode(['id' => (int)$s['id'], 'title' => $s['title'], 'subtitle' => $s['subtitle'] ?? '', 'imageUrl' => $s['image_url'] ?? '', 'ctaText' => $s['cta_text'] ?? '', 'order' => (int)($s['sort_order'] ?? 0), 'isActive' => (bool)$s['is_active']], JSON_UNESCAPED_UNICODE);
+            echo json_encode(['id' => (int)$s['id'], 'title' => $s['title'], 'subtitle' => $s['subtitle'] ?? '', 'imageUrl' => $s['image_url'] ?? '', 'ctaText' => $s['cta_text'] ?? '', 'linkUrl' => $s['link_url'] ?? '', 'order' => (int)($s['sort_order'] ?? 0), 'isActive' => (bool)$s['is_active']], JSON_UNESCAPED_UNICODE);
         } else {
             http_response_code(404);
             echo json_encode(['error' => 'الشريحة غير موجودة']);

@@ -12,18 +12,18 @@ router.get("/slides", async (_req, res) => {
 });
 
 router.post("/slides", requireAdmin, requireSectionPermission("slides"), async (req, res) => {
-  const { title, subtitle, imageUrl, ctaText, order, isActive } = req.body;
+  const { title, subtitle, imageUrl, ctaText, linkUrl, order, isActive } = req.body;
   const [slide] = await db.insert(heroSlidesTable).values({
-    title, subtitle, imageUrl, ctaText, order: order ?? 0, isActive: isActive ?? true,
+    title, subtitle, imageUrl, ctaText, linkUrl: linkUrl ?? "", order: order ?? 0, isActive: isActive ?? true,
   }).returning();
   return res.status(201).json(slide);
 });
 
 router.patch("/slides/:id", requireAdmin, requireSectionPermission("slides"), async (req, res) => {
   const id = parseInt(String(req.params.id), 10);
-  const { title, subtitle, imageUrl, ctaText, order, isActive } = req.body;
+  const { title, subtitle, imageUrl, ctaText, linkUrl, order, isActive } = req.body;
   const [slide] = await db.update(heroSlidesTable)
-    .set({ title, subtitle, imageUrl, ctaText, order, isActive })
+    .set({ title, subtitle, imageUrl, ctaText, linkUrl, order, isActive })
     .where(eq(heroSlidesTable.id, id))
     .returning();
   if (!slide) return res.status(404).json({ error: "Not found" });

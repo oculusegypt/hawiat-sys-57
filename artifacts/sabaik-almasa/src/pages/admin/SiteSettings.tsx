@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react"
+import { useRef, useState, useEffect } from "react"
 import { useToast } from "@/hooks/use-toast"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -167,8 +167,8 @@ const SUPPORT_OPTIONS = [
 ]
 
 // ── Slide form ─────────────────────────────────────────────────────────────────
-type SlideForm = { title: string; subtitle: string; imageUrl: string; ctaText: string; order: number; isActive: boolean }
-const emptySlide = (): SlideForm => ({ title: "", subtitle: "", imageUrl: "", ctaText: "اطلب خدمتك الآن", order: 0, isActive: true })
+type SlideForm = { title: string; subtitle: string; imageUrl: string; linkUrl: string; ctaText: string; order: number; isActive: boolean }
+const emptySlide = (): SlideForm => ({ title: "", subtitle: "", imageUrl: "", linkUrl: "", ctaText: "اطلب خدمتك الآن", order: 0, isActive: true })
 
 const HERO_POSITIONS = [
   { value: "top-right", label: "أعلى يمين" },
@@ -913,6 +913,8 @@ function SlidesTab() {
   const { mutate: deleteSlide } = useDeleteSlide()
   const [editing, setEditing] = useState<number | "new" | null>(null)
   const [form, setForm] = useState<SlideForm>(emptySlide())
+  const [uploading, setUploading] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const [heroSettings, setHeroSettings] = useState({
     hero_company_visible: true,
     hero_cta_visible: true,
@@ -966,7 +968,28 @@ function SlidesTab() {
   }
 
   const openNew = () => { setForm({ ...emptySlide(), order: slides.length }); setEditing("new") }
-  const openEdit = (s: HeroSlide) => { setForm({ title: s.title, subtitle: s.subtitle, imageUrl: s.imageUrl, ctaText: s.ctaText ?? "", order: s.order, isActive: s.isActive }); setEditing(s.id) }
+  const openEdit = (s: HeroSlide) => { setForm({ title: s.title, subtitle: s.subtitle, imageUrl: s.imageUrl, linkUrl: s.linkUrl ?? "", ctaText: s.ctaText ?? "", order: s.order, isActive: s.isActive }); setEditing(s.id) }
+  const handleImageUpload = async (file: File) => {
+    setUploading(true)
+    try {
+      const token = localStorage.getItem("admin_token") ?? ""
+      const body = new FormData()
+      body.append("file", file)
+      const response = await fetch(`${API_BASE}/api/admin/slides/upload`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body,
+      })
+      const result = await response.json()
+      if (!response.ok) throw new Error(result.error || "فشل رفع الصورة")
+      setForm(current => ({ ...current, imageUrl: result.url }))
+      toast({ title: "تم رفع صورة الشريحة" })
+    } catch (error) {
+      toast({ title: error instanceof Error ? error.message : "فشل رفع الصورة", variant: "destructive" })
+    } finally {
+      setUploading(false)
+    }
+  }
   const handleSave = () => {
     if (editing === "new") createSlide({ data: form }, { onSuccess: () => { refetch(); setEditing(null) } })
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1053,7 +1076,32 @@ function SlidesTab() {
               <div><label className="text-sm font-medium text-gray-700 mb-1 block">نص الزر</label><Input value={form.ctaText} onChange={e => setForm({ ...form, ctaText: e.target.value })} placeholder="اطلب خدمتك الآن" dir="rtl" /></div>
             </div>
             <div><label className="text-sm font-medium text-gray-700 mb-1 block">النص التوضيحي</label><Input value={form.subtitle} onChange={e => setForm({ ...form, subtitle: e.target.value })} placeholder="وصف مختصر" dir="rtl" /></div>
-            <div><label className="text-sm font-medium text-gray-700 mb-1 block">رابط الصورة *</label><Input value={form.imageUrl} onChange={e => setForm({ ...form, imageUrl: e.target.value })} placeholder="https://..." dir="ltr" /></div>
+             <div>
+               <label className="text-sm font-medium text-gray-700 mb-1 block">صورة الخلفية *</label>
+               <div className="flex gap-2">
+                 <Input value={form.imageUrl} onChange={e => setForm({ ...form, imageUrl: e.target.value })} placeholder="رابط الصورة أو ارفع ملفاً" dir="ltr" />
+                 <input
+                   ref={fileInputRef}
+                   type="file"
+                   accept="image/jpeg,image/png,image/webp,image/gif,image/avif"
+                   className="hidden"
+                   onChange={e => {
+                     const file = e.target.files?.[0]
+                     if (file) void handleImageUpload(file)
+                     e.currentTarget.value = ""
+                   }}
+                 />
+                 <Button type="button" variant="outline" onClick={() => fileInputRef.current?.click()} disabled={uploading} className="shrink-0 gap-2">
+                   {uploading ? <><Loader2 size={15} className="animate-spin" /> جاري الضغط...</> : <><Upload size={15} /> رفع صورة</>}
+                 </Button>
+               </div>
+               <p className="mt-1 text-xs text-gray-500">سيتم ضغط الصورة وتحويلها تلقائياً إلى WebP مع الحفاظ على الجودة.</p>
+             </div>
+             <div>
+               <label className="text-sm font-medium text-gray-700 mb-1 block">رابط الشريحة (اختياري)</label>
+               <Input value={form.linkUrl} onChange={e => setForm({ ...form, linkUrl: e.target.value })} placeholder="https://example.com أو /services" dir="ltr" />
+               <p className="mt-1 text-xs text-gray-500">عند إضافة الرابط تصبح صورة الشريحة قابلة للنقر.</p>
+             </div>
             <div className="grid grid-cols-2 gap-4">
               <div><label className="text-sm font-medium text-gray-700 mb-1 block">الترتيب</label><Input type="number" value={form.order} onChange={e => setForm({ ...form, order: parseInt(e.target.value) || 0 })} /></div>
               <div className="flex items-end"><label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={form.isActive} onChange={e => setForm({ ...form, isActive: e.target.checked })} className="w-4 h-4" /><span className="text-sm font-medium text-gray-700">نشط</span></label></div>
@@ -1081,7 +1129,8 @@ function SlidesTab() {
                     <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${slide.isActive ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>{slide.isActive ? "نشط" : "مخفي"}</span>
                   </div>
                   <p className="text-sm text-gray-500 truncate">{slide.subtitle}</p>
-                  {slide.ctaText && <span className="mt-1 inline-block text-xs bg-primary/10 text-primary px-2 py-0.5 rounded">زر: {slide.ctaText}</span>}
+                   {slide.ctaText && <span className="mt-1 inline-block text-xs bg-primary/10 text-primary px-2 py-0.5 rounded">زر: {slide.ctaText}</span>}
+                   {slide.linkUrl && <span className="mt-1 block truncate text-xs text-blue-500" dir="ltr">↗ {slide.linkUrl}</span>}
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
                   <Button variant="ghost" size="icon" onClick={() => toggleActive(slide)} className="text-gray-400 hover:text-gray-700">{slide.isActive ? <Eye size={16} /> : <EyeOff size={16} />}</Button>

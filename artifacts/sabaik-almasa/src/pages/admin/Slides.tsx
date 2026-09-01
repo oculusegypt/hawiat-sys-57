@@ -10,6 +10,7 @@ type SlideForm = {
   title: string
   subtitle: string
   imageUrl: string
+  linkUrl: string
   ctaText: string
   order: number
   isActive: boolean
@@ -19,6 +20,7 @@ const emptyForm = (): SlideForm => ({
   title: "",
   subtitle: "",
   imageUrl: "",
+  linkUrl: "",
   ctaText: "اطلب خدمتك الآن",
   order: 0,
   isActive: true,
@@ -45,6 +47,7 @@ export default function AdminSlides() {
       title: slide.title,
       subtitle: slide.subtitle,
       imageUrl: slide.imageUrl,
+      linkUrl: slide.linkUrl ?? "",
       ctaText: slide.ctaText ?? "",
       order: slide.order,
       isActive: slide.isActive,
@@ -163,6 +166,16 @@ export default function AdminSlides() {
                 </Button>
               </div>
               <p className="mt-1 text-xs text-gray-500">سيتم ضغط الصورة وتحويلها تلقائياً إلى WebP مع الحفاظ على الجودة.</p>
+            </div>
+            <div>
+              <label className="text-sm font-medium text-gray-700 mb-1 block">رابط الشريحة (اختياري)</label>
+              <Input
+                value={form.linkUrl}
+                onChange={(e) => setForm({ ...form, linkUrl: e.target.value })}
+                placeholder="https://example.com أو /services"
+                dir="ltr"
+              />
+              <p className="mt-1 text-xs text-gray-500">عند إضافة الرابط تصبح صورة الشريحة قابلة للنقر.</p>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>

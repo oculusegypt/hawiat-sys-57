@@ -85,12 +85,26 @@ function inspectDatabase(dbPath) {
   }
 }
 
+function ensureHeroSlideLinkColumn(dbPath) {
+  const db = new Database(dbPath);
+  try {
+    const columns = db.prepare("PRAGMA table_info(hero_slides)").all().map((column) => column.name);
+    if (!columns.includes("link_url")) {
+      db.prepare('ALTER TABLE hero_slides ADD COLUMN link_url TEXT NOT NULL DEFAULT ""').run();
+      console.log("  ✅ hero_slides: أضفت عمود رابط الشريحة link_url");
+    }
+  } finally {
+    db.close();
+  }
+}
+
 function prepareArchiveSourceDatabase() {
   rmSync(ARCHIVE_SOURCE_DB, { force: true });
   rmSync(`${ARCHIVE_SOURCE_DB}-wal`, { force: true });
   rmSync(`${ARCHIVE_SOURCE_DB}-shm`, { force: true });
   mkdirSync(dirname(ARCHIVE_SOURCE_DB), { recursive: true });
 
+  ensureHeroSlideLinkColumn(SOURCE_DB);
   const sourceInfo = inspectDatabase(SOURCE_DB);
   if (sourceInfo.integrity === "ok") {
     copyFileSync(SOURCE_DB, ARCHIVE_SOURCE_DB);

@@ -57,7 +57,7 @@ function seedAll() {
     {
       title: `${SITE_NAME} لتأجير الحاويات ونقل المخلفات بالرياض`,
       subtitle: "حاويات أنقاض ونفايات بأحجام مختلفة مع توصيل وسحب منسق للمشاريع والمنشآت في الرياض",
-      imageUrl: "/images/container-small.png",
+      imageUrl: "/images/hero-slide-1.webp",
       ctaText: "اطلب خدمتك الآن",
       order: 0,
       isActive: true,
@@ -66,7 +66,7 @@ function seedAll() {
     {
       title: "حاويات مخلفات البناء بالرياض",
       subtitle: "توصيل الحاوية المناسبة لموقعك واستبدالها أو سحبها عند الامتلاء دون تعطيل سير العمل",
-      imageUrl: "/images/container-large.png",
+      imageUrl: "/images/hero-slide-2.webp",
       ctaText: "اطلب الحاوية",
       order: 1,
       isActive: true,
@@ -75,7 +75,7 @@ function seedAll() {
     {
       title: "نقل الأنقاض والمخلفات بالرياض",
       subtitle: "رفع مخلفات الترميم والهدم من الموقع ونقلها بطريقة منظمة مع متابعة حالة الطلب",
-      imageUrl: "/images/waste-small.png",
+      imageUrl: "/images/hero-slide-3.webp",
       ctaText: "تواصل معنا",
       order: 2,
       isActive: true,
@@ -84,9 +84,18 @@ function seedAll() {
     {
       title: "حلول إدارة المخلفات للمشاريع والمنشآت",
       subtitle: "توريد منتظم وعقود مرنة للمقاولين والمطورين والمطاعم والمستودعات في جميع أحياء الرياض",
-      imageUrl: "/images/electric-compactor.jpeg",
+      imageUrl: "/images/hero-slide-4.webp",
       ctaText: "استكشف حلولنا",
       order: 3,
+      isActive: true,
+      createdAt: now,
+    },
+    {
+      title: "خدمات سبائك الماسه للمشاريع والمنشآت",
+      subtitle: "حلول عملية لجمع ونقل المخلفات مع خدمة موثوقة تناسب احتياجات موقعك",
+      imageUrl: "/images/hero-slide-5.webp",
+      ctaText: "اطلب خدمتك الآن",
+      order: 4,
       isActive: true,
       createdAt: now,
     },

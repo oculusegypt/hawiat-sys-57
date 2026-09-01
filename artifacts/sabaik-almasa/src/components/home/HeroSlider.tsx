@@ -4,6 +4,18 @@ import { useGetSlides } from "@workspace/api-client-react"
 import { useServiceRequest } from "@/context/ServiceRequestContext"
 import { useSiteSettings } from "@/context/SiteSettingsContext"
 
+function safeSlideLink(value: string | null | undefined): string | null {
+  const candidate = String(value ?? "").trim()
+  if (!candidate || candidate.startsWith("//")) return null
+  if (candidate.startsWith("/")) return candidate
+  try {
+    const parsed = new URL(candidate, "https://sabaik.net")
+    return ["http:", "https:"].includes(parsed.protocol) ? parsed.href : null
+  } catch {
+    return null
+  }
+}
+
 export function HeroSlider() {
   const { data: slides, isLoading } = useGetSlides()
   const [currentIndex, setCurrentIndex] = useState(0)
@@ -137,23 +149,37 @@ export function HeroSlider() {
           }`}
         >
           <div className="absolute inset-0">
-            {failedImages.has(index) ? (
-              <div className="hero-slide-fallback absolute inset-0" aria-hidden="true" />
-            ) : !loadedSlides.has(index) ? (
-              <div className="hero-slide-fallback absolute inset-0" aria-hidden="true" />
-            ) : (
-              <img
-                src={slide.imageUrl.trim()}
-                alt={`${slide.title} | ${resolvedCompany}`}
-                className="hero-slide-image w-full h-full object-cover"
-                width={1672}
-                height={941}
-                loading={index === 0 ? "eager" : "lazy"}
-                fetchPriority={index === 0 ? "high" : "low"}
-                decoding={index === 0 ? "sync" : "async"}
-                onError={() => setFailedImages((previous) => new Set(previous).add(index))}
-              />
-            )}
+            {(() => {
+              const slideLink = safeSlideLink(slide.linkUrl)
+              const imageContent = failedImages.has(index) ? (
+                <div className="hero-slide-fallback absolute inset-0" aria-hidden="true" />
+              ) : !loadedSlides.has(index) ? (
+                <div className="hero-slide-fallback absolute inset-0" aria-hidden="true" />
+              ) : (
+                <img
+                  src={slide.imageUrl.trim()}
+                  alt={`${slide.title} | ${resolvedCompany}`}
+                  className="hero-slide-image w-full h-full object-cover"
+                  width={1672}
+                  height={941}
+                  loading={index === 0 ? "eager" : "lazy"}
+                  fetchPriority={index === 0 ? "high" : "low"}
+                  decoding={index === 0 ? "sync" : "async"}
+                  onError={() => setFailedImages((previous) => new Set(previous).add(index))}
+                />
+              )
+              return slideLink ? (
+                <a
+                  href={slideLink}
+                  target={slideLink.startsWith("http") ? "_blank" : undefined}
+                  rel={slideLink.startsWith("http") ? "noopener noreferrer" : undefined}
+                  aria-label={`فتح رابط الشريحة: ${slide.title}`}
+                  className="block h-full"
+                >
+                  {imageContent}
+                </a>
+              ) : imageContent
+            })()}
             <div className="hero-slide-overlay absolute inset-0" />
           </div>
 
