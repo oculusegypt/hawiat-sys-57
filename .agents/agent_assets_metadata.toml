@@ -1,0 +1,16 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "c8NPwycidjQniozABYzPI"
+uri = "file://cleanflow-services-hostinger.zip"
+type = "unspecified"
+title = "حزمة Hostinger الجاهزة — sabaik.net"
+description = "أرشيف كامل للرفع مباشرة إلى public_html، ويشمل الواجهة، PHP API، قاعدة SQLite، الصور، صفحات SEO، ومنصة الإدارة. تم التحقق منه بنجاح على نطاق https://sabaik.net."
+logical_id = "e0fc32d7-982f-45e8-866d-427d85bc6621"
+content_hash = "sha256:418245e1825822ad94d76fdb9adafbfdf705988d4cb047331c676a12e8306b99"
+size = 10481007
+mtime_ms = 1788225297054
+storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:01da6ded-6c65-493b-8191-983aff896877/e0fc32d7-982f-45e8-866d-427d85bc6621/d079d227-a52a-4341-88a0-aa18008d2fb4"
+storage_version_token = "1788225325559042"
+content_type = "application/octet-stream"

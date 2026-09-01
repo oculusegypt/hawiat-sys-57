@@ -1,0 +1,1 @@
+- [Hostinger archive SEO assets](hostinger-archive-seo-assets.md) — the release gate requires a stable PNG logo path even when the configured source logo is WebP.
