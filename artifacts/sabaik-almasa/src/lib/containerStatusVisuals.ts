@@ -6,20 +6,20 @@ const statusImages: Record<
   { webp: string; fallback: string }
 > = {
   available: {
-    webp: "/images/container-small.png",
-    fallback: "/images/container-small.png",
+    webp: "/images/container-status-available.webp",
+    fallback: "/images/container-status-available.webp",
   },
   rented: {
-    webp: "/images/container-large.png",
-    fallback: "/images/container-large.png",
+    webp: "/images/container-status-rented.webp",
+    fallback: "/images/container-status-rented.webp",
   },
   maintenance: {
-    webp: "/images/electric-compactor.jpeg",
-    fallback: "/images/electric-compactor.jpeg",
+    webp: "/images/container-status-maintenance.webp",
+    fallback: "/images/container-status-maintenance.webp",
   },
   other: {
-    webp: "/images/waste-small.png",
-    fallback: "/images/waste-small.png",
+    webp: "/images/container-status-other.webp",
+    fallback: "/images/container-status-other.webp",
   },
 };
 
@@ -27,10 +27,10 @@ const statusImageDimensions: Record<
   ContainerVisualStatus,
   { width: number; height: number }
 > = {
-  available: { width: 1200, height: 600 },
-  rented: { width: 1200, height: 596 },
-  maintenance: { width: 1200, height: 600 },
-  other: { width: 1200, height: 600 },
+  available: { width: 1600, height: 800 },
+  rented: { width: 1600, height: 795 },
+  maintenance: { width: 1536, height: 1024 },
+  other: { width: 1600, height: 800 },
 };
 
 export function getContainerVisualStatus(
