@@ -13,7 +13,7 @@ export function CEOMessage() {
   const p2 = ceo.message2 || `ندرك أن النهضة العمرانية المتسارعة التي تشهدها العاصمة تتطلب دعماً لوجستياً فعالاً وموثوقاً لإدارة المخلفات، ونحن مستمرون في تطوير أسطولنا وخدماتنا لنكون دائماً الخيار الأول والموثوق لكافة عملائنا من مقاولين ومطورين وأفراد.`
   const authorName = ceo.authorName || "الإدارة العامة"
   const authorTitle = ceo.authorTitle || (companyName ? `${companyName} لتأجير الحاويات ونقل الأنقاض` : "خدمات تأجير الحاويات ونقل الأنقاض")
-  const authorImage = ceo.authorImage || "/images/container-small.png"
+  const authorImage = ceo.authorImage || "/images/ceo.webp"
 
   return (
     <section className="py-24 bg-primary text-white relative">
@@ -34,7 +34,7 @@ export function CEOMessage() {
                 <img 
                   src={authorImage} 
                   alt={`${authorName} — ${authorTitle}`}
-                  className="w-full h-full object-cover"
+                    className="w-full h-full object-contain"
                    width={320}
                    height={320}
                    loading="lazy"

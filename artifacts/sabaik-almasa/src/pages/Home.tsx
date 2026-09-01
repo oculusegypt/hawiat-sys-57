@@ -15,6 +15,28 @@ import { HeroSlider } from "@/components/home/HeroSlider"
 
 type HomeSectionLoader = () => Promise<{ default: ComponentType<any> }>
 
+const DEFAULT_HOME_SECTIONS = [
+  "hero", "stats", "packages", "services", "about", "ceo", "how_it_works",
+  "why_choose_us", "areas", "values", "testimonials", "partners", "blog",
+  "service_request", "contact",
+]
+
+function canonicalHomeSectionId(id: string): string {
+  return id === "ceo_message" ? "ceo" : id
+}
+
+function normalizeHomeSectionOrder(order: string[]): string[] {
+  const source = order.length ? order : DEFAULT_HOME_SECTIONS
+  const seen = new Set<string>()
+  return source
+    .map(canonicalHomeSectionId)
+    .filter(id => {
+      if (seen.has(id)) return false
+      seen.add(id)
+      return true
+    })
+}
+
 const loadStatsBar: HomeSectionLoader = () =>
   import("@/components/home/StatsBar").then(({ StatsBar }) => ({ default: StatsBar }))
 const loadPackagesSection: HomeSectionLoader = () =>
@@ -141,7 +163,6 @@ function SectionBlock({
     case "about":
       return <DeferredHomeSection load={loadAboutSection} />
     case "ceo":
-    case "ceo_message":
       return <DeferredHomeSection load={loadCeoMessage} />
     case "how_it_works":
       return <DeferredHomeSection load={loadHowItWorksSection} />
@@ -264,6 +285,7 @@ export default function Home() {
 
   const homeTitle = "تأجير حاويات الرياض | طلب الحاويات ومخلفات البناء والهدم"
   const homeDescription = `تأجير حاويات الرياض وطلب الحاويات في الرياض لمخلفات البناء والهدم والمطاعم والمنشآت، مع حاويات نفايات وأنقاض وتوصيل وسحب سريع من ${companyName || "المنشأة"}.`
+  const normalizedHiddenSections = new Set(hiddenSections.map(canonicalHomeSectionId))
 
   useDocumentSEO({
     title: homeTitle,
@@ -307,8 +329,8 @@ export default function Home() {
       <Navbar />
 
       <main className="home-main text-center">
-        {(sectionsOrder.length ? sectionsOrder : ["hero", "stats", "packages", "services", "about", "ceo", "how_it_works", "why_choose_us", "areas", "values", "testimonials", "partners", "blog", "service_request", "contact"])
-          .filter(id => !hiddenSections.includes(id))
+        {normalizeHomeSectionOrder(sectionsOrder)
+          .filter(id => !normalizedHiddenSections.has(id))
           .map(id => (
             <SectionBlock
               key={id}

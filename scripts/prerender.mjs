@@ -536,7 +536,8 @@ function renderPage({
   <meta name="twitter:image" content="${esc(imgUrl)}" />
   <meta name="twitter:image:alt" content="${esc(imgAlt)}" />
 
-  <!-- Favicon -->
+  <!-- Favicon and Google Search icon -->
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
   <link rel="icon" type="image/png" sizes="512x512" href="/favicon-512x512.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="/favicon.png" />
   <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />

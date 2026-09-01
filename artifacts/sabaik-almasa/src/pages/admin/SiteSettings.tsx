@@ -1382,11 +1382,12 @@ function SectionsTab() {
         try {
           if (data.sections_order) {
             const parsed: string[] = JSON.parse(data.sections_order)
-            const merged = [...parsed, ...DEFAULT_SECTIONS_ORDER.filter(id => !parsed.includes(id))]
+            const canonical = [...new Set(parsed.map(id => id === "ceo_message" ? "ceo" : id))]
+            const merged = [...canonical, ...DEFAULT_SECTIONS_ORDER.filter(id => !canonical.includes(id))]
             setOrder(merged)
           }
           if (data.sections_hidden) {
-            setHidden(JSON.parse(data.sections_hidden) as string[])
+            setHidden((JSON.parse(data.sections_hidden) as string[]).map(id => id === "ceo_message" ? "ceo" : id))
           }
         } catch {}
         setLoading(false)
