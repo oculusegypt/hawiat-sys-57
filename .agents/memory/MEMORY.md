@@ -7,3 +7,4 @@
 - [Release validation parity](release-validation-parity.md) — local Hostinger gates and live probes can diverge until the verified archive is published.
 - [Financial test fixtures](financial-test-fixtures.md) — isolated financial tests need the complete schema and period dates aligned with the assertion.
 - [Hostinger PHP signing secret](hostinger-php-signing-secret.md) — archive-time placeholder replacement must leave PHP with a usable embedded secret when Hostinger has no env manager.
+- [Production live cache and routing](production-live-cache-and-routing.md) — authenticated responses and Arabic route redirects need final-body and cache-aware live probes.
