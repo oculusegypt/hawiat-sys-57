@@ -11,6 +11,7 @@
     "merge-client-database": "node ./merge-client-database.mjs",
     "repair-business-identity": "node ./repair-business-identity.mjs",
     "repair-seo-pages-content": "node ./repair-seo-pages-content.mjs",
+    "repair-public-content": "node ./repair-public-content.mjs",
     "check-business-identity": "node ./check-business-identity.mjs"
   }
 }

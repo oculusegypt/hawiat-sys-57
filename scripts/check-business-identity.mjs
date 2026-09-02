@@ -4,7 +4,7 @@
  * This is intentionally read-only and is safe to run in CI or before a build.
  */
 
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -14,11 +14,24 @@ const legacyPatterns = [
   /مؤسسة\s+تقي/giu,
   /Taqi Group Establishment/giu,
 ];
+const textExtensions = /\.(html?|js|css|json|xml|txt|php|webmanifest)$/i;
+function collectPublicFiles(directory) {
+  if (!existsSync(directory)) return [];
+  const files = [];
+  const visit = (current) => {
+    for (const entry of readdirSync(current, { withFileTypes: true })) {
+      const filePath = join(current, entry.name);
+      if (entry.isDirectory()) visit(filePath);
+      else if (textExtensions.test(entry.name)) files.push(filePath);
+    }
+  };
+  visit(directory);
+  return files;
+}
+
 const files = [
-  join(ROOT, "artifacts", "sabaik-almasa", "public", "llms.txt"),
-  join(ROOT, "artifacts", "sabaik-almasa", "public", "sitemap.xml"),
-  join(ROOT, "build_php", "llms.txt"),
-  join(ROOT, "build_php", "sitemap.xml"),
+  ...collectPublicFiles(join(ROOT, "artifacts", "sabaik-almasa", "public")),
+  ...collectPublicFiles(join(ROOT, "build_php")),
 ];
 
 const failures = [];
