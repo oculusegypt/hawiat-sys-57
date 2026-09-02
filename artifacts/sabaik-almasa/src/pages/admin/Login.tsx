@@ -29,6 +29,7 @@ export default function AdminLogin() {
         localStorage.setItem("admin_role", res.user.role)
         localStorage.setItem("admin_id", String(res.user.id))
         localStorage.setItem("admin_name", res.user.name)
+        localStorage.setItem("admin_permissions", JSON.stringify(res.user.permissions ?? []))
         setLocation(res.user.role === "driver" ? "/admin/work-orders" : "/admin")
       },
       onError: (err: any) => {

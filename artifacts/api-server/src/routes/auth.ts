@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, type Response } from "express";
 import { db } from "@workspace/db";
 import { adminsTable, resolvePermissions } from "@workspace/db";
 import { eq } from "drizzle-orm";
@@ -12,6 +12,48 @@ if (!TOKEN_SECRET) {
   throw new Error("SESSION_SECRET is required for API authentication");
 }
 const TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
+const ADMIN_TOKEN_COOKIE = "cleanflow_admin_token";
+
+function cookieValue(cookieHeader: string | undefined, name: string): string | null {
+  if (!cookieHeader) return null;
+  for (const part of cookieHeader.split(";")) {
+    const separator = part.indexOf("=");
+    if (separator < 0) continue;
+    if (part.slice(0, separator).trim() !== name) continue;
+    try {
+      return decodeURIComponent(part.slice(separator + 1).trim()) || null;
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
+export function getRequestToken(req: { headers: { authorization?: string; cookie?: string } }): string | null {
+  const authHeader = req.headers.authorization;
+  if (authHeader?.startsWith("Bearer ")) return authHeader.slice(7);
+  return cookieValue(req.headers.cookie, ADMIN_TOKEN_COOKIE);
+}
+
+function setAdminTokenCookie(res: Response, token: string): void {
+  res.cookie(ADMIN_TOKEN_COOKIE, token, {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    maxAge: TOKEN_TTL_MS,
+    path: "/",
+  });
+}
+
+function clearAdminTokenCookie(res: Response): void {
+  res.cookie(ADMIN_TOKEN_COOKIE, "", {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    maxAge: 0,
+    path: "/",
+  });
+}
 
 // ── Password helpers ──────────────────────────────────────────────────────────
 const PASSWORD_SALT = "cleanflow-password-salt";
@@ -95,15 +137,23 @@ router.post("/auth/login", async (req, res) => {
     await db.update(adminsTable).set({ passwordHash: newHash } as never).where(eq(adminsTable.id, admin.id));
   }
 
-  return res.json({ token: generateToken(admin.id), user: formatUser(admin) });
+  const token = generateToken(admin.id);
+  setAdminTokenCookie(res, token);
+  return res.json({ token, user: formatUser(admin) });
+});
+
+// ── POST /api/auth/logout ─────────────────────────────────────────────────────
+router.post("/auth/logout", async (_req, res) => {
+  clearAdminTokenCookie(res);
+  return res.json({ ok: true });
 });
 
 // ── GET /api/auth/me ──────────────────────────────────────────────────────────
 router.get("/auth/me", async (req, res) => {
   res.setHeader("Cache-Control", "no-store, private");
-  const authHeader = req.headers.authorization;
-  if (!authHeader?.startsWith("Bearer ")) return res.status(401).json({ error: "Unauthorized" });
-  const payload = verifyToken(authHeader.slice(7));
+  const token = getRequestToken(req);
+  if (!token) return res.status(401).json({ error: "Unauthorized" });
+  const payload = verifyToken(token);
   if (!payload) return res.status(401).json({ error: "Unauthorized" });
 
   const [admin] = await db.select().from(adminsTable).where(eq(adminsTable.id, payload.adminId));

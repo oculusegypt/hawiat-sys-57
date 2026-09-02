@@ -839,7 +839,37 @@ try {
             if (!empty($headers['Authorization'])) return $headers['Authorization'];
             if (!empty($headers['authorization'])) return $headers['authorization'];
         }
+        // Keep the admin session alive across refreshes even when the browser
+        // loses localStorage. The bearer header remains preferred so API
+        // clients can still use explicit tokens.
+        if (!empty($_COOKIE['cleanflow_admin_token'])) {
+            return 'Bearer ' . (string)$_COOKIE['cleanflow_admin_token'];
+        }
         return null;
+    }
+
+    function setAdminTokenCookie(string $token): void {
+        $secure = (!empty($_SERVER['HTTPS']) && strtolower((string)$_SERVER['HTTPS']) !== 'off')
+            || strtolower((string)($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '')) === 'https';
+        setcookie('cleanflow_admin_token', $token, [
+            'expires' => time() + (24 * 60 * 60),
+            'path' => '/',
+            'secure' => $secure,
+            'httponly' => true,
+            'samesite' => 'Lax',
+        ]);
+    }
+
+    function clearAdminTokenCookie(): void {
+        $secure = (!empty($_SERVER['HTTPS']) && strtolower((string)$_SERVER['HTTPS']) !== 'off')
+            || strtolower((string)($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '')) === 'https';
+        setcookie('cleanflow_admin_token', '', [
+            'expires' => time() - 3600,
+            'path' => '/',
+            'secure' => $secure,
+            'httponly' => true,
+            'samesite' => 'Lax',
+        ]);
     }
 
     function isRecentIso(?string $value, int $windowSeconds): bool {
@@ -2225,14 +2255,23 @@ try {
             exit;
         }
 
+        $token = generateToken((int)$admin['id']);
+        setAdminTokenCookie($token);
         echo json_encode([
-            'token' => generateToken((int)$admin['id']),
+            'token' => $token,
             'user' => formatUser($admin)
         ], JSON_UNESCAPED_UNICODE);
         exit;
     }
 
-    // 3. Auth: GET /api/auth/me
+    // 3. Auth: POST /api/auth/logout
+    if ($path === '/auth/logout' && $method === 'POST') {
+        clearAdminTokenCookie();
+        echo json_encode(['ok' => true], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
+    // 4. Auth: GET /api/auth/me
     if ($path === '/auth/me' && $method === 'GET') {
         header('Cache-Control: no-store, private');
         $authHeader = getAuthHeader();

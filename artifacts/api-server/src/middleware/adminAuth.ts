@@ -3,7 +3,7 @@
  * Verifies HMAC-signed Bearer token and attaches admin context.
  */
 import { type Request, type Response, type NextFunction } from "express";
-import { verifyToken } from "../routes/auth";
+import { getRequestToken, verifyToken } from "../routes/auth";
 import { db } from "@workspace/db";
 import { adminsTable, resolvePermissions, type AdminSection, ALL_SECTIONS } from "@workspace/db";
 import { eq } from "drizzle-orm";
@@ -15,12 +15,12 @@ export interface AdminRequest extends Request {
 }
 
 export function requireAdmin(req: Request, res: Response, next: NextFunction): void {
-  const auth = req.headers.authorization;
-  if (!auth?.startsWith("Bearer ")) {
+  const token = getRequestToken(req);
+  if (!token) {
     res.status(401).json({ error: "Unauthorized" });
     return;
   }
-  const payload = verifyToken(auth.slice(7));
+  const payload = verifyToken(token);
   if (!payload) {
     res.status(401).json({ error: "Invalid or expired token" });
     return;

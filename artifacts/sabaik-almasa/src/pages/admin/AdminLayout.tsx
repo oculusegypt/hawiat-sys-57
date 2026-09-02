@@ -482,61 +482,77 @@ export default function AdminLayout({
 
   useEffect(() => {
     const token = localStorage.getItem("admin_token");
-    if (!token) {
+    const clearLocalSession = () => {
+      localStorage.removeItem("admin_token");
+      localStorage.removeItem("admin_role");
+      localStorage.removeItem("admin_id");
+      localStorage.removeItem("admin_name");
+      localStorage.removeItem("admin_permissions");
+    };
+    const restoreCachedIdentity = () => {
+      const cachedRole = localStorage.getItem("admin_role") ?? "";
+      const cachedName = localStorage.getItem("admin_name") ?? "";
+      let cachedPermissions: string[] = [];
+      try {
+        const parsed = JSON.parse(localStorage.getItem("admin_permissions") ?? "[]");
+        if (Array.isArray(parsed)) cachedPermissions = parsed.filter((item): item is string => typeof item === "string");
+      } catch {}
+      if (cachedRole) {
+        setUserRole(cachedRole);
+        setUserName(cachedName);
+        setPermissions(cachedPermissions);
+      }
       setAuthLoading(false);
-      setLocation("/admin/login");
-      return;
-    }
+    };
+    const verifySession = async () => {
+      const request = (includeToken: boolean) => fetch(`${API_BASE}/api/auth/me?session_check=${Date.now()}`, {
+        cache: "no-store",
+        credentials: "include",
+        headers: includeToken && token ? { Authorization: `Bearer ${token}` } : {},
+      });
 
-    fetch(`${API_BASE}/api/auth/me`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-      .then((r) => {
-        if (!r.ok) {
-          localStorage.removeItem("admin_token");
-          localStorage.removeItem("admin_role");
-          localStorage.removeItem("admin_id");
-          localStorage.removeItem("admin_name");
-          setAuthLoading(false);
-          setLocation("/admin/login");
-          return null;
-        }
-        return r.json();
-      })
-      .then(
-        (
-          data: {
-            role: string;
-            permissions: string[];
-            name: string;
-            id: number;
-          } | null,
-        ) => {
-          if (!data) return;
-          setPermissions(
-            Array.isArray(data.permissions) ? data.permissions : [],
-          );
-          setUserRole(data.role);
-          setUserName(data.name);
-          localStorage.setItem("admin_role", data.role);
-          localStorage.setItem("admin_id", String(data.id));
-          localStorage.setItem("admin_name", data.name);
-          setAuthLoading(false);
-        },
-      )
-      .catch(() => {
-        localStorage.removeItem("admin_token");
-        localStorage.removeItem("admin_role");
-        localStorage.removeItem("admin_id");
-        localStorage.removeItem("admin_name");
+      let response = await request(true);
+      // A stale local token can coexist with a valid HttpOnly cookie. Retry
+      // without the bearer header so the durable browser session can recover.
+      if (response.status === 401 && token) response = await request(false);
+      if (response.status === 401) {
+        clearLocalSession();
         setAuthLoading(false);
         setLocation("/admin/login");
-      });
+        return;
+      }
+      if (!response.ok) {
+        // Do not log the admin out because of a temporary 5xx/network issue.
+        restoreCachedIdentity();
+        return;
+      }
+
+      const data: {
+        role: string;
+        permissions: string[];
+        name: string;
+        id: number;
+      } = await response.json();
+      setPermissions(Array.isArray(data.permissions) ? data.permissions : []);
+      setUserRole(data.role);
+      setUserName(data.name);
+      localStorage.setItem("admin_role", data.role);
+      localStorage.setItem("admin_id", String(data.id));
+      localStorage.setItem("admin_name", data.name);
+      localStorage.setItem("admin_permissions", JSON.stringify(data.permissions ?? []));
+      setAuthLoading(false);
+    };
+
+    verifySession().catch(() => {
+      // Keep the session on transient failures; the next API request can use
+      // the bearer token or the HttpOnly cookie and recover normally.
+      restoreCachedIdentity();
+    });
   }, [setLocation]);
 
   useEffect(() => {
     const token = localStorage.getItem("admin_token");
-    if (!token) return;
+    if (!token && !localStorage.getItem("admin_role")) return;
     // Driver accounts use the dedicated work-orders surface and do not have
     // access to management sidebar counters.
     if (localStorage.getItem("admin_role") === "driver") return;
@@ -558,10 +574,11 @@ export default function AdminLayout({
       try {
         const sRes = await fetch(`${API_BASE}/api/admin/sidebar-counts`, {
           headers: {
-            Authorization: `Bearer ${token}`,
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
             "Cache-Control": "no-cache",
           },
           cache: "no-store",
+          credentials: "include",
         });
         if (sRes.status === 401) {
           stopped = true;
@@ -625,10 +642,17 @@ export default function AdminLayout({
   }, [drawerOpen]);
 
   const handleLogout = () => {
+    const token = localStorage.getItem("admin_token");
+    void fetch(`${API_BASE}/api/auth/logout`, {
+      method: "POST",
+      credentials: "include",
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    }).catch(() => {});
     localStorage.removeItem("admin_token");
     localStorage.removeItem("admin_role");
     localStorage.removeItem("admin_id");
     localStorage.removeItem("admin_name");
+    localStorage.removeItem("admin_permissions");
     setLocation("/admin/login");
   };
 

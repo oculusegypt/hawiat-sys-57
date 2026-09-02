@@ -732,7 +732,7 @@ try {
 
     function sessionSecret(): string {
         $secret = trim((string)getenv('SESSION_SECRET'));
-        $embeddedSecret = '7614aca7a6a10538da6a78bd815cb8bd160b0b91e553ef33b72a4a01ba55595c';
+        $embeddedSecret = '462109f3b9137e1cad62256f633cf6480bbb9dce9761a929b42f5abb013c6e43';
         if ($secret === '' && strlen($embeddedSecret) === 64) {
             $secret = $embeddedSecret;
         }
@@ -839,7 +839,37 @@ try {
             if (!empty($headers['Authorization'])) return $headers['Authorization'];
             if (!empty($headers['authorization'])) return $headers['authorization'];
         }
+        // Keep the admin session alive across refreshes even when the browser
+        // loses localStorage. The bearer header remains preferred so API
+        // clients can still use explicit tokens.
+        if (!empty($_COOKIE['cleanflow_admin_token'])) {
+            return 'Bearer ' . (string)$_COOKIE['cleanflow_admin_token'];
+        }
         return null;
+    }
+
+    function setAdminTokenCookie(string $token): void {
+        $secure = (!empty($_SERVER['HTTPS']) && strtolower((string)$_SERVER['HTTPS']) !== 'off')
+            || strtolower((string)($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '')) === 'https';
+        setcookie('cleanflow_admin_token', $token, [
+            'expires' => time() + (24 * 60 * 60),
+            'path' => '/',
+            'secure' => $secure,
+            'httponly' => true,
+            'samesite' => 'Lax',
+        ]);
+    }
+
+    function clearAdminTokenCookie(): void {
+        $secure = (!empty($_SERVER['HTTPS']) && strtolower((string)$_SERVER['HTTPS']) !== 'off')
+            || strtolower((string)($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '')) === 'https';
+        setcookie('cleanflow_admin_token', '', [
+            'expires' => time() - 3600,
+            'path' => '/',
+            'secure' => $secure,
+            'httponly' => true,
+            'samesite' => 'Lax',
+        ]);
     }
 
     function isRecentIso(?string $value, int $windowSeconds): bool {
@@ -2225,14 +2255,23 @@ try {
             exit;
         }
 
+        $token = generateToken((int)$admin['id']);
+        setAdminTokenCookie($token);
         echo json_encode([
-            'token' => generateToken((int)$admin['id']),
+            'token' => $token,
             'user' => formatUser($admin)
         ], JSON_UNESCAPED_UNICODE);
         exit;
     }
 
-    // 3. Auth: GET /api/auth/me
+    // 3. Auth: POST /api/auth/logout
+    if ($path === '/auth/logout' && $method === 'POST') {
+        clearAdminTokenCookie();
+        echo json_encode(['ok' => true], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
+    // 4. Auth: GET /api/auth/me
     if ($path === '/auth/me' && $method === 'GET') {
         header('Cache-Control: no-store, private');
         $authHeader = getAuthHeader();
