@@ -9,3 +9,4 @@
 - [Hostinger PHP signing secret](hostinger-php-signing-secret.md) — archive-time placeholder replacement must leave PHP with a usable embedded secret when Hostinger has no env manager.
 - [Production live cache and routing](production-live-cache-and-routing.md) — authenticated responses and Arabic route redirects need final-body and cache-aware live probes.
 - [Hostinger FTP TLS validation](hostinger-ftp-tls-validation.md) — never bypass certificate validation or fall back to plaintext FTP when the configured alias has a TLS hostname mismatch.
+- [SEO noindex error policy](seo-noindex-error-policy.md) — only confirmed missing pages should become noindex; transient API failures must preserve indexability.

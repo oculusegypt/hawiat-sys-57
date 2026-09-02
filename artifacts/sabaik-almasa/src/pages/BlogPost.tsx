@@ -50,6 +50,10 @@ function setMeta(name: string, content: string, attr = "name") {
   el.content = content
 }
 
+function isNotFoundError(error: unknown): boolean {
+  return error instanceof Error && error.message === "not-found"
+}
+
 function normalizeArticleContent(html: string): string {
   return html
     .replace(/<!doctype\b[^>]*>/gi, "")
@@ -318,15 +322,15 @@ export default function BlogPost() {
   useDocumentSchema("blog-post-schema", blogSchema, Boolean(post && isLoaded && !notFound))
 
   useEffect(() => {
-    if (isLoaded && (!post || notFound)) setMeta("robots", "noindex, follow")
-  }, [isLoaded, post, notFound])
+    if (isLoaded && notFound) setMeta("robots", "noindex, follow")
+  }, [isLoaded, notFound])
 
   useEffect(() => {
     if (!slug) return
     setLoading(true)
     fetch(`${API_BASE}/api/posts/${encodeURIComponent(slug)}`)
       .then(r => {
-        if (!r.ok) { setMeta("robots", "noindex, follow"); setNotFound(true); setLoading(false); return null }
+        if (!r.ok) throw new Error(r.status === 404 ? "not-found" : "request-failed")
         return r.json()
       })
       .then(d => {
@@ -378,7 +382,12 @@ export default function BlogPost() {
         if (existing) existing.remove()
 
       })
-      .catch(() => { setMeta("robots", "noindex, follow"); setNotFound(true); setLoading(false) })
+      .catch(error => {
+        const missing = isNotFoundError(error)
+        if (missing) setMeta("robots", "noindex, follow")
+        setNotFound(missing)
+        setLoading(false)
+      })
 
   }, [slug, companyName, isLoaded])
 

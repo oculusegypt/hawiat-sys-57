@@ -63,6 +63,10 @@ function removeMeta(name: string, attribute = "name") {
   document.querySelector(`meta[${attribute}="${name}"]`)?.remove()
 }
 
+function isNotFoundError(error: unknown): boolean {
+  return error instanceof Error && error.message === "not-found"
+}
+
 function toAbsoluteAsset(value: string): string {
   if (!value) return ""
   if (/^https?:\/\//i.test(value)) return value
@@ -147,7 +151,9 @@ export default function SeoPage() {
     fetch(`${API_BASE}/api/pages/${encodeURIComponent(slug)}`, { cache: "no-store" })
       .then(async response => {
         const data = await response.json().catch(() => null)
-        if (!response.ok) throw new Error(data?.error || "not-found")
+        if (!response.ok) {
+          throw new Error(response.status === 404 ? "not-found" : "request-failed")
+        }
         return data as SeoPageData
       })
       .then(data => {
@@ -216,11 +222,12 @@ export default function SeoPage() {
         document.head.appendChild(canonicalLink)
 
       })
-      .catch(() => {
+      .catch(error => {
         if (cancelled) return
-        setMeta("robots", "noindex, follow")
+        const missing = isNotFoundError(error)
+        if (missing) setMeta("robots", "noindex, follow")
         setPage(null)
-        setNotFound(true)
+        setNotFound(missing)
         setLoading(false)
       })
 
