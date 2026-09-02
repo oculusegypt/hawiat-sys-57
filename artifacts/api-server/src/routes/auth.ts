@@ -100,6 +100,7 @@ router.post("/auth/login", async (req, res) => {
 
 // ── GET /api/auth/me ──────────────────────────────────────────────────────────
 router.get("/auth/me", async (req, res) => {
+  res.setHeader("Cache-Control", "no-store, private");
   const authHeader = req.headers.authorization;
   if (!authHeader?.startsWith("Bearer ")) return res.status(401).json({ error: "Unauthorized" });
   const payload = verifyToken(authHeader.slice(7));

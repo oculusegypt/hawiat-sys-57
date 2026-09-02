@@ -33,6 +33,8 @@ export function PublicRoutes() {
         <Route path="/" component={Home} />
         <Route path="/blog/:slug" component={BlogPost} />
         <Route path="/blog" component={Blog} />
+        <Route path="/articles"><Redirect to="/blog" /></Route>
+        <Route path="/articles/"><Redirect to="/blog" /></Route>
         <Route path="/المدونة" component={Blog} />
         <Route path="/المدونة/:slug" component={BlogPost} />
         <Route path="/news/:slug">

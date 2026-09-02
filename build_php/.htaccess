@@ -5,7 +5,7 @@ DirectoryIndex index.html index.php
   RewriteBase /
 
   # ── Pass request headers through Apache (Hostinger strips them by default) ──
-  RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization},E=HTTP_X_HTTP_METHOD_OVERRIDE:%{HTTP:X-HTTP-Method-Override}]
+  RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization},E=HTTP_X_HTTP_METHOD_OVERRIDE:%{HTTP:X-HTTP-Method-Override},E=HTTP_X_VISITOR_SESSION:%{HTTP:X-Visitor-Session}]
 
   # Block access to sensitive directories
   RewriteRule ^data/  - [F,L]
@@ -251,11 +251,17 @@ DirectoryIndex index.html index.php
   RewriteRule ^سياسة-الخصوصية/?$ /privacy [R=301,L,NE]
   RewriteRule ^من-نحن/?$ /about [R=301,L,NE]
 
+  # The Arabic Al-Shifa route is the canonical compatibility page. Keep its
+  # approved noindex HTML available, while converging the old ASCII alias.
+  RewriteRule ^areas/al-shifa/?$ /areas/حي-الشفا [R=301,L,NE]
+  RewriteRule ^areas/حي-الشفا/?$ areas/حي-الشفا/index.html [END,NE]
+
   # Directory indexes can be disabled by the host. Resolve public SEO hubs
   # explicitly so /blog/ and /areas/ never become a 403 or SPA soft fallback.
    RewriteRule ^services/?$ services/index.html [END]
    RewriteRule ^blog/?$ blog/index.html [END]
   RewriteRule ^areas/?$ areas/index.html [END]
+  RewriteRule ^articles/?$ /blog [R=301,L,NE]
 
   # Allow direct access to existing files and directories
   RewriteCond %{REQUEST_FILENAME} -f [OR]
@@ -273,9 +279,12 @@ DirectoryIndex index.html index.php
   # real 404 so stale HTML cannot trigger a module MIME-type error.
   RewriteRule ^assets/ - [END]
 
-  # SPA fallback — everything else loads index.html
-  RewriteRule ^  index.html  [L]
+  # Every supported public route is prerendered above. Do not turn unknown
+  # URLs into homepage HTML (soft 404s); let Apache return a real 404.
+  RewriteRule ^ - [END]
 </IfModule>
+
+ErrorDocument 404 /404.html
 
 # Compress text responses on Apache where the hosting plan exposes the module.
 <IfModule mod_deflate.c>

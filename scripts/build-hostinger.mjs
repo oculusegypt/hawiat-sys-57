@@ -721,6 +721,10 @@ function compatibilityRedirectRules(root) {
       }
       const source = `/${relative}`;
       const key = `${source} ${target}`;
+      // A noindex page whose canonical is itself is an intentional
+      // compatibility destination (for example the Arabic neighborhood
+      // routes). Do not generate a redirect loop for it.
+      if (target === source) continue;
       if (seen.has(key)) continue;
       seen.add(key);
       // These generated paths contain Arabic, digits and hyphens. Escape the
@@ -735,6 +739,18 @@ function compatibilityRedirectRules(root) {
 
 const compatibilityRedirects = compatibilityRedirectRules(buildPhpDir);
 
+writeFileSync(join(buildPhpDir, "404.html"), `<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>الصفحة غير موجودة | سبائك الماسة</title>
+  <style>body{font-family:Arial,sans-serif;background:#f8fafc;color:#1e3a5f;margin:0;padding:12vh 24px;text-align:center}main{max-width:620px;margin:auto;background:#fff;border-radius:18px;padding:42px 28px;box-shadow:0 12px 40px #1e3a5f18}h1{font-size:34px;margin:0 0 14px}p{color:#475569;line-height:1.8}a{display:inline-block;margin-top:14px;background:#1e3a5f;color:#fff;padding:12px 22px;border-radius:10px;text-decoration:none}</style>
+</head>
+<body><main><h1>الصفحة غير موجودة</h1><p>عذراً، لا يوجد محتوى على هذا العنوان.</p><a href="/">العودة إلى الرئيسية</a></main></body>
+</html>`);
+
 writeFileSync(join(ROOT, "build_php/.htaccess"), `DirectoryIndex index.html index.php
 
 <IfModule mod_rewrite.c>
@@ -742,7 +758,7 @@ writeFileSync(join(ROOT, "build_php/.htaccess"), `DirectoryIndex index.html inde
   RewriteBase /
 
   # ── Pass request headers through Apache (Hostinger strips them by default) ──
-  RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization},E=HTTP_X_HTTP_METHOD_OVERRIDE:%{HTTP:X-HTTP-Method-Override}]
+  RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization},E=HTTP_X_HTTP_METHOD_OVERRIDE:%{HTTP:X-HTTP-Method-Override},E=HTTP_X_VISITOR_SESSION:%{HTTP:X-Visitor-Session}]
 
   # Block access to sensitive directories
   RewriteRule ^data/  - [F,L]
@@ -758,11 +774,17 @@ writeFileSync(join(ROOT, "build_php/.htaccess"), `DirectoryIndex index.html inde
   # noindex HTML copies. The generated targets are the URLs listed in sitemap.
 ${compatibilityRedirects || "  # No compatibility redirects were generated."}
 
+  # The Arabic Al-Shifa route is the canonical compatibility page. Keep its
+  # approved noindex HTML available, while converging the old ASCII alias.
+  RewriteRule ^areas/al-shifa/?$ /areas/حي-الشفا [R=301,L,NE]
+  RewriteRule ^areas/حي-الشفا/?$ areas/حي-الشفا/index.html [END,NE]
+
   # Directory indexes can be disabled by the host. Resolve public SEO hubs
   # explicitly so /blog/ and /areas/ never become a 403 or SPA soft fallback.
    RewriteRule ^services/?$ services/index.html [END]
    RewriteRule ^blog/?$ blog/index.html [END]
   RewriteRule ^areas/?$ areas/index.html [END]
+  RewriteRule ^articles/?$ /blog [R=301,L,NE]
 
   # Allow direct access to existing files and directories
   RewriteCond %{REQUEST_FILENAME} -f [OR]
@@ -780,9 +802,12 @@ ${compatibilityRedirects || "  # No compatibility redirects were generated."}
   # real 404 so stale HTML cannot trigger a module MIME-type error.
   RewriteRule ^assets/ - [END]
 
-  # SPA fallback — everything else loads index.html
-  RewriteRule ^  index.html  [L]
+  # Every supported public route is prerendered above. Do not turn unknown
+  # URLs into homepage HTML (soft 404s); let Apache return a real 404.
+  RewriteRule ^ - [END]
 </IfModule>
+
+ErrorDocument 404 /404.html
 
 # Compress text responses on Apache where the hosting plan exposes the module.
 <IfModule mod_deflate.c>
@@ -832,7 +857,7 @@ writeFileSync(join(ROOT, "build_php/api/.htaccess"), `DirectoryIndex index.php
   RewriteEngine On
 
   # ── Pass request headers through Apache (Hostinger strips them by default) ──
-  RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization},E=HTTP_X_HTTP_METHOD_OVERRIDE:%{HTTP:X-HTTP-Method-Override}]
+  RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization},E=HTTP_X_HTTP_METHOD_OVERRIDE:%{HTTP:X-HTTP-Method-Override},E=HTTP_X_VISITOR_SESSION:%{HTTP:X-Visitor-Session}]
 
   RewriteRule ^ index.php [L,QSA]
 </IfModule>

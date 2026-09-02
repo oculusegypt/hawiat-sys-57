@@ -10,6 +10,11 @@ import { FaWhatsapp } from "react-icons/fa"
 import { Link } from "wouter"
 import { useSiteSettings } from "@/context/SiteSettingsContext"
 import { PackageFormMessage } from "@/components/chat/PackageFormMessage"
+import { getVisitorTracking } from "@/lib/visitorAttribution"
+
+function visitorRequest(): RequestInit {
+  return { headers: { "X-Visitor-Session": getVisitorTracking().sessionId } }
+}
 
 function normalizePhone(value: string) {
   const digits = value.replace(/\D/g, "")
@@ -57,12 +62,14 @@ export default function Chat() {
   const { mutate: createConv, isPending: isCreating } = useCreateConversation()
   const { data: conversation } = useGetConversation(conversationId as number, {
     query: { enabled: !!conversationId } as any,
+    request: visitorRequest(),
   })
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data: messages, refetch } = useGetMessages(conversationId as number, {
     query: { enabled: !!conversationId, refetchInterval: 5000 } as any,
+    request: visitorRequest(),
   })
-  const { mutate: sendMsg, isPending: isSending } = useSendMessage()
+  const { mutate: sendMsg, isPending: isSending } = useSendMessage({ request: visitorRequest() })
   const { data: packages = [] } = useGetContainers()
 
   useEffect(() => {

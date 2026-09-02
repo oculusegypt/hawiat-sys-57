@@ -40,7 +40,7 @@ if ($allowedCorsOrigin !== '') {
     header('Vary: Origin');
 }
 header('Access-Control-Allow-Methods: GET, POST, PATCH, PUT, DELETE, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type, Authorization, Idempotency-Key, X-Requested-With, X-HTTP-Method-Override');
+header('Access-Control-Allow-Headers: Content-Type, Authorization, Idempotency-Key, X-Requested-With, X-HTTP-Method-Override, X-Visitor-Session');
 
 // Hostinger shared plans may still run PHP 7.4. Keep the production API
 // parseable and functional there instead of relying on PHP 8-only helpers.
@@ -729,7 +729,7 @@ try {
 
     function sessionSecret(): string {
         $secret = trim((string)getenv('SESSION_SECRET'));
-        $embeddedSecret = 'f4b63d7d45bac58f27884bacd3bba24e94840b2a64e936a7a2d403622068ae3d';
+        $embeddedSecret = '38864a15817736696dc5d231fd6f2ba94a769ec6454ba09b0b6456c62130f86f';
         if ($secret === '' && strlen($embeddedSecret) === 64) {
             $secret = $embeddedSecret;
         }
@@ -922,6 +922,31 @@ try {
             }
         }
         return $admin;
+    }
+
+    /**
+     * Public chat can read or write only the conversation linked to the
+     * visitor session that the site recorded. Inbox operations always use the
+     * normal role/section authorization path.
+     */
+    function requireConversationAccess(PDO $pdo, int $conversationId, bool $adminPath = false): ?array {
+        if ($adminPath || getAuthHeader() !== null) {
+            return requireAdminAccess($pdo, 'conversations', false, false, true);
+        }
+        $sessionId = trim((string)($_SERVER['HTTP_X_VISITOR_SESSION'] ?? ''));
+        if ($conversationId <= 0 || $sessionId === '') {
+            http_response_code(401);
+            echo json_encode(['error' => 'Unauthorized'], JSON_UNESCAPED_UNICODE);
+            exit;
+        }
+        $stmt = $pdo->prepare("SELECT conversation_id FROM active_visitors WHERE session_id = :session AND conversation_id = :conversation LIMIT 1");
+        $stmt->execute([':session' => substr($sessionId, 0, 160), ':conversation' => $conversationId]);
+        if (!$stmt->fetch()) {
+            http_response_code(403);
+            echo json_encode(['error' => 'لا تملك صلاحية الوصول إلى هذه المحادثة'], JSON_UNESCAPED_UNICODE);
+            exit;
+        }
+        return null;
     }
 
     function compressUploadedImage(string $source, string $target): bool {
@@ -1985,6 +2010,8 @@ try {
             requireAdminAccess($pdo, 'notifications', false, false, true);
         } elseif ($path === '/admin/uploads') {
             requireAdminAccess($pdo, 'settings', false, false, true);
+        } elseif (str_starts_with((string)$path, '/admin/conversations')) {
+            requireAdminAccess($pdo, 'conversations', false, false, true);
         } else {
             $contentSections = [
                 '/admin/posts' => 'blog',
@@ -2205,6 +2232,7 @@ try {
 
     // 3. Auth: GET /api/auth/me
     if ($path === '/auth/me' && $method === 'GET') {
+        header('Cache-Control: no-store, private');
         $authHeader = getAuthHeader();
         if (!$authHeader || !preg_match('#^Bearer\s+(.+)#i', $authHeader, $matches)) {
             http_response_code(401);
@@ -5905,6 +5933,7 @@ try {
 
     // ── 34. CONVERSATIONS: /api/conversations ──
     if (($path === '/conversations' || $path === '/admin/conversations') && $method === 'GET') {
+        requireAdminAccess($pdo, 'conversations', false, false, true);
         try {
             $staleCutoff = date('c', time() - 300);
             $pdo->prepare("DELETE FROM active_visitors WHERE last_seen < :cutoff")->execute([':cutoff' => $staleCutoff]);
@@ -5954,6 +5983,17 @@ try {
                 ':now' => $now
             ]);
             $newId = (int)$pdo->lastInsertId();
+            $visitorSession = trim((string)($_SERVER['HTTP_X_VISITOR_SESSION'] ?? ''));
+            if ($visitorSession !== '') {
+                $visitorStmt = $pdo->prepare("INSERT INTO active_visitors (session_id, page, device_type, conversation_id, client_name, phone, last_seen) VALUES (:session_id, '/chat', 'desktop', :conversation_id, :client_name, :phone, :last_seen) ON CONFLICT(session_id) DO UPDATE SET conversation_id = excluded.conversation_id, client_name = excluded.client_name, phone = excluded.phone, last_seen = excluded.last_seen");
+                $visitorStmt->execute([
+                    ':session_id' => substr($visitorSession, 0, 160),
+                    ':conversation_id' => $newId,
+                    ':client_name' => (string)($input['clientName'] ?? 'عميل'),
+                    ':phone' => (string)($input['phone'] ?? ''),
+                    ':last_seen' => $now,
+                ]);
+            }
             $notifStmt = $pdo->prepare("INSERT INTO notifications (title, message, type, is_read, ref_id, ref_type, created_at) VALUES (:title, :msg, 'chat', 0, :ref_id, 'conversation', :now)");
             $notifStmt->execute([
                 ':title' => 'محادثة جديدة',
@@ -6091,6 +6131,7 @@ try {
 
     if (preg_match('#^/(?:admin/)?conversations/(\d+)$#', $path, $m) && $method === 'GET') {
         $id = (int)$m[1];
+        requireConversationAccess($pdo, $id, str_starts_with((string)$path, '/admin/'));
         $stmt = $pdo->prepare("SELECT * FROM conversations WHERE id = :id LIMIT 1");
         $stmt->execute([':id' => $id]);
         $c = $stmt->fetch();
@@ -6131,6 +6172,7 @@ try {
             echo json_encode(['error' => 'نوع المرسل غير صحيح'], JSON_UNESCAPED_UNICODE);
             exit;
         }
+        requireConversationAccess($pdo, $id, $senderType === 'admin' || str_starts_with((string)$path, '/admin/'));
         $field = $senderType === 'client' ? 'client_typing_at' : 'admin_typing_at';
         $value = ($input['isTyping'] ?? true) === false ? null : date('c');
         $stmt = $pdo->prepare("UPDATE conversations SET {$field} = :value WHERE id = :id");
@@ -6141,6 +6183,7 @@ try {
 
     if (preg_match('#^/(?:admin/)?conversations/(\d+)/read$#', $path, $m) && $method === 'POST') {
         $id = (int)$m[1];
+        requireAdminAccess($pdo, 'conversations', false, false, true);
         $stmt = $pdo->prepare("UPDATE messages SET is_read = 'true' WHERE conversation_id = :id AND sender_type = 'client'");
         $stmt->execute([':id' => $id]);
         $pdo->prepare("UPDATE conversations SET unread_count = 0 WHERE id = :id")->execute([':id' => $id]);
@@ -6150,6 +6193,7 @@ try {
 
     if (preg_match('#^/(?:admin/)?conversations/(\d+)/messages$#', $path, $m) && $method === 'GET') {
         $id = (int)$m[1];
+        requireConversationAccess($pdo, $id, str_starts_with((string)$path, '/admin/'));
         try {
             $stmt = $pdo->prepare("SELECT * FROM messages WHERE conversation_id = :id ORDER BY created_at ASC, id ASC");
             $stmt->execute([':id' => $id]);
@@ -6190,6 +6234,13 @@ try {
         $locationLng = isset($input['locationLng']) && $input['locationLng'] !== '' ? (string)$input['locationLng'] : null;
         $locationLabel = isset($input['locationLabel']) && $input['locationLabel'] !== '' ? (string)$input['locationLabel'] : null;
         $now = date('c');
+
+        if (!in_array($senderType, ['client', 'admin'], true)) {
+            http_response_code(400);
+            echo json_encode(['error' => 'نوع المرسل غير صحيح'], JSON_UNESCAPED_UNICODE);
+            exit;
+        }
+        requireConversationAccess($pdo, $convId, $senderType === 'admin' || str_starts_with((string)$path, '/admin/'));
 
         try {
             $isClientMessage = $senderType === 'client';

@@ -1811,6 +1811,57 @@ saveSimplePage({
     </p>`,
 });
 
+// These category hubs are canonical, crawlable landing pages. They must be
+// rendered from the same database rows as the individual container pages so
+// the HTML, runtime route, inventory, and sitemap cannot drift apart.
+const containerCategoryPages = [
+  {
+    slug: "debris",
+    title: `حاويات الأنقاض ومخلفات البناء بالرياض | ${siteCompanyName}`,
+    description: "حاويات مخصصة لمخلفات البناء والترميم والأنقاض مع خدمة التوصيل والنقل داخل الرياض.",
+    heading: "حاويات الأنقاض ومخلفات البناء",
+    category: "debris",
+  },
+  {
+    slug: "waste",
+    title: `حاويات النفايات للمنشآت بالرياض | ${siteCompanyName}`,
+    description: "حلول حاويات النفايات للمنشآت والمطاعم والمجمعات والمشاريع مع ترتيب دوري حسب احتياج الموقع.",
+    heading: "حاويات النفايات للمنشآت",
+    category: "waste",
+  },
+  {
+    slug: "contract",
+    title: `عقود الحاويات والنظافة بالرياض | ${siteCompanyName}`,
+    description: "عقود مرنة لإدارة الحاويات والنفايات للمشاريع والمنشآت في الرياض مع متابعة تشغيلية واضحة.",
+    heading: "عقود الحاويات والنظافة",
+    category: "contract",
+  },
+];
+
+for (const categoryPage of containerCategoryPages) {
+  const categoryContainers = containers.filter((container) => container.category === categoryPage.category);
+  saveSimplePage({
+    relPath: `containers/${categoryPage.slug}`,
+    title: categoryPage.title,
+    description: normalizeMetaDescription(categoryPage.description, categoryPage.heading),
+    canonicalPath: `/containers/${categoryPage.slug}`,
+    keywords: `${categoryPage.heading}, تأجير حاويات بالرياض, ${siteCompanyName}`,
+    breadcrumbs: [
+      { name: "الحاويات والباقات", path: "/containers" },
+      { name: categoryPage.heading, path: `/containers/${categoryPage.slug}` },
+    ],
+    bodyContent: `
+      <h1 style="font-size:clamp(24px,4vw,36px);font-weight:900;color:#1e3a5f;margin:0 0 16px">${esc(categoryPage.heading)}</h1>
+      <p style="font-size:17px;color:#4a5568;line-height:1.8;margin:0 0 24px">${esc(categoryPage.description)}</p>
+      <ul style="margin:0;padding-right:22px;color:#334155;line-height:2">
+        ${categoryContainers.map((container) => `
+          <li><a href="${esc(publicUrl(`/containers/${entityPath({ slug: container.seo_slug, title: container.name, id: container.id, fallback: "container" })}`))}" style="color:#1d4ed8;font-weight:700">${esc(container.name)}</a>${container.description ? ` — ${esc(container.description)}` : ""}</li>
+        `).join("")}
+      </ul>
+      <p style="margin-top:24px;line-height:1.8"><a href="${esc(publicUrl("/contact"))}" style="color:#1d4ed8;font-weight:800">تواصل معنا لطلب عرض مناسب لموقعك</a></p>`,
+  });
+}
+
 // ══════════════════════════════════════════════════════════════════════════════
 // 4. صفحات SEO المخصصة (seo_pages)
 // ══════════════════════════════════════════════════════════════════════════════

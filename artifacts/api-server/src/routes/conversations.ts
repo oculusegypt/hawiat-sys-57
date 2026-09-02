@@ -10,20 +10,57 @@ const router = Router();
 const ONLINE_WINDOW_MS = 90 * 1000;
 const TYPING_WINDOW_MS = 7 * 1000;
 
-// Keep the API boundary aligned with the admin navigation permissions. Public
-// conversation routes remain public; only the /admin namespace is restricted.
-router.use("/admin/conversations", requireAdmin, requireNonDriver, requireSectionPermission("conversations"));
-
-function requireAdminSender(req: Request, res: Response, next: NextFunction): void {
-  if (req.body?.senderType !== "admin") {
-    next();
+// The public site may only read its own conversation after it proves the
+// visitor session that was associated with that conversation. Inbox listing
+// and every administrative mutation remain role-protected.
+async function requireConversationAccess(req: Request, res: Response, next: NextFunction): Promise<void> {
+  const isAdminPath = req.originalUrl.split("?")[0].includes("/api/admin/conversations/");
+  const bearer = req.headers.authorization;
+  if (isAdminPath || bearer?.startsWith("Bearer ")) {
+    requireAdmin(req, res, () => {
+      requireNonDriver(req, res, () => {
+        requireSectionPermission("conversations")(req, res, next);
+      });
+    });
     return;
   }
-  requireAdmin(req, res, () => {
-    requireNonDriver(req, res, () => {
-      requireSectionPermission("conversations")(req, res, next);
+
+  const id = Number(req.params.id);
+  const sessionId = typeof req.headers["x-visitor-session"] === "string"
+    ? req.headers["x-visitor-session"].trim().slice(0, 160)
+    : "";
+  if (!Number.isInteger(id) || id <= 0 || !sessionId) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+  const [visitor] = await db.select({ conversationId: activeVisitorsTable.conversationId })
+    .from(activeVisitorsTable)
+    .where(and(
+      eq(activeVisitorsTable.sessionId, sessionId),
+      eq(activeVisitorsTable.conversationId, id),
+    ))
+    .limit(1);
+  if (!visitor) {
+    res.status(403).json({ error: "لا تملك صلاحية الوصول إلى هذه المحادثة" });
+    return;
+  }
+  next();
+}
+
+function requireAdminSender(req: Request, res: Response, next: NextFunction): void {
+  if (req.body?.senderType === "admin") {
+    requireAdmin(req, res, () => {
+      requireNonDriver(req, res, () => {
+        requireSectionPermission("conversations")(req, res, next);
+      });
     });
-  });
+    return;
+  }
+  if (req.body?.senderType === "client") {
+    void requireConversationAccess(req, res, next);
+    return;
+  }
+  res.status(400).json({ error: "نوع المرسل غير صحيح" });
 }
 
 function isRecent(value: string | null | undefined, windowMs: number): boolean {
@@ -58,7 +95,7 @@ async function getConversationWithPresence(id: number) {
   return decorateConversation(conversation, visitor);
 }
 
-router.get(["/conversations", "/admin/conversations"], requireAdmin, requireNonDriver, async (_req, res) => {
+router.get(["/conversations", "/admin/conversations"], requireAdmin, requireNonDriver, requireSectionPermission("conversations"), async (_req, res) => {
   res.setHeader("Cache-Control", "no-store");
   const conversations = await db.select().from(conversationsTable).orderBy(desc(conversationsTable.updatedAt));
   const visitors = await db.select().from(activeVisitorsTable);
@@ -89,6 +126,29 @@ router.post("/conversations", async (req, res) => {
     packageName: typeof packageName === "string" && packageName.trim() ? packageName.trim() : null,
   }).returning();
 
+  const visitorSession = typeof req.headers["x-visitor-session"] === "string"
+    ? req.headers["x-visitor-session"].trim().slice(0, 160)
+    : "";
+  if (visitorSession) {
+    await db.insert(activeVisitorsTable).values({
+      sessionId: visitorSession,
+      page: "/chat",
+      deviceType: "desktop",
+      conversationId: conversation.id,
+      clientName: clientName.trim(),
+      phone: phone.trim(),
+      lastSeen: new Date().toISOString(),
+    }).onConflictDoUpdate({
+      target: activeVisitorsTable.sessionId,
+      set: {
+        conversationId: conversation.id,
+        clientName: clientName.trim(),
+        phone: phone.trim(),
+        lastSeen: new Date().toISOString(),
+      },
+    });
+  }
+
   await createNotification({
     title: "محادثة جديدة",
     message: `بدأ ${clientName} محادثة جديدة`,
@@ -100,7 +160,7 @@ router.post("/conversations", async (req, res) => {
   return res.status(201).json(conversation);
 });
 
-router.get(["/conversations/:id", "/admin/conversations/:id"], requireAdmin, requireNonDriver, requireSectionPermission("conversations"), async (req, res) => {
+router.get(["/conversations/:id", "/admin/conversations/:id"], requireConversationAccess, async (req, res) => {
   const id = parseInt(String(req.params.id), 10);
   if (!Number.isInteger(id) || id <= 0) {
     return res.status(400).json({ error: "معرّف المحادثة غير صحيح" });
@@ -133,7 +193,7 @@ router.post(["/conversations/:id/typing", "/admin/conversations/:id/typing"], re
   return res.json({ ok: true, isTyping });
 });
 
-router.patch(["/conversations/:id", "/admin/conversations/:id"], requireAdmin, requireNonDriver, async (req, res) => {
+router.patch(["/conversations/:id", "/admin/conversations/:id"], requireAdmin, requireNonDriver, requireSectionPermission("conversations"), async (req, res) => {
   const id = parseInt(String(req.params.id), 10);
   const { status } = req.body;
   const [conversation] = await db.update(conversationsTable)
@@ -148,7 +208,7 @@ router.patch(["/conversations/:id", "/admin/conversations/:id"], requireAdmin, r
   return res.json(conversation);
 });
 
-router.get(["/conversations/:id/messages", "/admin/conversations/:id/messages"], requireAdmin, requireNonDriver, requireSectionPermission("conversations"), async (req, res) => {
+router.get(["/conversations/:id/messages", "/admin/conversations/:id/messages"], requireConversationAccess, async (req, res) => {
   const id = parseInt(String(req.params.id), 10);
   if (!Number.isInteger(id) || id <= 0) {
     return res.status(400).json({ error: "معرّف المحادثة غير صحيح" });
@@ -161,7 +221,7 @@ router.get(["/conversations/:id/messages", "/admin/conversations/:id/messages"],
 
 // Only an authenticated admin opening a conversation marks the client's
 // messages as read. Public/customer polling must never clear the admin badge.
-router.post(["/conversations/:id/read", "/admin/conversations/:id/read"], requireAdmin, requireNonDriver, async (req, res) => {
+router.post(["/conversations/:id/read", "/admin/conversations/:id/read"], requireAdmin, requireNonDriver, requireSectionPermission("conversations"), async (req, res) => {
   const id = parseInt(String(req.params.id), 10);
   if (!Number.isInteger(id) || id <= 0) {
     return res.status(400).json({ error: "معرّف المحادثة غير صحيح" });
@@ -275,7 +335,7 @@ router.post(["/conversations/:id/messages", "/admin/conversations/:id/messages"]
 });
 
 // Admin: delete single conversation + its messages
-router.delete("/admin/conversations/:id", requireAdmin, requireNonDriver, async (req, res) => {
+router.delete("/admin/conversations/:id", requireAdmin, requireNonDriver, requireSectionPermission("conversations"), async (req, res) => {
   const id = parseInt(String(req.params.id), 10);
   if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: "معرّف المحادثة غير صحيح" });
 
@@ -290,7 +350,7 @@ router.delete("/admin/conversations/:id", requireAdmin, requireNonDriver, async 
 });
 
 // Admin: delete ALL conversations + messages
-router.delete("/admin/conversations", requireAdmin, requireNonDriver, async (_req, res) => {
+router.delete("/admin/conversations", requireAdmin, requireNonDriver, requireSectionPermission("conversations"), async (_req, res) => {
   await db.delete(messagesTable);
   await db.delete(conversationsTable);
   return res.json({ success: true });

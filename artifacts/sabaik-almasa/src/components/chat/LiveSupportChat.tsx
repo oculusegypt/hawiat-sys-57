@@ -12,9 +12,13 @@ import { useSiteSettings } from "@/context/SiteSettingsContext"
 import { useGetContainers, useGetConversation } from "@workspace/api-client-react"
 import type { Container } from "@workspace/api-client-react"
 import { PackageFormMessage } from "@/components/chat/PackageFormMessage"
-import { playNotificationChime, unlockNotificationAudio, sendVisitorHeartbeat } from "@/lib/visitorAttribution"
+import { getVisitorTracking, playNotificationChime, unlockNotificationAudio, sendVisitorHeartbeat } from "@/lib/visitorAttribution"
 
 const API_BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") || ""
+
+function visitorHeaders(): HeadersInit {
+  return { "X-Visitor-Session": getVisitorTracking().sessionId }
+}
 
 function normalizePhone(value: string) {
   const digits = value.replace(/\D/g, "")
@@ -102,7 +106,7 @@ function ContactForm({ onStartChat, phones, phoneCall, phoneWhatsapp, supportHou
     try {
       const res = await fetch(`${API_BASE}/api/conversations`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...visitorHeaders() },
         body: JSON.stringify({
           clientName: name.trim(),
           phone: phone.trim(),
@@ -116,7 +120,7 @@ function ContactForm({ onStartChat, phones, phoneCall, phoneWhatsapp, supportHou
       if (firstMsg.trim()) {
         await fetch(`${API_BASE}/api/conversations/${conv.id}/messages`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", ...visitorHeaders() },
           body: JSON.stringify({ content: firstMsg.trim(), senderType: "client" }),
         })
       }
@@ -279,7 +283,7 @@ function ChatInterface({ conversationId, clientName, phone, packageName, isSound
   const sendClientTypingState = useCallback((id: number, isTyping: boolean) => {
     fetch(`${API_BASE}/api/conversations/${id}/typing`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...visitorHeaders() },
       body: JSON.stringify({ senderType: "client", isTyping }),
     }).catch(() => {})
   }, [])
@@ -314,8 +318,8 @@ function ChatInterface({ conversationId, clientName, phone, packageName, isSound
   const loadMessages = useCallback(async () => {
     try {
       const [resMsg, resConv] = await Promise.allSettled([
-        fetch(`${API_BASE}/api/conversations/${conversationId}/messages`),
-        fetch(`${API_BASE}/api/conversations/${conversationId}`)
+        fetch(`${API_BASE}/api/conversations/${conversationId}/messages`, { headers: visitorHeaders() }),
+        fetch(`${API_BASE}/api/conversations/${conversationId}`, { headers: visitorHeaders() })
       ])
 
       if (resConv.status === "fulfilled" && resConv.value.ok) {
@@ -382,7 +386,7 @@ function ChatInterface({ conversationId, clientName, phone, packageName, isSound
     try {
       await fetch(`${API_BASE}/api/conversations/${conversationId}/messages`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...visitorHeaders() },
         body: JSON.stringify({ content: text, senderType: "client" }),
       })
       await loadMessages()
@@ -404,7 +408,7 @@ function ChatInterface({ conversationId, clientName, phone, packageName, isSound
       if (!uploadResponse.ok || !uploaded.url) throw new Error()
       await fetch(`${API_BASE}/api/conversations/${conversationId}/messages`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...visitorHeaders() },
         body: JSON.stringify({ content: "أرسل صورة", senderType: "client", attachmentUrl: uploaded.url, attachmentType: uploaded.contentType || "image/webp" }),
       })
       await loadMessages()
@@ -420,7 +424,7 @@ function ChatInterface({ conversationId, clientName, phone, packageName, isSound
       try {
         await fetch(`${API_BASE}/api/conversations/${conversationId}/messages`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", ...visitorHeaders() },
           body: JSON.stringify({
             content: "أرسل موقعي الحالي",
             senderType: "client",

@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-09-02T05:43:20.644Z",
+  "generatedAt": "2026-09-02T06:19:06.471Z",
   "siteUrl": "https://sabaik.net",
   "entries": [
     {
@@ -34,6 +34,33 @@
       "path": "/containers",
       "canonical": "/containers",
       "pageType": "container-list",
+      "indexability": "INDEXABLE",
+      "prerenderRequired": true,
+      "sitemapEligible": true,
+      "artifact": "sabaik-almasa"
+    },
+    {
+      "path": "/containers/debris",
+      "canonical": "/containers/debris",
+      "pageType": "container-category",
+      "indexability": "INDEXABLE",
+      "prerenderRequired": true,
+      "sitemapEligible": true,
+      "artifact": "sabaik-almasa"
+    },
+    {
+      "path": "/containers/waste",
+      "canonical": "/containers/waste",
+      "pageType": "container-category",
+      "indexability": "INDEXABLE",
+      "prerenderRequired": true,
+      "sitemapEligible": true,
+      "artifact": "sabaik-almasa"
+    },
+    {
+      "path": "/containers/contract",
+      "canonical": "/containers/contract",
+      "pageType": "container-category",
       "indexability": "INDEXABLE",
       "prerenderRequired": true,
       "sitemapEligible": true,
@@ -1779,6 +1806,9 @@
     "https://sabaik.net/blog/نقل-الأنقاض-ومخلفات-البناء-في-الرياض-دليل-شامل-2025-75",
     "https://sabaik.net/contact",
     "https://sabaik.net/containers",
+    "https://sabaik.net/containers/contract",
+    "https://sabaik.net/containers/debris",
+    "https://sabaik.net/containers/waste",
     "https://sabaik.net/containers/حاوية-صغيرة-34",
     "https://sabaik.net/containers/حاوية-كبيرة-35",
     "https://sabaik.net/containers/حاوية-نفايات-صغيرة-36",

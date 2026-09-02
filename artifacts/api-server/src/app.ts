@@ -45,6 +45,7 @@ function isAllowedOrigin(origin: string): boolean {
 }
 app.use(
   cors({
+    allowedHeaders: ["Content-Type", "Authorization", "Idempotency-Key", "X-Requested-With", "X-HTTP-Method-Override", "X-Visitor-Session"],
     origin(origin, callback) {
       if (!origin) return callback(null, true); // same-origin / curl
       if (isAllowedOrigin(origin)) {
