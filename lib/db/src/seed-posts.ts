@@ -576,7 +576,7 @@ const newPosts = [
   // ─────────────────────────────────────────────────────────────────
   {
     title: "لماذا سبائك الماسه هي أفضل شركة تأجير حاويات في الرياض؟",
-    slug: "afdhal-sharika-tajir-hawyat-riyadh-taqi-group",
+    slug: "afdhal-sharika-tajir-hawyat-riyadh-sabaik-almasa",
     excerpt:
       "تعرّف على ما يُميّز سبائك الماسه عن غيرها من شركات تأجير الحاويات في الرياض: جودة، سرعة، التزام، وأسعار تنافسية منذ 2018.",
     content: `<h2>أفضل شركة إيجار حاويات في الرياض — ما المعيار؟</h2>
@@ -616,7 +616,7 @@ const newPosts = [
     seoTitle: "أفضل شركة تأجير حاويات في الرياض | سبائك الماسه",
     seoDescription: "اكتشف لماذا سبائك الماسه هي أفضل شركة تأجير حاويات في الرياض: سرعة، جودة، أسعار شفافة، وتغطية شاملة لجميع أحياء الرياض منذ 2018.",
     seoKeywords: "أفضل شركة تأجير حاويات الرياض, أفضل شركة إيجار حاويات, شركة تأجير حاويات, مؤسسة تأجير حاويات, أفضل حاويات بالرياض",
-    seoSlug: "afdhal-sharika-tajir-hawyat-riyadh-taqi-group",
+    seoSlug: "afdhal-sharika-tajir-hawyat-riyadh-sabaik-almasa",
     ogImage: "/images/ceo.webp",
     canonicalUrl: "",
     isActive: true,

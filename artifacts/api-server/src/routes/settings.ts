@@ -6,7 +6,7 @@ import { requireAdmin, requireSectionPermission, type AdminRequest } from "../mi
 
 const router = Router();
 const PUBLIC_SITE_URL = "https://sabaik.net";
-const DEFAULT_COMPANY_NAME = "سبائك الماسه";
+const DEFAULT_COMPANY_NAME = "مؤسسة سبائك الماسة";
 
 // Default settings
 const DEFAULTS: Record<string, string> = {

@@ -17,7 +17,7 @@ import { serviceRequestsTable } from "./schema/serviceRequests.js";
 import { conversationsTable, messagesTable } from "./schema/conversations.js";
 import * as crypto from "crypto";
 
-const SITE_NAME = process.env.SITE_NAME?.trim() || "سبائك الماسه";
+const SITE_NAME = process.env.SITE_NAME?.trim() || "مؤسسة سبائك الماسة";
 const PASSWORD_SALT = "cleanflow-password-salt";
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD?.trim();
 

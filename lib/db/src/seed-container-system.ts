@@ -924,11 +924,11 @@ const extendedDemo = [
   db.delete(containerSystemRecordsTable).run();
 
   const organizationSettings = {
-    company_name: "تأجير حاويات الرياض",
+    company_name: "مؤسسة سبائك الماسة",
     company_name_en: "Sabaik Almasa",
     company_phone_call: "0580595555",
-    company_phone_whatsapp: "0580595555",
-    company_phones: JSON.stringify(["0580595555"]),
+    company_phone_whatsapp: "0555888767",
+    company_phones: JSON.stringify(["0555888767", "0580595555", "0581032000"]),
     company_email: "",
     company_address: "6793 حمزة بن عبدالمطلب",
     company_city: "الرياض",
@@ -949,7 +949,7 @@ const extendedDemo = [
       "{{company_name}} لخدمات تأجير الحاويات ونقل الأنقاض ومخلفات البناء في الرياض.",
     site_public_url: "",
     seo_meta_description:
-      "{{company_name}} — تأجير الحاويات ونقل الأنقاض في الرياض. اتصل الآن: 0536312121",
+      "{{company_name}} — تأجير الحاويات ونقل الأنقاض في الرياض. اتصل الآن: 0580595555",
     vapid_subject: "",
   };
   for (const [key, value] of Object.entries(organizationSettings)) {

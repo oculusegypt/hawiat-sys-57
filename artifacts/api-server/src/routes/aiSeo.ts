@@ -542,9 +542,9 @@ interface SeoSuggestion {
 
 function analyzeLocalSeo(data: {
   title: string; description: string; keywords: string;
-  ogTitle: string; ogDescription: string; canonicalUrl: string; siteName: string;
+  ogTitle: string; ogDescription: string; canonicalUrl: string; siteName: string; sitePhone: string;
 }): SeoSuggestion[] {
-  const { title, description, keywords, ogTitle, ogDescription, canonicalUrl, siteName } = data;
+  const { title, description, keywords, ogTitle, ogDescription, canonicalUrl, siteName, sitePhone } = data;
   const suggestions: SeoSuggestion[] = [];
 
   // ── Title checks ──────────────────────────────────────────────────────────
@@ -599,8 +599,8 @@ function analyzeLocalSeo(data: {
       issue: `الوصف قصير جداً (${description.length} حرف — المثالي 120-160)`,
       current: description.slice(0, 100),
       suggestion: description.length < 80
-        ? `${description} حاويات 6-20 ياردة متوفرة. توصيل سريع لجميع أحياء الرياض خلال 2-4 ساعات. اتصل الآن: 0536312121`
-        : `${description} اتصل الآن: 0536312121`,
+        ? `${description} حاويات 6-20 ياردة متوفرة. توصيل سريع لجميع أحياء الرياض خلال 2-4 ساعات. اتصل الآن: ${sitePhone}`
+        : `${description} اتصل الآن: ${sitePhone}`,
       reason: "الوصف القصير لا يستغل المساحة المتاحة ويُفوّت فرصة دعوة للتصرف.",
     });
   } else if (description.length > 160) {
@@ -671,7 +671,7 @@ function analyzeLocalSeo(data: {
       field: "ogDescription", impact: "low",
       issue: "OG Description غير محدد",
       current: "",
-      suggestion: description.slice(0, 200) || "متخصصون في تأجير حاويات المخلفات ونقل الأنقاض بالرياض. اتصل: 0536312121",
+      suggestion: description.slice(0, 200) || `متخصصون في تأجير حاويات المخلفات ونقل الأنقاض بالرياض. اتصل: ${sitePhone}`,
       reason: "يظهر كنص مصاحب للرابط عند المشاركة على وسائل التواصل الاجتماعي.",
     });
   }
@@ -707,7 +707,17 @@ router.post("/admin/ai/suggest-seo", async (req, res) => {
 
   // 1. Always run local rule-based analysis
   const siteName = (await getSetting("company_name")).trim() || "الشركة";
-  const localSuggestions = analyzeLocalSeo({ title, description, keywords, ogTitle, ogDescription, canonicalUrl, siteName });
+  const sitePhone = (await getSetting("company_phone_call")).trim();
+  const localSuggestions = analyzeLocalSeo({
+    title,
+    description,
+    keywords,
+    ogTitle,
+    ogDescription,
+    canonicalUrl,
+    siteName,
+    sitePhone,
+  });
 
   // 2. Try AI for richer suggestions — fallback to local if no key / network error
   try {

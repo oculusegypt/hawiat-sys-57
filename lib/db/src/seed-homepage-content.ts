@@ -101,18 +101,18 @@ export const homepageContent = {
     contact: {
       title: "هل تحتاج إلى استشارة أو عرض سعر مخصص؟",
       description: "فريقنا متواجد على مدار الساعة للرد على استفساراتك وتلبية طلباتك.",
-      whatsappText: "تواصل عبر واتساب (0536312121)",
-      callText: "اتصال هاتفي مباشر (0536312121)",
+      whatsappText: "تواصل عبر واتساب (0555888767)",
+      callText: "اتصال هاتفي مباشر (0580595555)",
     },
   },
 };
 
 const settings = [
-  ["site_desc", "{{company_name}} — الرائدون في تأجير حاويات المخلفات ونقل الأنقاض بالرياض. حاويات بمقاسات متعددة وسرعة في الأداء ودقة في المواعيد. اتصل الآن: 0536312121"],
-  ["company_name", "تأجير حاويات الرياض"],
-  ["company_phone_call", "0536312121"],
-  ["company_phone_whatsapp", "0536312121"],
-  ["company_phones", JSON.stringify(["0536312121"])],
+  ["site_desc", "{{company_name}} — الرائدون في تأجير حاويات المخلفات ونقل الأنقاض بالرياض. حاويات بمقاسات متعددة وسرعة في الأداء ودقة في المواعيد. اتصل الآن: 0580595555"],
+  ["company_name", "مؤسسة سبائك الماسة"],
+  ["company_phone_call", "0580595555"],
+  ["company_phone_whatsapp", "0555888767"],
+  ["company_phones", JSON.stringify(["0555888767", "0580595555", "0581032000"])],
   ["company_footer_description", "{{company_name}}، خيارك الأمثل في عالم تأجير الحاويات ونقل الأنقاض. نقدم خدماتنا بجودة عالية وأسعار تنافسية لنكون شركاء نجاحك في مشاريعك الإنشائية."],
   ["homepage_content", JSON.stringify(homepageContent)],
   ["sections_order", JSON.stringify([

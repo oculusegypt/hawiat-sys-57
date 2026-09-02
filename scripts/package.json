@@ -8,6 +8,7 @@
     "generate-sitemap": "node ./generate-sitemap.mjs",
     "seo-quality-gate": "node ./seo-quality-gate.mjs",
     "prepare-seo-drafts": "node ./prepare-seo-drafts.mjs",
-    "merge-client-database": "node ./merge-client-database.mjs"
+    "merge-client-database": "node ./merge-client-database.mjs",
+    "repair-business-identity": "node ./repair-business-identity.mjs"
   }
 }
