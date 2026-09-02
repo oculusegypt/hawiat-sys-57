@@ -206,9 +206,8 @@ DirectoryIndex index.html index.php
   RewriteRule ^سياسة-الخصوصية/?$ /privacy [R=301,L,NE]
   RewriteRule ^من-نحن/?$ /about [R=301,L,NE]
 
-  # The Arabic Al-Shifa route is the canonical compatibility page. Keep its
-  # approved noindex HTML available, while converging the old ASCII alias.
-  RewriteRule ^areas/al-shifa/?$ /areas/حي-الشفا [R=301,L,NE]
+  # The Arabic Al-Shifa route is the canonical compatibility page. The old
+  # ASCII alias is already covered by the generated compatibility redirects.
   RewriteRule ^areas/حي-الشفا/?$ areas/حي-الشفا/index.html [END,NE]
 
   # Directory indexes can be disabled by the host. Resolve public SEO hubs

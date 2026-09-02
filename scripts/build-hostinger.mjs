@@ -786,9 +786,8 @@ writeFileSync(join(ROOT, "build_php/.htaccess"), `DirectoryIndex index.html inde
   # noindex HTML copies. The generated targets are the URLs listed in sitemap.
 ${compatibilityRedirects || "  # No compatibility redirects were generated."}
 
-  # The Arabic Al-Shifa route is the canonical compatibility page. Keep its
-  # approved noindex HTML available, while converging the old ASCII alias.
-  RewriteRule ^areas/al-shifa/?$ /areas/%D8%AD%D9%8A-%D8%A7%D9%84%D8%B4%D9%81%D8%A7 [R=301,L,NE]
+  # The Arabic Al-Shifa route is the canonical compatibility page. The old
+  # ASCII alias is already covered by the generated compatibility redirects.
   RewriteRule ^areas/حي-الشفا/?$ areas/حي-الشفا/index.html [END,NE]
 
   # Directory indexes can be disabled by the host. Resolve public SEO hubs
