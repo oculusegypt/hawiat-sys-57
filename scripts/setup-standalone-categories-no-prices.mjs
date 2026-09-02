@@ -1,12 +1,14 @@
 import { createRequire } from "node:module";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { normalizeSeedRecord, readBusinessIdentity } from "./business-identity.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, "..");
 const require = createRequire(import.meta.url);
 const DB = require("better-sqlite3");
 const db = new DB(join(ROOT, "data/sabaik.db"));
+const identity = readBusinessIdentity(db);
 
 console.log("🔄 Updating SQLite DB with all 17 Saudi-Market Packages with original user-uploaded images and dynamic pricing...");
 
@@ -405,8 +407,9 @@ const insertStmt = db.prepare(`
 `);
 
 for (const pkg of STANDALONE_PACKAGES) {
-  insertStmt.run(pkg);
-  console.log(` ✅ Seeded package: ${pkg.id} - ${pkg.name} | Image: ${pkg.image_url}`);
+  const normalized = normalizeSeedRecord(pkg, identity);
+  insertStmt.run(normalized);
+  console.log(` ✅ Seeded package: ${normalized.id} - ${normalized.name} | Image: ${normalized.image_url}`);
 }
 
 console.log("\n🎉 All 17 Standalone Saudi Packages Successfully Seeded with Original Images!");

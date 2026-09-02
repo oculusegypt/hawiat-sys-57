@@ -54,7 +54,7 @@ function publicContainer(row: typeof containersTable.$inferSelect, companyName: 
 
 router.get(["/containers", "/packages", "/cleaning-packages"], async (_req, res) => {
   const containers = await db.select().from(containersTable).orderBy(asc(containersTable.order));
-  const companyName = (await getSetting("company_name")).trim() || "سبائك الماسه";
+  const companyName = (await getSetting("company_name")).trim();
   return res.json(containers.map((container) => publicContainer(container, companyName)));
 });
 
@@ -70,7 +70,7 @@ router.get(["/containers/:slug", "/packages/:slug", "/cleaning-packages/:slug"],
     return requested === stored || requested === publicSlug || requested === String(row.id);
   });
   if (!container) return res.status(404).json({ error: "Not found" });
-  const companyName = (await getSetting("company_name")).trim() || "سبائك الماسه";
+  const companyName = (await getSetting("company_name")).trim();
   return res.json(publicContainer(container, companyName));
 });
 

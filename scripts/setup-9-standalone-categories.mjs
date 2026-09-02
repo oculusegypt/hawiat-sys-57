@@ -1,12 +1,14 @@
 import { createRequire } from "node:module";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { normalizeSeedRecord, readBusinessIdentity } from "./business-identity.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, "..");
 const require = createRequire(import.meta.url);
 const DB = require("better-sqlite3");
 const db = new DB(join(ROOT, "data/sabaik.db"));
+const identity = readBusinessIdentity(db);
 
 console.log("🔄 Seeding 9 Standalone Cleaning Categories & Packages into sabaik.db...");
 
@@ -182,10 +184,11 @@ const insertPkg = db.prepare(`
 `);
 
 for (const p of STANDALONE_PACKAGES) {
+  const normalized = normalizeSeedRecord(p, identity);
   insertPkg.run(
-    p.id, p.name, p.category, p.size, p.capacity, p.description, p.suitable_for,
-    p.price_text, p.price_note, p.image_url, p.features, p.contact_phone1, p.contact_phone2,
-    p.order, p.is_active
+    normalized.id, normalized.name, normalized.category, normalized.size, normalized.capacity, normalized.description, normalized.suitable_for,
+    normalized.price_text, normalized.price_note, normalized.image_url, normalized.features,
+    normalized.contact_phone1, normalized.contact_phone2, normalized.order, normalized.is_active
   );
 }
 

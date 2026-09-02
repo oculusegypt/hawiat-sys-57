@@ -9,6 +9,8 @@
     "seo-quality-gate": "node ./seo-quality-gate.mjs",
     "prepare-seo-drafts": "node ./prepare-seo-drafts.mjs",
     "merge-client-database": "node ./merge-client-database.mjs",
-    "repair-business-identity": "node ./repair-business-identity.mjs"
+    "repair-business-identity": "node ./repair-business-identity.mjs",
+    "repair-seo-pages-content": "node ./repair-seo-pages-content.mjs",
+    "check-business-identity": "node ./check-business-identity.mjs"
   }
 }

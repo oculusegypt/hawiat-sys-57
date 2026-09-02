@@ -706,7 +706,7 @@ try {
     }
 
     function generateToken(int $adminId): string {
-        $tokenSecret = getenv('SESSION_SECRET') ?: 'f65e340749594b2876e6bfc9aca55189b9193e7fd0e96593e127d2826a568f6c';
+        $tokenSecret = getenv('SESSION_SECRET') ?: 'e4b310344ae6dec073603be5b8ef3f2ccff078e2149e6802405fa645e6568f42';
         $payload = json_encode(['adminId' => $adminId, 'ts' => (int)(microtime(true) * 1000)]);
         $b64 = base64url_encode((string)$payload);
         $sig = base64url_encode(hash_hmac('sha256', $b64, $tokenSecret, true));
@@ -718,7 +718,7 @@ try {
             $parts = explode('.', $token);
             if (count($parts) !== 2) return null;
             [$b64, $sig] = $parts;
-            $tokenSecret = getenv('SESSION_SECRET') ?: 'f65e340749594b2876e6bfc9aca55189b9193e7fd0e96593e127d2826a568f6c';
+            $tokenSecret = getenv('SESSION_SECRET') ?: 'e4b310344ae6dec073603be5b8ef3f2ccff078e2149e6802405fa645e6568f42';
             $expectedSig = base64url_encode(hash_hmac('sha256', $b64, $tokenSecret, true));
             if (!hash_equals($sig, $expectedSig)) return null;
             $payload = json_decode(base64url_decode($b64), true);
@@ -1667,7 +1667,7 @@ try {
     // Hostinger deployment settings and Patch upload. This is intentionally
     // implemented here (PHP/FTP) because production has no Node.js process.
     function hostingerPatchKey(): string {
-        $secret = getenv('SESSION_SECRET') ?: 'f65e340749594b2876e6bfc9aca55189b9193e7fd0e96593e127d2826a568f6c';
+        $secret = getenv('SESSION_SECRET') ?: 'e4b310344ae6dec073603be5b8ef3f2ccff078e2149e6802405fa645e6568f42';
         return hash('sha256', 'hostinger-ftp:' . $secret, true);
     }
 
@@ -3148,7 +3148,7 @@ try {
             // 11. Confirm Order
             if ($step === 'confirm_order' || $step === 'confirm' || $msg === 'confirm' || $msg === 'تأكيد' || $msg === 'تأكيد الطلب' || $msg === 'نعم' || $msg === 'موافق') {
                 $clientName = !empty($data['name']) ? $data['name'] : 'عميل الموقع';
-                $phone = !empty($data['phone']) ? $data['phone'] : '0580595555';
+                $phone = !empty($data['phone']) ? $data['phone'] : '';
                 $serviceType = !empty($data['serviceType']) ? $data['serviceType'] : 'تأجير حاويات مخلفات';
                 $containerSize = !empty($data['containerSize']) ? $data['containerSize'] : 'حاوية أنقاض';
                 $location = !empty($data['location']) ? $data['location'] : 'الرياض';

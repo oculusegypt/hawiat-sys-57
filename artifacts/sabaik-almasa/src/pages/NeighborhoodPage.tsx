@@ -239,7 +239,7 @@ export default function NeighborhoodPage() {
     region,
     country,
   } = useSiteSettings()
-  const currentCompany = companyName || "سبائك الماسه"
+  const currentCompany = companyName || "الشركة"
   const areaTitle = area
     ? `${normalizeCompanyText(area.title)} | ${currentCompany}`
     : ""

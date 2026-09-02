@@ -1,12 +1,14 @@
 import { createRequire } from 'node:module';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
+import { normalizeSeedRecord, readBusinessIdentity } from './business-identity.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const require = createRequire(import.meta.url);
 const Database = require(resolve(__dirname, '../lib/db/node_modules/better-sqlite3'));
 const DB_PATH = resolve(__dirname, '../data/sabaik.db');
 const db = new Database(DB_PATH);
+const identity = readBusinessIdentity(db);
 
 const ins = db.prepare(`INSERT OR IGNORE INTO posts 
   (title, slug, seo_slug, excerpt, content, category, tags, status, is_active, author, 
@@ -607,11 +609,12 @@ const inTx = db.transaction(() => {
   for (const p of posts) {
     try {
       const now = new Date().toISOString();
+      const normalized = normalizeSeedRecord(p, identity);
       ins.run(
-        p.title, p.slug, p.slug, p.excerpt, p.content,
-        p.category, p.tags, 'published', 1, 'سبائك الماسه',
-        p.seoTitle, p.seoDesc, p.seoKW,
-        '', '', p.rt,
+        normalized.title, normalized.slug, normalized.slug, normalized.excerpt, normalized.content,
+        normalized.category, normalized.tags, 'published', 1, identity.companyName,
+        normalized.seoTitle, normalized.seoDesc, normalized.seoKW,
+        '', '', normalized.rt,
         now,
         now, now
       );

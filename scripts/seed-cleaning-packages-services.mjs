@@ -1,12 +1,14 @@
 import { createRequire } from "node:module";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { normalizeSeedRecord, readBusinessIdentity } from "./business-identity.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, "..");
 const require = createRequire(import.meta.url);
 const DB = require("better-sqlite3");
 const db = new DB(join(ROOT, "data/sabaik.db"));
+const identity = readBusinessIdentity(db);
 
 const SERVICES = [
   {
@@ -525,10 +527,12 @@ const packageInsert = db.prepare(`
 `);
 
 for (const p of PACKAGES) {
+  const normalized = normalizeSeedRecord(p, identity);
   packageInsert.run(
-    p.name, p.category, p.size, p.capacity, p.description, p.suitable_for,
-    p.price_text, p.price_per_day, p.rental_period, p.image_url, "", "",
-    p.is_active, p.order, 1, p.name, p.description, p.name, `package-${p.order}`
+    normalized.name, normalized.category, normalized.size, normalized.capacity, normalized.description, normalized.suitable_for,
+    normalized.price_text, normalized.price_per_day, normalized.rental_period, normalized.image_url,
+    normalized.contact_phone1, normalized.contact_phone2,
+    normalized.is_active, normalized.order, 1, normalized.name, normalized.description, normalized.name, `package-${normalized.order}`
   );
 }
 

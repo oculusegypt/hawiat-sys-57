@@ -3148,7 +3148,7 @@ try {
             // 11. Confirm Order
             if ($step === 'confirm_order' || $step === 'confirm' || $msg === 'confirm' || $msg === 'تأكيد' || $msg === 'تأكيد الطلب' || $msg === 'نعم' || $msg === 'موافق') {
                 $clientName = !empty($data['name']) ? $data['name'] : 'عميل الموقع';
-                $phone = !empty($data['phone']) ? $data['phone'] : '0580595555';
+                $phone = !empty($data['phone']) ? $data['phone'] : '';
                 $serviceType = !empty($data['serviceType']) ? $data['serviceType'] : 'تأجير حاويات مخلفات';
                 $containerSize = !empty($data['containerSize']) ? $data['containerSize'] : 'حاوية أنقاض';
                 $location = !empty($data['location']) ? $data['location'] : 'الرياض';

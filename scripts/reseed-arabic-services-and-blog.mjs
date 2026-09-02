@@ -1,12 +1,14 @@
 import { createRequire } from "node:module";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { normalizeSeedRecord, readBusinessIdentity } from "./business-identity.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, "..");
 const require = createRequire(import.meta.url);
 const DB = require("better-sqlite3");
 const db = new DB(join(ROOT, "data/sabaik.db"));
+const identity = readBusinessIdentity(db);
 
 console.log("🔄 Starting full re-seed of Arabic Services & Competitor-Surpassing SEO Articles...");
 
@@ -489,9 +491,10 @@ const insertPost = db.prepare(`
 const NOW = new Date().toISOString();
 
 for (const p of ARABIC_SEO_POSTS) {
+  const normalized = normalizeSeedRecord(p, identity);
   insertPost.run(
-    p.title, p.slug, p.category, p.image_url, p.excerpt, p.content,
-    p.seo_title, p.seo_description, p.seo_keywords, NOW, NOW, NOW
+    normalized.title, normalized.slug, normalized.category, normalized.image_url, normalized.excerpt, normalized.content,
+    normalized.seo_title, normalized.seo_description, normalized.seo_keywords, NOW, NOW, NOW
   );
 }
 

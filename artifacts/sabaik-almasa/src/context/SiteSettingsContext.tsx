@@ -227,7 +227,7 @@ const DEFAULTS: SiteSettings = {
 
 const SiteSettingsContext = createContext<SiteSettings>(DEFAULTS)
 
-const DEFAULT_COMPANY_NAME = "سبائك الماسه"
+const DEFAULT_COMPANY_NAME = "الشركة"
 
 export function normalizeCompanyText(value: string, companyName = DEFAULT_COMPANY_NAME): string {
   const resolvedName = companyName.trim() || DEFAULT_COMPANY_NAME

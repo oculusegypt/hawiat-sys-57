@@ -93,7 +93,7 @@ export default function PackageDetail() {
         description: containerDescription,
         url: containerUrl,
         image: getContainerImage(container),
-        companyName: companyName || "سبائك الماسه",
+        companyName: companyName || "الشركة",
         about: categoryName[container.category || ""] || "تأجير الحاويات ونقل المخلفات",
       }),
       containerSchema({
@@ -102,7 +102,7 @@ export default function PackageDetail() {
         url: containerUrl,
         image: getContainerImage(container),
         category: categoryName[container.category || ""] || container.category,
-        companyName: companyName || "سبائك الماسه",
+        companyName: companyName || "الشركة",
         priceText: container.priceText,
         pricePerDay: container.pricePerDay,
       }),

@@ -210,7 +210,7 @@ export default function ServiceDetail() {
         description: metaText,
         url: canonical,
         image: images[0] || "",
-        companyName: resolvedCompany || "سبائك الماسه",
+        companyName: resolvedCompany || "الشركة",
         about: service.title,
       }),
       serviceSchema({
@@ -218,7 +218,7 @@ export default function ServiceDetail() {
         description: metaText,
         url: canonical,
         image: images[0] || "",
-        companyName: resolvedCompany || "سبائك الماسه",
+        companyName: resolvedCompany || "الشركة",
         phoneNumbers: [phoneCall, phoneWhatsapp, ...phones],
         address,
         city,

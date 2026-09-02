@@ -23,7 +23,7 @@ export function AuthorityTrustSignals({
     phoneCall,
     googleBusinessProfile,
   } = useSiteSettings()
-  const resolvedCompany = companyName || "سبائك الماسه"
+  const resolvedCompany = companyName || "الشركة"
   const resolvedAddress = [address, city, region].filter(Boolean).join("، ")
 
   return (

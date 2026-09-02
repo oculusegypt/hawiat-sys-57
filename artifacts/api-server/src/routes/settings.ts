@@ -6,8 +6,6 @@ import { requireAdmin, requireSectionPermission, type AdminRequest } from "../mi
 
 const router = Router();
 const PUBLIC_SITE_URL = "https://sabaik.net";
-const DEFAULT_COMPANY_NAME = "مؤسسة سبائك الماسة";
-
 // Default settings
 const DEFAULTS: Record<string, string> = {
   requests_locked: "false",
@@ -17,7 +15,7 @@ const DEFAULTS: Record<string, string> = {
   support_hours: "السبت — الجمعة 7ص–10م",
   platform_promo_enabled: "true",
   // Company info
-  company_name: DEFAULT_COMPANY_NAME,
+  company_name: "",
   company_logo: "",
   // Phone numbers must come from the administrator's saved site settings.
   // An empty fallback prevents chat surfaces from inventing a number.

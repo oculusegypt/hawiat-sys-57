@@ -1,9 +1,30 @@
 import { db } from "./index.js";
 import { postsTable } from "./schema/posts.js";
+import { siteSettingsTable } from "./schema/settings.js";
 import { eq } from "drizzle-orm";
 
 const now = new Date().toISOString();
 const pub = (d: number) => new Date(Date.now() - d * 86_400_000).toISOString();
+const configuredCompanyName = db
+  .select({ value: siteSettingsTable.value })
+  .from(siteSettingsTable)
+  .where(eq(siteSettingsTable.key, "company_name"))
+  .get()
+  ?.value;
+
+if (!configuredCompanyName?.trim()) {
+  throw new Error("company_name must be present in site_settings before seeding posts.");
+}
+const companyName = configuredCompanyName.trim();
+
+function materializeCompanyName(value: unknown): unknown {
+  return typeof value === "string"
+    ? value
+        .replaceAll("{{company_name}}", companyName)
+        .replaceAll("مؤسسة سبائك الماسه", companyName)
+        .replaceAll("سبائك الماسه", companyName)
+    : value;
+}
 
 const posts = [
   // ── 1. حي الرمال واليرموك والنهضة والخليج والنسيم ──
@@ -677,7 +698,10 @@ for (const post of posts) {
   const existing = db.select({ id: postsTable.id }).from(postsTable).where(eq(postsTable.slug, post.slug)).get();
   if (!existing) {
     const image = canonicalPostImage(post.title);
-    db.insert(postsTable).values({ ...post, coverImage: image, ogImage: image } as any).run();
+    const materialized = Object.fromEntries(
+      Object.entries(post).map(([key, value]) => [key, materializeCompanyName(value)]),
+    );
+    db.insert(postsTable).values({ ...materialized, coverImage: image, ogImage: image } as any).run();
     inserted++;
     console.log(`✅ ${post.title}`);
   } else {

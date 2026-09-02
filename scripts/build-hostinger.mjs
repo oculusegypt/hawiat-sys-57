@@ -197,6 +197,11 @@ run(
   "توحيد هوية المؤسسة وأرقام التواصل قبل بناء الأرشيف",
   {},
 );
+run(
+  "pnpm --filter @workspace/scripts run repair-seo-pages-content",
+  "تقوية محتوى صفحات SEO المنشورة وإزالة التكرار في الكلمات المفتاحية",
+  {},
+);
 
 // ── 0. إصلاح metadata وslugs مرة واحدة قبل أخذ ناتج البناء ───────────────────
 step("تحديث بيانات SEO قبل البناء (migration صريحة)");
@@ -1000,5 +1005,9 @@ if (existsSync(zipPath)) {
   run(
     "pnpm --filter @workspace/scripts run seo-quality-gate",
     "تشغيل بوابة SEO على الأرشيف النهائي",
+  );
+  run(
+    "pnpm --filter @workspace/scripts run check-business-identity",
+    "التحقق من عدم تسرب هوية أو أرقام قديمة إلى المخرجات",
   );
 }

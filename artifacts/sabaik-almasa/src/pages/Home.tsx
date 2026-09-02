@@ -280,7 +280,7 @@ export default function Home() {
   } = siteSettings
 
   const homeTitle = "تأجير حاويات الرياض | طلب الحاويات ومخلفات البناء والهدم"
-  const resolvedCompanyName = companyName || "سبائك الماسه"
+  const resolvedCompanyName = companyName || "الشركة"
   const homeDescription = `تأجير حاويات الرياض وطلب الحاويات في الرياض لمخلفات البناء والهدم والمطاعم والمنشآت، مع حاويات نفايات وأنقاض وتوصيل وسحب سريع من ${resolvedCompanyName}.`
   const normalizedHiddenSections = new Set(hiddenSections.map(canonicalHomeSectionId))
 

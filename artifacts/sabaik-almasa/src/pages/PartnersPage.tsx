@@ -11,8 +11,8 @@ import { useSiteSettings } from "@/context/SiteSettingsContext"
 export default function PartnersPage() {
   const { companyName } = useSiteSettings()
   useDocumentSEO({
-    title: `شركاؤنا — ${companyName || "سبائك الماسه"} للحاويات ونقل المخلفات`,
-    description: `شركاء النجاح في ${companyName || "سبائك الماسه"}. نفخر بثقة المقاولين والمنشآت والمجمعات في حلول تأجير الحاويات ونقل المخلفات بالرياض.`,
+    title: `شركاؤنا — ${companyName || "الشركة"} للحاويات ونقل المخلفات`,
+    description: `شركاء النجاح في ${companyName || "الشركة"}. نفخر بثقة المقاولين والمنشآت والمجمعات في حلول تأجير الحاويات ونقل المخلفات بالرياض.`,
     keywords: "شركاء تأجير الحاويات بالرياض, شركاء نقل مخلفات البناء",
     canonical: siteUrl("/partners"),
   })
