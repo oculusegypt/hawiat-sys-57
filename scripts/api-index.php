@@ -1606,15 +1606,11 @@ try {
             throw new RuntimeException('site_public_url is not configured with a valid public origin');
         }
 
-        // Area pages intentionally keep their Arabic canonical URLs. The
-        // prerender writes both the ASCII compatibility directory (noindex)
-        // and the Arabic indexable directory.
+        // Keep PHP's runtime sitemap aligned with the static Node sitemap:
+        // regional hubs are indexable, while neighborhood compatibility pages
+        // remain available but are intentionally excluded from the sitemap.
         $neighborhoods = [
-            'شمال-الرياض', 'حي-الملقا', 'حي-الياسمين', 'حي-النرجس', 'حي-العارض', 'حي-حطين', 'حي-الصحافة', 'حي-النفل', 'حي-العقيق', 'حي-الربيع', 'حي-الغدير', 'حي-الوادي', 'حي-الندى', 'حي-الفلاح',
-            'جنوب-الرياض', 'حي-بدر', 'حي-الحائر', 'حي-الشفا', 'حي-العزيزية', 'حي-الدار-البيضاء', 'حي-المناخ', 'حي-الإسكان',
-            'شرق-الرياض', 'حي-القادسية', 'حي-النسيم', 'حي-الروضة', 'حي-الخليج', 'حي-النهضة', 'حي-المنار', 'حي-اليرموك', 'حي-المونسية', 'حي-الحمراء', 'حي-قرطبة', 'حي-الشهداء',
-            'غرب-الرياض', 'حي-السويدي', 'حي-العريجاء', 'حي-ظهرة-لبن', 'حي-الحزم', 'حي-البديعة', 'حي-شبرا', 'حي-العوالي',
-            'وسط-الرياض', 'حي-العليا', 'حي-السليمانية', 'حي-الملز', 'حي-المربع', 'حي-البطحاء', 'حي-الوزارات', 'حي-الفوطة'
+            'شمال-الرياض', 'جنوب-الرياض', 'شرق-الرياض', 'غرب-الرياض', 'وسط-الرياض'
         ];
 
         $staticPages = [
@@ -1622,6 +1618,9 @@ try {
             ['path' => '/about', 'priority' => '0.9', 'freq' => 'monthly'],
             ['path' => '/pricing', 'priority' => '0.95', 'freq' => 'monthly'],
             ['path' => '/containers', 'priority' => '0.9', 'freq' => 'weekly'],
+            ['path' => '/containers/debris', 'priority' => '0.9', 'freq' => 'weekly'],
+            ['path' => '/containers/waste', 'priority' => '0.9', 'freq' => 'weekly'],
+            ['path' => '/containers/contract', 'priority' => '0.9', 'freq' => 'weekly'],
             ['path' => '/services', 'priority' => '0.95', 'freq' => 'weekly'],
             ['path' => '/contact', 'priority' => '0.85', 'freq' => 'monthly'],
             ['path' => '/partners', 'priority' => '0.75', 'freq' => 'monthly'],

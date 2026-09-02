@@ -724,7 +724,19 @@ function compatibilityRedirectRules(root) {
       // A noindex page whose canonical is itself is an intentional
       // compatibility destination (for example the Arabic neighborhood
       // routes). Do not generate a redirect loop for it.
-      if (target === source) continue;
+      // URL.pathname stays percent-encoded for Arabic canonical URLs, while
+      // `source` comes from the UTF-8 filesystem name. Compare decoded paths
+      // so the canonical Arabic copy is not redirected to itself.
+      let normalizedTarget = target;
+      let normalizedSource = source;
+      try {
+        normalizedTarget = decodeURIComponent(target);
+        normalizedSource = decodeURIComponent(source);
+      } catch {
+        // Keep the original values if a legacy filename contains a malformed
+        // escape sequence; the rule will still be deduplicated below.
+      }
+      if (normalizedTarget === normalizedSource) continue;
       if (seen.has(key)) continue;
       seen.add(key);
       // These generated paths contain Arabic, digits and hyphens. Escape the
@@ -776,7 +788,7 @@ ${compatibilityRedirects || "  # No compatibility redirects were generated."}
 
   # The Arabic Al-Shifa route is the canonical compatibility page. Keep its
   # approved noindex HTML available, while converging the old ASCII alias.
-  RewriteRule ^areas/al-shifa/?$ /areas/حي-الشفا [R=301,L,NE]
+  RewriteRule ^areas/al-shifa/?$ /areas/%D8%AD%D9%8A-%D8%A7%D9%84%D8%B4%D9%81%D8%A7 [R=301,L,NE]
   RewriteRule ^areas/حي-الشفا/?$ areas/حي-الشفا/index.html [END,NE]
 
   # Directory indexes can be disabled by the host. Resolve public SEO hubs
