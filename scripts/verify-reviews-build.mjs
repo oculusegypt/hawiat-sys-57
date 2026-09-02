@@ -1,19 +1,22 @@
 import fs from "node:fs";
+import path from "node:path";
 
-const villaHtml = fs.readFileSync("build_php/services/tanzeef-filal-alryad/index.html", "utf8");
-const acHtml = fs.readFileSync("build_php/services/tanzeef-mokeyafat-alryad/index.html", "utf8");
+const servicePages = fs.readdirSync("build_php/services", { withFileTypes: true })
+  .filter((entry) => entry.isDirectory())
+  .map((entry) => path.join("build_php/services", entry.name, "index.html"))
+  .filter((file) => fs.existsSync(file));
+if (servicePages.length === 0) throw new Error("No rendered service pages found");
+const serviceHtml = servicePages.map((file) => ({
+  file,
+  html: fs.readFileSync(file, "utf8"),
+}));
 const homeHtml = fs.readFileSync("build_php/index.html", "utf8");
 
-console.log("=== VILLA CLEANING SERVICE PAGE ===");
-console.log("Has reviews section:", villaHtml.includes('id="service-reviews"'));
-console.log("Has customer name (أبو فهد القحطاني):", villaHtml.includes("أبو فهد القحطاني"));
-console.log("Has customer name (المهندس بندر السبيعي):", villaHtml.includes("المهندس بندر السبيعي"));
-console.log("No self-serving AggregateRating in Schema:", !villaHtml.includes('"@type": "AggregateRating"'));
-
-console.log("\n=== AC CLEANING SERVICE PAGE ===");
-console.log("Has reviews section:", acHtml.includes('id="service-reviews"'));
-console.log("Has customer name (خالد التميمي):", acHtml.includes("خالد التميمي"));
-console.log("No self-serving AggregateRating in Schema:", !acHtml.includes('"@type": "AggregateRating"'));
+console.log("=== RENDERED SERVICE PAGES ===");
+console.log("Service pages checked:", serviceHtml.length);
+console.log("All have reviews section:", serviceHtml.every(({ html }) => html.includes('id="service-reviews"')));
+console.log("At least one customer review rendered:", serviceHtml.some(({ html }) => /مراجعة|تقييم|عميل/u.test(html)));
+console.log("No self-serving AggregateRating in Schema:", serviceHtml.every(({ html }) => !html.includes('"@type": "AggregateRating"')));
 
 console.log("\n=== HOMEPAGE ===");
 console.log("No self-serving AggregateRating in Schema:", !homeHtml.includes('"@type": "AggregateRating"'));

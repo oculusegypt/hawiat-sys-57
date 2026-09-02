@@ -729,6 +729,10 @@ try {
 
     function sessionSecret(): string {
         $secret = trim((string)getenv('SESSION_SECRET'));
+        $embeddedSecret = '__HOSTINGER_TOKEN_SECRET__';
+        if ($secret === '' && strpos($embeddedSecret, '__HOSTINGER_TOKEN_SECRET__') === false) {
+            $secret = $embeddedSecret;
+        }
         if ($secret === '') {
             throw new RuntimeException('SESSION_SECRET is not configured');
         }

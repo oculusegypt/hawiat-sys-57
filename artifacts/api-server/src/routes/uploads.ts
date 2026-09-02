@@ -92,7 +92,7 @@ function safeUploadWith(middleware: ReturnType<typeof createUpload>) {
     if (error) {
       const message = error instanceof multer.MulterError && error.code === "LIMIT_FILE_SIZE"
         ? "حجم الملف أكبر من 8 ميغابايت"
-        : error instanceof Error ? error.message : "تعذر رفع الملف";
+        : "تعذر رفع الملف";
       res.status(400).json({ error: message });
       return;
     }
@@ -110,7 +110,7 @@ function safeUploadWith(middleware: ReturnType<typeof createUpload>) {
         req.file.mimetype = "image/webp";
       } catch (error) {
         fs.rmSync(req.file.path, { force: true });
-        res.status(422).json({ error: error instanceof Error ? error.message : "تعذر ضغط الصورة على الخادم" });
+        res.status(422).json({ error: "تعذر ضغط الصورة على الخادم" });
         return;
       }
     }

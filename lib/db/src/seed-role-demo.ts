@@ -31,6 +31,6 @@ for (const account of accounts) {
 }
 
 console.log(JSON.stringify({
-  password,
+  status: "demo role fixtures ready",
   accounts: accounts.map(({ username, name, role }) => ({ username, name, role })),
 }, null, 2));

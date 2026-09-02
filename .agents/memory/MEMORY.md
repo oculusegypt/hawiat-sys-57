@@ -4,3 +4,5 @@
 - [Selective SQLite sync](sqlite-selective-sync.md) — define excluded tables and dependent audit data explicitly before copying a live database.
 - [Identity release validation](identity-release-validation.md) — validate dynamic settings and static AI/PHP outputs together after business identity changes.
 - [Area indexability](area-indexability.md) — compatibility neighborhood routes must stay live while HTML, inventory, sitemap, and runtime metadata agree on noindex.
+- [Release validation parity](release-validation-parity.md) — local Hostinger gates and live probes can diverge until the verified archive is published.
+- [Financial test fixtures](financial-test-fixtures.md) — isolated financial tests need the complete schema and period dates aligned with the assertion.

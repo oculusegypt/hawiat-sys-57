@@ -86,11 +86,7 @@ const vehicleRecordId = upsertRecord("vehicle", "CAR-TEST-001", "available", {
 });
 
 console.log(JSON.stringify({
-  username,
-  password,
-  driverName,
-  phone: driverPhone,
+  status: "driver test fixture ready",
   driverRecordId,
   vehicleRecordId,
-  vehiclePlate,
 }, null, 2));

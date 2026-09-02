@@ -14,11 +14,19 @@ const dbs = [
 
 for (const dbPath of dbs) {
   const db = new Database(dbPath);
+  const hasPostsTable = db
+    .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'posts'")
+    .get();
+  if (!hasPostsTable) {
+    console.log(`Skipping ${dbPath}: posts table is not present.`);
+    db.close();
+    continue;
+  }
   const posts = db.prepare("SELECT id, title, slug, content FROM posts").all();
   console.log(`Checking ${posts.length} posts in ${dbPath}...`);
   let linksCount = 0;
   for (const p of posts) {
-    if (p.content && p.content.includes("/services/") || p.content.includes("/areas/")) {
+    if (p.content && (p.content.includes("/services/") || p.content.includes("/areas/"))) {
       linksCount++;
     }
   }

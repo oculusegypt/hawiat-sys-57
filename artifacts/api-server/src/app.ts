@@ -120,7 +120,10 @@ for (const uploadRoot of [
 // Cached legacy links should converge on the real public path instead of
 // reaching the API router and producing a misleading 500/404 response.
 app.get("/api/uploads/:filename", (req, res) => {
-  const filename = encodeURIComponent(String(req.params.filename ?? ""));
+  const filename = String(req.params.filename ?? "");
+  if (!/^[a-zA-Z0-9._-]+$/.test(filename)) {
+    return res.status(400).json({ error: "Invalid upload filename" });
+  }
   return res.redirect(301, `/uploads/${filename}`);
 });
 
