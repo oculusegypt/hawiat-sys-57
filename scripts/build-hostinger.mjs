@@ -742,7 +742,13 @@ function compatibilityRedirectRules(root) {
       // These generated paths contain Arabic, digits and hyphens. Escape the
       // few characters that have special meaning in a RewriteRule pattern.
       const pattern = relative.replace(/[\\.^$|?*+()[\]{}]/g, "\\$&");
-      rules.push(`  RewriteRule ^${pattern}/?$ ${target} [R=301,L,NE]`);
+      // Hostinger's rewrite layer corrupts percent-encoded UTF-8 bytes in
+      // external Location headers (for example %D9%8A becomes %D9A).
+      // Emit decoded Arabic targets so Apache performs the final UTF-8
+      // escaping itself; keep NE for ASCII targets to preserve old URLs.
+      const rewriteTarget = /[^\x00-\x7F]/u.test(normalizedTarget) ? normalizedTarget : target;
+      const redirectFlags = /[^\x00-\x7F]/u.test(normalizedTarget) ? "[R=301,L]" : "[R=301,L,NE]";
+      rules.push(`  RewriteRule ^${pattern}/?$ ${rewriteTarget} ${redirectFlags}`);
     }
   };
   walk(root);

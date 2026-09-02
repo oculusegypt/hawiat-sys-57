@@ -732,7 +732,7 @@ try {
 
     function sessionSecret(): string {
         $secret = trim((string)getenv('SESSION_SECRET'));
-        $embeddedSecret = '0574c084a790236a3fa03738e7539826ff3ba514cedf03feac30356ed88ff5c9';
+        $embeddedSecret = '7614aca7a6a10538da6a78bd815cb8bd160b0b91e553ef33b72a4a01ba55595c';
         if ($secret === '' && strlen($embeddedSecret) === 64) {
             $secret = $embeddedSecret;
         }
