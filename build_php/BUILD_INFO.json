@@ -1,6 +1,6 @@
 {
   "buildType": "full-hostinger-archive",
-  "builtAt": "2026-09-02T03:26:56.016Z",
+  "builtAt": "2026-09-02T03:32:45.822Z",
   "sourceDatabase": "data/sabaik.db",
   "tableCounts": {
     "active_visitors": 13,
@@ -37,9 +37,9 @@
   },
   "verification": {
     "publicOrigin": "https://sabaik.net",
-    "sitemapUrls": 161,
+    "sitemapUrls": 116,
     "sitemapImages": 93,
-    "arabicAreaUrls": 50,
+    "arabicAreaUrls": 5,
     "articleUrlsWithImages": 67,
     "command": "SITE_URL=https://sabaik.net pnpm --filter @workspace/scripts run seo-quality-gate"
   },

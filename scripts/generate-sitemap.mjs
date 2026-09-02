@@ -9,7 +9,11 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { requirePublicOrigin } from "./public-origin.mjs";
 import { entityPath } from "./friendly-slug.mjs";
-import { ARABIC_AREA_SLUGS, assertAreaRouteParity } from "./seo-area-routes.mjs";
+import {
+  ARABIC_AREA_SLUGS,
+  INDEXABLE_AREA_SLUGS,
+  assertAreaRouteParity,
+} from "./seo-area-routes.mjs";
 import { writeSeoInventory } from "./seo-inventory.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -268,6 +272,7 @@ for (const area of ALL_NEIGHBORHOODS) {
   if (!ARABIC_AREA_SLUGS[area.slug]) {
     throw new Error(`Missing canonical Arabic slug for area: ${area.slug}`);
   }
+  if (!INDEXABLE_AREA_SLUGS.has(area.slug)) continue;
   const title = `تأجير حاويات ونقل مخلفات في ${area.name}`;
   addEntry({
     path: `/areas/${ARABIC_AREA_SLUGS[area.slug]}`,

@@ -105,12 +105,20 @@ const REGION_LANDMARKS: Record<string, string[]> = {
 }
 
 const REGION_ARRIVAL: Record<string, string> = {
-  "شمال الرياض": "30 — 45 دقيقة",
-  "شرق الرياض": "30 — 45 دقيقة",
-  "غرب الرياض": "30 — 45 دقيقة",
-  "جنوب الرياض": "35 — 50 دقيقة",
-  "وسط الرياض": "25 — 35 دقيقة",
+  "شمال الرياض": "يُحدد بعد مراجعة العنوان",
+  "شرق الرياض": "يُحدد بعد مراجعة العنوان",
+  "غرب الرياض": "يُحدد بعد مراجعة العنوان",
+  "جنوب الرياض": "يُحدد بعد مراجعة العنوان",
+  "وسط الرياض": "يُحدد بعد مراجعة العنوان",
 }
+
+const INDEXABLE_AREA_KEYS = new Set([
+  "north-riyadh",
+  "south-riyadh",
+  "east-riyadh",
+  "west-riyadh",
+  "central-riyadh",
+])
 
 function createAreaData(definition: AreaDefinition): AreaData {
   const location = definition.name.includes("الرياض") ? definition.name : `${definition.name} بالرياض`
@@ -254,7 +262,7 @@ export default function NeighborhoodPage() {
     keywords: area?.keywords.join("، "),
     canonical,
     ogImageAlt: area ? `تأجير الحاويات ونقل المخلفات في ${area.name}` : "خدمات تأجير الحاويات في أحياء الرياض",
-    indexable: Boolean(area),
+    indexable: Boolean(area && resolved && INDEXABLE_AREA_KEYS.has(resolved.key)),
   })
 
   useDocumentSchema("neighborhood-schema", area ? [

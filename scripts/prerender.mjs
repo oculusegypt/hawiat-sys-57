@@ -17,7 +17,11 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { requirePublicOrigin } from "./public-origin.mjs";
 import { entityPath, entitySlug, legacyEntitySlug } from "./friendly-slug.mjs";
-import { ARABIC_AREA_SLUGS, assertAreaRouteParity } from "./seo-area-routes.mjs";
+import {
+  ARABIC_AREA_SLUGS,
+  INDEXABLE_AREA_SLUGS,
+  assertAreaRouteParity,
+} from "./seo-area-routes.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, "..");
@@ -2689,9 +2693,12 @@ for (const area of NEIGHBORHOODS) {
     bodyContent,
   });
 
-  savePage(`areas/${area.slug}`, html, { noindex: arSlug !== area.slug });
+  const areaNoindex = !INDEXABLE_AREA_SLUGS.has(area.slug);
+  savePage(`areas/${area.slug}`, html, {
+    noindex: arSlug !== area.slug || areaNoindex,
+  });
   if (arSlug !== area.slug) {
-    savePage(`areas/${arSlug}`, html);
+    savePage(`areas/${arSlug}`, html, { noindex: areaNoindex });
   }
 }
 console.log(`   ✅ ${NEIGHBORHOODS.length} صفحة حي (بالعربي والإنجليزي)`);

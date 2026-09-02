@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { entityPath } from "./friendly-slug.mjs";
-import { ARABIC_AREA_SLUGS } from "./seo-area-routes.mjs";
+import { ARABIC_AREA_SLUGS, INDEXABLE_AREA_SLUGS } from "./seo-area-routes.mjs";
 
 export const INDEXABILITY = Object.freeze({
   INDEXABLE: "INDEXABLE",
@@ -46,14 +46,22 @@ function rows(db, sql) {
   }
 }
 
-function dynamicEntry({ path, pageType, id, title, artifact = "sabaik-almasa" }) {
+function dynamicEntry({
+  path,
+  pageType,
+  id,
+  title,
+  artifact = "sabaik-almasa",
+  indexability = INDEXABILITY.INDEXABLE,
+  sitemapEligible = true,
+}) {
   return {
     path,
     canonical: path,
     pageType,
-    indexability: INDEXABILITY.INDEXABLE,
+    indexability,
     prerenderRequired: true,
-    sitemapEligible: true,
+    sitemapEligible,
     artifact,
     ...(id == null ? {} : { id }),
     ...(title ? { title } : {}),
@@ -67,10 +75,13 @@ export function buildSeoInventory(db) {
   }));
 
   for (const [slug, arabic] of Object.entries(ARABIC_AREA_SLUGS)) {
+    const indexable = INDEXABLE_AREA_SLUGS.has(slug);
     entries.push(dynamicEntry({
       path: `/areas/${arabic}`,
       pageType: "area",
       title: slug,
+      indexability: indexable ? INDEXABILITY.INDEXABLE : INDEXABILITY.NOINDEX_COMPATIBILITY,
+      sitemapEligible: indexable,
     }));
   }
 

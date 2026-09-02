@@ -60,6 +60,17 @@ export const ARABIC_AREA_SLUGS = Object.freeze({
 
 export const AREA_SLUGS = Object.freeze(Object.keys(ARABIC_AREA_SLUGS));
 
+// Keep the five regional landing pages indexable while the neighborhood
+// compatibility routes remain available to visitors without creating a
+// near-duplicate doorway network in search results.
+export const INDEXABLE_AREA_SLUGS = new Set([
+  "north-riyadh",
+  "south-riyadh",
+  "east-riyadh",
+  "west-riyadh",
+  "central-riyadh",
+]);
+
 export function assertAreaRouteParity(sourceName, slugs) {
   const actual = [...new Set(slugs)].sort();
   const expected = [...AREA_SLUGS].sort();

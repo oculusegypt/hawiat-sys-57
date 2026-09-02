@@ -3,3 +3,4 @@
 - [Workspace content scripts](workspace-content-scripts.md) — standalone data scripts resolve shared dependencies and SQLite data from the workspace root.
 - [Selective SQLite sync](sqlite-selective-sync.md) — define excluded tables and dependent audit data explicitly before copying a live database.
 - [Identity release validation](identity-release-validation.md) — validate dynamic settings and static AI/PHP outputs together after business identity changes.
+- [Area indexability](area-indexability.md) — compatibility neighborhood routes must stay live while HTML, inventory, sitemap, and runtime metadata agree on noindex.
