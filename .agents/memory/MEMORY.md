@@ -1,3 +1,4 @@
 - [Hostinger archive SEO assets](hostinger-archive-seo-assets.md) — the release gate requires a stable PNG logo path even when the configured source logo is WebP.
 - [Hostinger archive schema](hostinger-archive-schema.md) — PHP bundle releases must copy a SQLite schema compatible with every field used by the PHP API.
 - [Workspace content scripts](workspace-content-scripts.md) — standalone data scripts resolve shared dependencies and SQLite data from the workspace root.
+- [Selective SQLite sync](sqlite-selective-sync.md) — define excluded tables and dependent audit data explicitly before copying a live database.
