@@ -29,10 +29,19 @@ function cookieValue(cookieHeader: string | undefined, name: string): string | n
   return null;
 }
 
-export function getRequestToken(req: { headers: { authorization?: string; cookie?: string } }): string | null {
+function requestTokenCandidates(req: { headers: { authorization?: string; cookie?: string } }): string[] {
   const authHeader = req.headers.authorization;
-  if (authHeader?.startsWith("Bearer ")) return authHeader.slice(7);
-  return cookieValue(req.headers.cookie, ADMIN_TOKEN_COOKIE);
+  const bearerToken = authHeader?.startsWith("Bearer ") ? authHeader.slice(7).trim() : "";
+  const cookieToken = cookieValue(req.headers.cookie, ADMIN_TOKEN_COOKIE) ?? "";
+  return [bearerToken, cookieToken].filter((value, index, values) => value !== "" && values.indexOf(value) === index);
+}
+
+export function getRequestToken(req: { headers: { authorization?: string; cookie?: string } }): string | null {
+  const candidates = requestTokenCandidates(req);
+  // A browser can retain a token from a previous archive while the current
+  // HttpOnly cookie already contains the valid session. Prefer the bearer
+  // token only when it is still valid; otherwise recover through the cookie.
+  return candidates.find((candidate) => verifyToken(candidate) !== null) ?? candidates[0] ?? null;
 }
 
 function setAdminTokenCookie(res: Response, token: string): void {

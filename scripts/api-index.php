@@ -832,44 +832,56 @@ try {
     enforcePhpRateLimit((string)$path, (string)$method);
 
     function getAuthHeader(): ?string {
-        if (!empty($_SERVER['HTTP_AUTHORIZATION'])) return $_SERVER['HTTP_AUTHORIZATION'];
-        if (!empty($_SERVER['REDIRECT_HTTP_AUTHORIZATION'])) return $_SERVER['REDIRECT_HTTP_AUTHORIZATION'];
+        $authorization = '';
+        if (!empty($_SERVER['HTTP_AUTHORIZATION'])) $authorization = (string)$_SERVER['HTTP_AUTHORIZATION'];
+        if ($authorization === '' && !empty($_SERVER['REDIRECT_HTTP_AUTHORIZATION'])) {
+            $authorization = (string)$_SERVER['REDIRECT_HTTP_AUTHORIZATION'];
+        }
         if (function_exists('apache_request_headers')) {
             $headers = apache_request_headers();
-            if (!empty($headers['Authorization'])) return $headers['Authorization'];
-            if (!empty($headers['authorization'])) return $headers['authorization'];
+            if ($authorization === '' && !empty($headers['Authorization'])) $authorization = (string)$headers['Authorization'];
+            if ($authorization === '' && !empty($headers['authorization'])) $authorization = (string)$headers['authorization'];
         }
-        // Keep the admin session alive across refreshes even when the browser
-        // loses localStorage. The bearer header remains preferred so API
-        // clients can still use explicit tokens.
-        if (!empty($_COOKIE['cleanflow_admin_token'])) {
-            return 'Bearer ' . (string)$_COOKIE['cleanflow_admin_token'];
+
+        $cookieToken = trim((string)($_COOKIE['cleanflow_admin_token'] ?? ''));
+        // A stale localStorage token may still be sent as Authorization after
+        // a new archive has been installed. If the HttpOnly cookie verifies,
+        // use it instead of letting the stale header log the admin out.
+        if ($authorization !== '' && preg_match('#^Bearer\s+(.+)#i', $authorization, $matches)) {
+            if (verifyToken(trim($matches[1])) !== null) return 'Bearer ' . trim($matches[1]);
         }
-        return null;
+        if ($cookieToken !== '' && verifyToken($cookieToken) !== null) return 'Bearer ' . $cookieToken;
+        return $authorization !== '' ? $authorization : null;
     }
 
     function setAdminTokenCookie(string $token): void {
         $secure = (!empty($_SERVER['HTTPS']) && strtolower((string)$_SERVER['HTTPS']) !== 'off')
             || strtolower((string)($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '')) === 'https';
-        setcookie('cleanflow_admin_token', $token, [
+        $options = [
             'expires' => time() + (24 * 60 * 60),
             'path' => '/',
             'secure' => $secure,
             'httponly' => true,
             'samesite' => 'Lax',
-        ]);
+        ];
+        $host = strtolower((string)($_SERVER['HTTP_HOST'] ?? ''));
+        if (preg_match('/(?:^|\\.)sabaik\\.net(?::\\d+)?$/', $host)) $options['domain'] = '.sabaik.net';
+        setcookie('cleanflow_admin_token', $token, $options);
     }
 
     function clearAdminTokenCookie(): void {
         $secure = (!empty($_SERVER['HTTPS']) && strtolower((string)$_SERVER['HTTPS']) !== 'off')
             || strtolower((string)($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '')) === 'https';
-        setcookie('cleanflow_admin_token', '', [
+        $options = [
             'expires' => time() - 3600,
             'path' => '/',
             'secure' => $secure,
             'httponly' => true,
             'samesite' => 'Lax',
-        ]);
+        ];
+        $host = strtolower((string)($_SERVER['HTTP_HOST'] ?? ''));
+        if (preg_match('/(?:^|\\.)sabaik\\.net(?::\\d+)?$/', $host)) $options['domain'] = '.sabaik.net';
+        setcookie('cleanflow_admin_token', '', $options);
     }
 
     function isRecentIso(?string $value, int $windowSeconds): bool {

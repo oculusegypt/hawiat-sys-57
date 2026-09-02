@@ -9,11 +9,6 @@ import { MarketingBadge } from '@/components/layout/MarketingBadge';
 import { FloatingContactButtons } from '@/components/layout/FloatingContactButtons';
 import { ScrollToTop } from "@/components/common/ScrollToTop";
 import { getVisitorTracking, sendVisitorHeartbeat } from "@/lib/visitorAttribution";
-import { setAuthTokenGetter } from '@workspace/api-client-react';
-
-// Configure the generated API client to attach the admin token to every request
-setAuthTokenGetter(() => localStorage.getItem("admin_token"));
-
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {

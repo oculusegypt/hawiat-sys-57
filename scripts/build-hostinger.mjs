@@ -803,6 +803,11 @@ ${compatibilityRedirects || "  # No compatibility redirects were generated."}
   RewriteRule ^areas/?$ areas/index.html [END]
   RewriteRule ^articles/?$ /blog [R=301,L,NE]
 
+  # The admin panel is a client-side React surface rather than a prerendered
+  # directory. Serve the shell for every admin route so a browser refresh
+  # restores the session instead of receiving a hosting-layer 404.
+  RewriteRule ^admin(?:/.*)?/?$ index.html [END]
+
   # Allow direct access to existing files and directories
   RewriteCond %{REQUEST_FILENAME} -f [OR]
   RewriteCond %{REQUEST_FILENAME} -d
