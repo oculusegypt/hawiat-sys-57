@@ -17,6 +17,9 @@ error_reporting(E_ALL);
 // Set JSON response headers. Production uses an exact allowlist; origins that
 // merely contain the company name are never accepted.
 header('Content-Type: application/json; charset=utf-8');
+// Every API response is dynamic. In particular, an unauthenticated cached
+// response for an admin route can outlive a later authorization fix.
+header('Cache-Control: no-store, private');
 $requestOrigin = trim((string)($_SERVER['HTTP_ORIGIN'] ?? ''));
 $allowedCorsOrigin = '';
 if ($requestOrigin === 'https://sabaik.net' || $requestOrigin === 'https://www.sabaik.net') {
