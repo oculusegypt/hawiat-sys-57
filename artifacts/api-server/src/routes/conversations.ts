@@ -100,7 +100,7 @@ router.post("/conversations", async (req, res) => {
   return res.status(201).json(conversation);
 });
 
-router.get(["/conversations/:id", "/admin/conversations/:id"], async (req, res) => {
+router.get(["/conversations/:id", "/admin/conversations/:id"], requireAdmin, requireNonDriver, requireSectionPermission("conversations"), async (req, res) => {
   const id = parseInt(String(req.params.id), 10);
   if (!Number.isInteger(id) || id <= 0) {
     return res.status(400).json({ error: "معرّف المحادثة غير صحيح" });
@@ -148,7 +148,7 @@ router.patch(["/conversations/:id", "/admin/conversations/:id"], requireAdmin, r
   return res.json(conversation);
 });
 
-router.get(["/conversations/:id/messages", "/admin/conversations/:id/messages"], async (req, res) => {
+router.get(["/conversations/:id/messages", "/admin/conversations/:id/messages"], requireAdmin, requireNonDriver, requireSectionPermission("conversations"), async (req, res) => {
   const id = parseInt(String(req.params.id), 10);
   if (!Number.isInteger(id) || id <= 0) {
     return res.status(400).json({ error: "معرّف المحادثة غير صحيح" });
@@ -198,6 +198,13 @@ router.post(["/conversations/:id/messages", "/admin/conversations/:id/messages"]
     locationLng,
     locationLabel,
   } = req.body;
+  const [conversation] = await db.select({ id: conversationsTable.id })
+    .from(conversationsTable)
+    .where(eq(conversationsTable.id, id));
+  if (!conversation) return res.status(404).json({ error: "المحادثة غير موجودة" });
+  if (senderType !== "client" && senderType !== "admin") {
+    return res.status(400).json({ error: "نوع المرسل غير صحيح" });
+  }
   if (typeof content !== "string" || (!content.trim() && !attachmentUrl && !locationLat)) {
     return res.status(400).json({ error: "الرسالة فارغة" });
   }

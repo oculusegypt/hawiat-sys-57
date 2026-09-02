@@ -14,9 +14,31 @@ declare(strict_types=1);
 ini_set('display_errors', '0');
 error_reporting(E_ALL);
 
-// Set JSON response headers
+// Set JSON response headers. Production uses an exact allowlist; origins that
+// merely contain the company name are never accepted.
 header('Content-Type: application/json; charset=utf-8');
-header('Access-Control-Allow-Origin: *');
+$requestOrigin = trim((string)($_SERVER['HTTP_ORIGIN'] ?? ''));
+$allowedCorsOrigin = '';
+if ($requestOrigin === 'https://sabaik.net' || $requestOrigin === 'https://www.sabaik.net') {
+    $allowedCorsOrigin = $requestOrigin;
+} else {
+    $originParts = parse_url($requestOrigin);
+    $originHost = strtolower((string)($originParts['host'] ?? ''));
+    $originPort = (string)($originParts['port'] ?? '');
+    $isLocalOrigin = in_array($originHost, ['localhost', '127.0.0.1', '0.0.0.0'], true);
+    $isPreviewOrigin = (bool)preg_match('/(?:^|\.)replit\.(?:dev|app)$/', $originHost);
+    if ($requestOrigin !== '' && in_array(strtolower((string)($originParts['scheme'] ?? '')), ['http', 'https'], true)
+        && empty($originParts['user']) && empty($originParts['pass'])
+        && ($originParts['path'] ?? '/') === '/' && empty($originParts['query']) && empty($originParts['fragment'])
+        && ($isLocalOrigin || $isPreviewOrigin) && ($isLocalOrigin || $originPort === '')) {
+        $allowedCorsOrigin = $requestOrigin;
+    }
+}
+if ($allowedCorsOrigin !== '') {
+    header('Access-Control-Allow-Origin: ' . $allowedCorsOrigin);
+    header('Access-Control-Allow-Credentials: true');
+    header('Vary: Origin');
+}
 header('Access-Control-Allow-Methods: GET, POST, PATCH, PUT, DELETE, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type, Authorization, Idempotency-Key, X-Requested-With, X-HTTP-Method-Override');
 
@@ -705,8 +727,16 @@ try {
         return false;
     }
 
+    function sessionSecret(): string {
+        $secret = trim((string)getenv('SESSION_SECRET'));
+        if ($secret === '') {
+            throw new RuntimeException('SESSION_SECRET is not configured');
+        }
+        return $secret;
+    }
+
     function generateToken(int $adminId): string {
-        $tokenSecret = getenv('SESSION_SECRET') ?: '2e12b53e8dda55934dee51d04aecaa7d064218ff5ed6a48ad2d0788af21b3ec7';
+        $tokenSecret = sessionSecret();
         $payload = json_encode(['adminId' => $adminId, 'ts' => (int)(microtime(true) * 1000)]);
         $b64 = base64url_encode((string)$payload);
         $sig = base64url_encode(hash_hmac('sha256', $b64, $tokenSecret, true));
@@ -718,7 +748,7 @@ try {
             $parts = explode('.', $token);
             if (count($parts) !== 2) return null;
             [$b64, $sig] = $parts;
-            $tokenSecret = getenv('SESSION_SECRET') ?: '2e12b53e8dda55934dee51d04aecaa7d064218ff5ed6a48ad2d0788af21b3ec7';
+            $tokenSecret = sessionSecret();
             $expectedSig = base64url_encode(hash_hmac('sha256', $b64, $tokenSecret, true));
             if (!hash_equals($sig, $expectedSig)) return null;
             $payload = json_decode(base64url_decode($b64), true);
@@ -731,6 +761,68 @@ try {
             return null;
         }
     }
+
+    /**
+     * File-backed limits for the Hostinger runtime. This intentionally does not
+     * depend on Express or a database write, so it also protects direct PHP
+     * deployments.
+     */
+    function enforcePhpRateLimit(string $path, string $method): void {
+        $rules = [
+            'login' => ['paths' => ['/auth/login'], 'methods' => ['POST'], 'limit' => 10, 'window' => 900],
+            'request' => ['paths' => ['/service-requests'], 'methods' => ['POST'], 'limit' => 20, 'window' => 3600],
+            'push' => ['paths' => ['/push/subscriptions', '/push/test'], 'methods' => ['POST', 'DELETE'], 'limit' => 30, 'window' => 900],
+            'upload' => ['paths' => ['/uploads', '/admin/uploads', '/admin/slides/upload', '/driver/uploads'], 'methods' => ['POST'], 'limit' => 20, 'window' => 900],
+        ];
+        $rule = null;
+        foreach ($rules as $candidate) {
+            if (in_array($path, $candidate['paths'], true) && in_array($method, $candidate['methods'], true)) {
+                $rule = $candidate;
+                break;
+            }
+        }
+        if ($rule === null) return;
+
+        // Do not trust a client-supplied X-Forwarded-For value as the limiter
+        // identity. On shared hosting it can be forged to bypass the quota.
+        $ip = trim((string)($_SERVER['REMOTE_ADDR'] ?? 'unknown'));
+        $identifier = hash('sha256', $rule['paths'][0] . '|' . $ip);
+        $directory = __DIR__ . '/../data/.rate-limit';
+        if (!is_dir($directory) && !@mkdir($directory, 0700, true) && !is_dir($directory)) {
+            http_response_code(503);
+            echo json_encode(['error' => 'الخدمة غير متاحة مؤقتاً'], JSON_UNESCAPED_UNICODE);
+            exit;
+        }
+        $file = $directory . '/' . $identifier . '.json';
+        $handle = @fopen($file, 'c+');
+        if ($handle === false) {
+            http_response_code(503);
+            echo json_encode(['error' => 'الخدمة غير متاحة مؤقتاً'], JSON_UNESCAPED_UNICODE);
+            exit;
+        }
+        flock($handle, LOCK_EX);
+        $raw = stream_get_contents($handle);
+        $state = json_decode((string)$raw, true);
+        $now = time();
+        if (!is_array($state) || ($now - (int)($state['started'] ?? 0)) >= $rule['window']) {
+            $state = ['started' => $now, 'count' => 0];
+        }
+        $state['count'] = (int)$state['count'] + 1;
+        ftruncate($handle, 0);
+        rewind($handle);
+        fwrite($handle, json_encode($state));
+        fflush($handle);
+        flock($handle, LOCK_UN);
+        fclose($handle);
+        if ($state['count'] > $rule['limit']) {
+            header('Retry-After: ' . max(1, $rule['window'] - ($now - (int)$state['started'])));
+            http_response_code(429);
+            echo json_encode(['error' => 'محاولات كثيرة، حاول لاحقاً'], JSON_UNESCAPED_UNICODE);
+            exit;
+        }
+    }
+
+    enforcePhpRateLimit((string)$path, (string)$method);
 
     function getAuthHeader(): ?string {
         if (!empty($_SERVER['HTTP_AUTHORIZATION'])) return $_SERVER['HTTP_AUTHORIZATION'];
@@ -849,6 +941,52 @@ try {
         imagedestroy($canvas);
         imagedestroy($image);
         return $ok && is_file($target) && filesize($target) > 0;
+    }
+
+    /**
+     * Validate the upload using server-observed metadata and the image
+     * signature, never the browser-provided MIME type alone.
+     */
+    function validateUploadedImage(array $file): ?string {
+        if (($file['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
+            return 'تعذر استلام الملف';
+        }
+        $tmpPath = (string)($file['tmp_name'] ?? '');
+        if ($tmpPath === '' || !is_uploaded_file($tmpPath)) {
+            return 'ملف الرفع غير صالح';
+        }
+        $size = @filesize($tmpPath);
+        if ($size === false || $size <= 0 || $size > 8 * 1024 * 1024) {
+            return 'حجم الصورة غير صالح (الحد الأقصى 8 ميجابايت)';
+        }
+        $extension = strtolower((string)pathinfo((string)($file['name'] ?? ''), PATHINFO_EXTENSION));
+        $allowedMimes = [
+            'jpg' => ['image/jpeg'],
+            'jpeg' => ['image/jpeg'],
+            'png' => ['image/png'],
+            'webp' => ['image/webp'],
+            'gif' => ['image/gif'],
+        ];
+        if (!isset($allowedMimes[$extension])) {
+            return 'امتداد الصورة غير مسموح';
+        }
+        $detectedMime = '';
+        if (function_exists('finfo_open')) {
+            $finfo = finfo_open(FILEINFO_MIME_TYPE);
+            if ($finfo !== false) {
+                $detectedMime = (string)finfo_file($finfo, $tmpPath);
+                finfo_close($finfo);
+            }
+        } elseif (function_exists('mime_content_type')) {
+            $detectedMime = (string)@mime_content_type($tmpPath);
+        }
+        if (!in_array($detectedMime, $allowedMimes[$extension], true)) {
+            return 'نوع الصورة غير صالح';
+        }
+        if (!function_exists('getimagesize') || @getimagesize($tmpPath) === false) {
+            return 'محتوى الصورة غير صالح';
+        }
+        return null;
     }
 
     function derToP1363(string $der): string {
@@ -1667,7 +1805,7 @@ try {
     // Hostinger deployment settings and Patch upload. This is intentionally
     // implemented here (PHP/FTP) because production has no Node.js process.
     function hostingerPatchKey(): string {
-        $secret = getenv('SESSION_SECRET') ?: '2e12b53e8dda55934dee51d04aecaa7d064218ff5ed6a48ad2d0788af21b3ec7';
+        $secret = sessionSecret();
         return hash('sha256', 'hostinger-ftp:' . $secret, true);
     }
 
@@ -1885,8 +2023,58 @@ try {
         }
     }
 
+    // Driver work-order reads are outside /admin so driver accounts do not
+    // enter the broader administrative namespace. They still require a live
+    // driver account before the query is allowed.
+    if ($path === '/driver/work-orders' && $method === 'GET') {
+        $driver = requireAdminAccess($pdo);
+        if (($driver['role'] ?? '') !== 'driver') {
+            http_response_code(403);
+            echo json_encode(['error' => 'هذا المورد مخصص للسائقين فقط'], JSON_UNESCAPED_UNICODE);
+            exit;
+        }
+    }
+
     // Driver completion evidence is protected separately because drivers are
     // intentionally blocked from the broader administrative namespace.
+    if (preg_match('#^/private-uploads/([a-zA-Z0-9._-]+)$#', (string)$path, $m) && ($method === 'GET' || $method === 'HEAD')) {
+        $filename = (string)$m[1];
+        $expires = filter_var($_GET['expires'] ?? null, FILTER_VALIDATE_INT);
+        $signature = trim((string)($_GET['signature'] ?? ''));
+        $secret = trim((string)getenv('SESSION_SECRET'));
+        $now = time();
+        $validRequest = $secret !== '' && $expires !== false && $expires >= $now && $expires <= $now + 30 * 60
+            && preg_match('/^[A-Za-z0-9_-]+$/', $signature);
+        if (!$validRequest) {
+            http_response_code(404);
+            exit;
+        }
+        $expected = base64url_encode(hash_hmac('sha256', $filename . '.' . $expires, $secret, true));
+        if (strlen($signature) !== strlen($expected) || !hash_equals($expected, $signature)) {
+            http_response_code(404);
+            exit;
+        }
+        $privatePath = __DIR__ . '/../private-uploads/' . $filename;
+        if (!is_file($privatePath)) {
+            http_response_code(404);
+            exit;
+        }
+        $finfo = function_exists('finfo_open') ? finfo_open(FILEINFO_MIME_TYPE) : false;
+        $mime = $finfo !== false ? (string)finfo_file($finfo, $privatePath) : 'application/octet-stream';
+        if ($finfo !== false) finfo_close($finfo);
+        if (!in_array($mime, ['image/webp', 'image/jpeg', 'image/png', 'image/gif'], true)) {
+            http_response_code(404);
+            exit;
+        }
+        header('X-Content-Type-Options: nosniff');
+        header('Content-Disposition: inline');
+        header('Cache-Control: private, max-age=300');
+        header('Content-Type: ' . $mime);
+        header('Content-Length: ' . (string)filesize($privatePath));
+        if ($method === 'GET') readfile($privatePath);
+        exit;
+    }
+
     if ($path === '/admin/seo/metrics' && $method === 'GET') {
         echo json_encode(seoMetricsSnapshot($pdo), JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
         exit;
@@ -1904,14 +2092,22 @@ try {
             echo json_encode(['error' => 'لم يُرفَق ملف'], JSON_UNESCAPED_UNICODE);
             exit;
         }
-        $uploadDir = __DIR__ . '/../uploads';
+        $validationError = validateUploadedImage($_FILES['file']);
+        if ($validationError !== null) {
+            http_response_code(422);
+            echo json_encode(['error' => $validationError], JSON_UNESCAPED_UNICODE);
+            exit;
+        }
+        $uploadDir = __DIR__ . '/../private-uploads';
         if (!is_dir($uploadDir)) @mkdir($uploadDir, 0755, true);
         $tmpPath = (string)$_FILES['file']['tmp_name'];
         $newName = (int)(microtime(true) * 1000) . '-' . substr(bin2hex(random_bytes(6)), 0, 12) . '.webp';
         $targetPath = $uploadDir . '/' . $newName;
         if (compressUploadedImage($tmpPath, $targetPath)) {
+            $expires = time() + 30 * 60;
+            $signature = base64url_encode(hash_hmac('sha256', $newName . '.' . $expires, sessionSecret(), true));
             echo json_encode([
-                'url' => '/uploads/' . $newName,
+                'url' => '/api/private-uploads/' . rawurlencode($newName) . '?expires=' . $expires . '&signature=' . rawurlencode($signature),
                 'filename' => $newName,
                 'contentType' => 'image/webp',
                 'size' => (int)filesize($targetPath)
@@ -1926,9 +2122,21 @@ try {
 
     // 1. Upload File: POST /api/admin/uploads or /api/uploads
     if (($path === '/admin/uploads' || $path === '/admin/slides/upload' || $path === '/uploads') && $method === 'POST') {
+        // The legacy /uploads alias is an administrative mutation too; it must
+        // not remain an anonymous write endpoint just because it is not under
+        // the /admin prefix.
+        if ($path === '/uploads') {
+            requireAdminAccess($pdo, 'settings', false, false, true);
+        }
         if (empty($_FILES['file'])) {
             http_response_code(400);
             echo json_encode(['error' => 'لم يتم إرسال أي ملف'], JSON_UNESCAPED_UNICODE);
+            exit;
+        }
+        $validationError = validateUploadedImage($_FILES['file']);
+        if ($validationError !== null) {
+            http_response_code(422);
+            echo json_encode(['error' => $validationError], JSON_UNESCAPED_UNICODE);
             exit;
         }
 
@@ -2023,6 +2231,7 @@ try {
 
     // 4. Notifications: GET /api/notifications
     if (($path === '/notifications' || $path === '/admin/notifications') && $method === 'GET') {
+        requireAdminAccess($pdo, 'notifications', false, false, true);
         try {
             $stmt = $pdo->query("SELECT * FROM notifications ORDER BY id DESC");
             $rows = $stmt->fetchAll();
@@ -2047,6 +2256,7 @@ try {
 
     // 5. Notifications Mark Single Read: PATCH /api/notifications/{id}/read
     if (preg_match('#^/notifications/(\d+)/read$#', $path, $m) && ($method === 'PATCH' || $method === 'PUT' || $method === 'POST')) {
+        requireAdminAccess($pdo, 'notifications', false, false, true);
         $id = (int)$m[1];
         $stmt = $pdo->prepare("UPDATE notifications SET is_read = 1 WHERE id = :id");
         $stmt->execute([':id' => $id]);
@@ -2056,6 +2266,7 @@ try {
 
     // 6. Notifications Mark All Read: PATCH /api/notifications/read-all
     if ($path === '/notifications/read-all' && ($method === 'PATCH' || $method === 'PUT' || $method === 'POST')) {
+        requireAdminAccess($pdo, 'notifications', false, false, true);
         $pdo->exec("UPDATE notifications SET is_read = 1");
         echo json_encode(['success' => true]);
         exit;
@@ -2064,6 +2275,7 @@ try {
     // 7. Notifications Delete: DELETE /api/admin/notifications/{id}
     // Keep /notifications aliases for older frontend bundles as well.
     if (preg_match('#^/(?:admin/)?notifications/(\d+)$#', $path, $m) && $method === 'DELETE') {
+        requireAdminAccess($pdo, 'notifications', false, false, true);
         $id = (int)$m[1];
         $stmt = $pdo->prepare("DELETE FROM notifications WHERE id = :id");
         $stmt->execute([':id' => $id]);
@@ -2078,6 +2290,7 @@ try {
 
     // 8. Notifications Delete All: DELETE /api/admin/notifications
     if (($path === '/admin/notifications' || $path === '/notifications') && $method === 'DELETE') {
+        requireAdminAccess($pdo, 'notifications', false, false, true);
         $pdo->exec("DELETE FROM notifications");
         echo json_encode(['success' => true], JSON_UNESCAPED_UNICODE);
         exit;
@@ -2085,6 +2298,7 @@ try {
 
     // 9. Push Public Key: GET /api/push/public-key
     if ($path === '/push/public-key' && $method === 'GET') {
+        requireAdminAccess($pdo, 'notifications', false, false, true);
         try {
             $stmt = $pdo->prepare("SELECT value FROM site_settings WHERE key = 'vapid_public_key' LIMIT 1");
             $stmt->execute();
@@ -2101,17 +2315,14 @@ try {
 
     // 8. Push Subscriptions: POST /api/push/subscriptions
     if ($path === '/push/subscriptions' && $method === 'POST') {
+        $pushAdmin = requireAdminAccess($pdo, 'notifications', false, false, true);
         $endpoint = $input['endpoint'] ?? '';
         $keys = $input['keys'] ?? [];
         $p256dh = $keys['p256dh'] ?? '';
         $auth = $keys['auth'] ?? '';
 
         $authHeader = getAuthHeader();
-        $adminId = 7;
-        if ($authHeader && preg_match('#^Bearer\s+(.+)#i', $authHeader, $matches)) {
-            $payload = verifyToken($matches[1]);
-            if (!empty($payload['adminId'])) $adminId = (int)$payload['adminId'];
-        }
+        $adminId = (int)$pushAdmin['id'];
 
         $now = date('c');
         if (!empty($endpoint) && !empty($p256dh) && !empty($auth)) {
@@ -2130,10 +2341,14 @@ try {
 
     // 9. Delete Push Subscription: DELETE /api/push/subscriptions
     if ($path === '/push/subscriptions' && $method === 'DELETE') {
+        $pushAdmin = requireAdminAccess($pdo, 'notifications', false, false, true);
         $endpoint = $input['endpoint'] ?? null;
         if ($endpoint) {
-            $stmt = $pdo->prepare("DELETE FROM push_subscriptions WHERE endpoint = :ep");
-            $stmt->execute([':ep' => $endpoint]);
+            $stmt = $pdo->prepare("DELETE FROM push_subscriptions WHERE endpoint = :ep AND admin_id = :aid");
+            $stmt->execute([':ep' => $endpoint, ':aid' => (int)$pushAdmin['id']]);
+        } else {
+            $stmt = $pdo->prepare("DELETE FROM push_subscriptions WHERE admin_id = :aid");
+            $stmt->execute([':aid' => (int)$pushAdmin['id']]);
         }
         echo json_encode(['success' => true]);
         exit;
@@ -2141,6 +2356,7 @@ try {
 
     // Push Test: POST /api/push/test
     if ($path === '/push/test' && $method === 'POST') {
+        requireAdminAccess($pdo, 'notifications', false, false, true);
         $title = $input['title'] ?? 'إشعار تجريبي 🔔';
         $msg = $input['message'] ?? 'نظام إشعارات الهاتف يعمل بنجاح على هوستنجر!';
         $notifId = time();
@@ -2291,6 +2507,7 @@ try {
         http_response_code(201);
         echo json_encode([
             'id' => $newId,
+            'trackingToken' => base64url_encode(hash_hmac('sha256', 'service-request:' . $newId, sessionSecret(), true)),
             'success' => true,
             'message' => 'تم استلام طلبك بنجاح! سيتواصل معك المشرف الميداني خلال دقائق.'
         ], JSON_UNESCAPED_UNICODE);
@@ -2504,6 +2721,13 @@ try {
     // Track Single Service Request: GET /api/service-requests/{id}
     if (preg_match('#^/service-requests/(\d+)$#', $path, $m) && $method === 'GET') {
         $id = (int)$m[1];
+        $providedToken = trim((string)($_GET['token'] ?? ''));
+        $expectedToken = base64url_encode(hash_hmac('sha256', 'service-request:' . $id, sessionSecret(), true));
+        if ($providedToken === '' || strlen($providedToken) !== strlen($expectedToken) || !hash_equals($expectedToken, $providedToken)) {
+            http_response_code(404);
+            echo json_encode(['error' => 'الطلب غير موجود'], JSON_UNESCAPED_UNICODE);
+            exit;
+        }
         $stmt = $pdo->prepare("SELECT * FROM service_requests WHERE id = :id LIMIT 1");
         $stmt->execute([':id' => $id]);
         $row = $stmt->fetch();
@@ -2514,6 +2738,7 @@ try {
         }
         echo json_encode([
             'id' => (int)$row['id'],
+            'trackingToken' => $expectedToken,
             'clientName' => $row['client_name'],
             'phone' => $row['phone'],
             'serviceType' => $row['service_type'],
@@ -5078,7 +5303,8 @@ try {
             ];
             echo json_encode($response, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
         } catch (\Exception $e) {
-            echo json_encode(['error' => $e->getMessage()]);
+            error_log('[api-index] analytics query failed: ' . $e->getMessage());
+            echo json_encode(['error' => 'تعذر تحميل التحليلات حالياً'], JSON_UNESCAPED_UNICODE);
         }
         exit;
     }
@@ -5159,7 +5385,8 @@ try {
             echo json_encode(['id' => $newId, 'success' => true]);
         } catch (\Exception $e) {
             http_response_code(500);
-            echo json_encode(['error' => $e->getMessage()]);
+            error_log('[api-index] conversation creation failed: ' . $e->getMessage());
+            echo json_encode(['error' => 'تعذر إنشاء المحادثة حالياً'], JSON_UNESCAPED_UNICODE);
         }
         exit;
     }
@@ -5295,7 +5522,8 @@ try {
             echo json_encode(['id' => $newId, 'slug' => $slug, 'title' => $title, 'seoTitle' => $postSeo['seoTitle'], 'seoDescription' => $postSeo['seoDescription'], 'seoKeywords' => $postSeo['seoKeywords'], 'seoSlug' => $slug, 'ogImage' => $postSeo['ogImage'], 'canonicalUrl' => $postSeo['canonicalUrl'], 'success' => true], JSON_UNESCAPED_UNICODE);
         } catch (\Exception $e) {
             http_response_code(500);
-            echo json_encode(['error' => $e->getMessage()]);
+            error_log('[api-index] conversation status update failed: ' . $e->getMessage());
+            echo json_encode(['error' => 'تعذر تحديث المحادثة حالياً'], JSON_UNESCAPED_UNICODE);
         }
         exit;
     }
@@ -5434,7 +5662,8 @@ try {
             ], JSON_UNESCAPED_UNICODE);
         } catch (\Exception $e) {
             http_response_code(500);
-            echo json_encode(['error' => $e->getMessage()]);
+            error_log('[api-index] conversation message creation failed: ' . $e->getMessage());
+            echo json_encode(['error' => 'تعذر إرسال الرسالة حالياً'], JSON_UNESCAPED_UNICODE);
         }
         exit;
     }
@@ -5580,7 +5809,8 @@ try {
             echo json_encode(['id' => $newId, 'slug' => $slug, 'title' => $title, 'seoTitle' => $pageSeo['seoTitle'], 'seoDescription' => $pageSeo['seoDescription'], 'seoKeywords' => $pageSeo['seoKeywords'], 'seoSlug' => $slug, 'ogImage' => $pageSeo['ogImage'], 'canonicalUrl' => $pageSeo['canonicalUrl'], 'success' => true], JSON_UNESCAPED_UNICODE);
         } catch (\Exception $e) {
             http_response_code(500);
-            echo json_encode(['error' => $e->getMessage()]);
+            error_log('[api-index] service request mutation failed: ' . $e->getMessage());
+            echo json_encode(['error' => 'تعذر تحديث الطلب حالياً'], JSON_UNESCAPED_UNICODE);
         }
         exit;
     }
@@ -5740,7 +5970,8 @@ try {
             echo json_encode(['id' => $newId, 'clientName' => $input['clientName'] ?? 'عميل', 'success' => true]);
         } catch (\Exception $e) {
             http_response_code(500);
-            echo json_encode(['error' => $e->getMessage()]);
+            error_log('[api-index] driver work-order mutation failed: ' . $e->getMessage());
+            echo json_encode(['error' => 'تعذر تحديث أمر العمل حالياً'], JSON_UNESCAPED_UNICODE);
         }
         exit;
     }
@@ -6000,26 +6231,21 @@ try {
             echo json_encode(['id' => $newMsgId, 'success' => true]);
         } catch (\Exception $e) {
             http_response_code(500);
-            echo json_encode(['error' => $e->getMessage()]);
+            error_log('[api-index] driver work-order fetch failed: ' . $e->getMessage());
+            echo json_encode(['error' => 'تعذر تحميل أوامر العمل حالياً'], JSON_UNESCAPED_UNICODE);
         }
         exit;
     }
 
     // ── 35. WORK ORDERS: /api/admin/work-orders and /api/driver/work-orders ──
     if (preg_match('#^/driver/work-orders/(\d+)$#', $path, $m) && $method === 'PATCH') {
-        $authHeader = getAuthHeader();
-        if (!$authHeader || !preg_match('/Bearer\s+(.+)$/i', $authHeader, $matches)) {
-            http_response_code(401);
-            echo json_encode(['error' => 'Unauthorized'], JSON_UNESCAPED_UNICODE);
+        $driver = requireAdminAccess($pdo);
+        if (($driver['role'] ?? '') !== 'driver') {
+            http_response_code(403);
+            echo json_encode(['error' => 'هذا المورد مخصص للسائقين فقط'], JSON_UNESCAPED_UNICODE);
             exit;
         }
-        $tokenPayload = verifyToken($matches[1]);
-        $driverId = (int)($tokenPayload['adminId'] ?? 0);
-        if ($driverId <= 0) {
-            http_response_code(401);
-            echo json_encode(['error' => 'Unauthorized'], JSON_UNESCAPED_UNICODE);
-            exit;
-        }
+        $driverId = (int)$driver['id'];
         $id = (int)$m[1];
         $operationalStmt = $pdo->prepare("SELECT * FROM container_system_records WHERE id = :id AND kind = 'work_order' AND status <> 'archived' LIMIT 1");
         $operationalStmt->execute([':id' => $id]);
@@ -6776,12 +7002,7 @@ PROMPT;
 
     if ($path === '/driver/work-orders' && $method === 'GET') {
         try {
-            $authHeader = getAuthHeader();
-            $driverId = 0;
-            if ($authHeader && preg_match('/Bearer\s+(\S+)/i', $authHeader, $matches)) {
-                $user = verifyToken($matches[1]);
-                if ($user) $driverId = (int)$user['adminId'];
-            }
+            $driverId = (int)($driver['id'] ?? 0);
             $stmt = $pdo->prepare("SELECT * FROM service_requests WHERE assigned_driver_id = :did ORDER BY assigned_at DESC, created_at DESC");
             $stmt->execute([':did' => $driverId]);
             $rows = $stmt->fetchAll();
@@ -6862,9 +7083,8 @@ PROMPT;
         exit;
     }
     http_response_code(500);
+    error_log('[api-index] ' . $fatalError->getMessage());
     echo json_encode([
-        'error' => 'Internal PHP Error: ' . $message,
-        'file' => basename($fatalError->getFile()),
-        'line' => $fatalError->getLine()
+        'error' => 'حدث خطأ داخلي في الخادم'
     ], JSON_UNESCAPED_UNICODE);
 }

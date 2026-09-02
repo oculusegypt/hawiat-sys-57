@@ -39,6 +39,9 @@ export function PackagesSection({ initialCategory = "all" }: { initialCategory?:
           <p className="text-gray-600 text-lg">
             {copy?.description || "اختر الباقة المناسبة لاحتياجاتك، وسيتواصل معك فريقنا لتأكيد التفاصيل وموعد التنفيذ."}
           </p>
+          <p className="mt-3 text-sm leading-7 text-gray-500">
+            حاويات مخلفات المنشآت، وحاويات نفايات للمطاعم، مع نقل مخلفات البناء والهدم للمنازل والمشاريع داخل الرياض.
+          </p>
         </motion.div>
 
         {/* Cards Grid */}

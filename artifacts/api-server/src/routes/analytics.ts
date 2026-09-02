@@ -187,7 +187,7 @@ router.post("/track", async (req, res) => {
     });
     return res.json({ ok: true });
   } catch (e) {
-    return res.status(500).json({ error: String(e) });
+    return res.status(500).json({ error: "تعذر تسجيل الزيارة حالياً" });
   }
 });
 
@@ -239,7 +239,7 @@ router.post("/visitor/heartbeat", async (req, res) => {
 
     return res.json({ ok: true });
   } catch (e) {
-    return res.status(500).json({ error: String(e) });
+    return res.status(500).json({ error: "تعذر تحديث حالة الزائر حالياً" });
   }
 });
 
@@ -478,7 +478,7 @@ router.get("/admin/analytics", requireAdmin, requireSectionPermission("analytics
       generatedAt: now,
     });
   } catch (e) {
-    return res.status(500).json({ error: String(e) });
+    return res.status(500).json({ error: "تعذر تحميل بيانات التحليلات حالياً" });
   }
 });
 

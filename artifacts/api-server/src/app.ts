@@ -26,22 +26,28 @@ app.use((_req: Request, res: Response, next: NextFunction) => {
   next();
 });
 
-// ── CORS — allow local development and Replit preview origins ────────────────
-// Production deployments are same-origin, so their browser requests do not
-// need a hard-coded company-domain allowlist.
-const allowedOrigins = [
-  /\.replit\.dev$/,
-  /\.replit\.app$/,
-  /localhost/,
-  /^https?:\/\/127\.0\.0\.1(?::\d+)?$/,
-  /^https?:\/\/0\.0\.0\.0(?::\d+)?$/,
-  /sabaik-almasa/,
-];
+// ── CORS — exact origin allowlist ────────────────────────────────────────────
+// Production requests are same-origin. Preview and local development origins
+// are allowed only when their complete origin matches these anchored rules.
+function isAllowedOrigin(origin: string): boolean {
+  if (origin === "https://sabaik.net" || origin === "https://www.sabaik.net") return true;
+  try {
+    const url = new URL(origin);
+    if (!["http:", "https:"].includes(url.protocol) || url.username || url.password || url.pathname !== "/" || url.search || url.hash) {
+      return false;
+    }
+    const host = url.hostname.toLowerCase();
+    if (host === "localhost" || host === "127.0.0.1" || host === "0.0.0.0") return true;
+    return host.endsWith(".replit.dev") || host.endsWith(".replit.app");
+  } catch {
+    return false;
+  }
+}
 app.use(
   cors({
     origin(origin, callback) {
       if (!origin) return callback(null, true); // same-origin / curl
-      if (allowedOrigins.some((p) => (p instanceof RegExp ? p.test(origin) : origin === p))) {
+      if (isAllowedOrigin(origin)) {
         return callback(null, true);
       }
       return callback(new Error("Not allowed by CORS"));
@@ -94,7 +100,9 @@ const apiLimiter = rateLimit({
 });
 app.use("/api", apiLimiter);
 
-// ── Serve uploaded files from the public web root ─────────────────────────────
+// ── Serve public assets from the web root ────────────────────────────────────
+// Customer/driver evidence is written to a separate private directory by the
+// upload routes below and is never mounted as static content here.
 const uploadHeaders = (res: Response) => {
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.setHeader("Content-Disposition", "inline");
@@ -139,6 +147,21 @@ app.use((req: Request, res: Response, next: NextFunction) => {
     return res.sendFile(path.join(frontendDistPath, "index.html"));
   }
   next();
+});
+
+// Never let Express serialize an exception (and its stack) into an HTTP
+// response. CORS rejections are an expected client error; all other failures
+// are logged with their details but receive a stable generic response.
+app.use((error: unknown, req: Request, res: Response, _next: NextFunction): void => {
+  const isCorsRejection = error instanceof Error && error.message === "Not allowed by CORS";
+  logger.error({ err: error, method: req.method, path: req.originalUrl }, "HTTP request failed");
+  if (res.headersSent) {
+    res.end();
+    return;
+  }
+  res.status(isCorsRejection ? 403 : 500).json({
+    error: isCorsRejection ? "Origin not allowed" : "Internal server error",
+  });
 });
 
 export default app;

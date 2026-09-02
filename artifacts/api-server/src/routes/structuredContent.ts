@@ -85,7 +85,7 @@ router.post("/admin/structured-content", requireAdmin, requireSectionPermission(
     }).returning();
     return res.status(201).json(serialize(row));
   } catch (error) {
-    return res.status(409).json({ error: "يوجد عنصر من نفس النوع والمسار بالفعل", details: String(error) });
+    return res.status(409).json({ error: "يوجد عنصر من نفس النوع والمسار بالفعل" });
   }
 });
 
@@ -110,7 +110,7 @@ router.patch("/admin/structured-content/:id", requireAdmin, requireSectionPermis
     }).where(eq(structuredContentTable.id, id)).returning();
     return res.json(serialize(row));
   } catch (error) {
-    return res.status(409).json({ error: "يوجد عنصر من نفس النوع والمسار بالفعل", details: String(error) });
+    return res.status(409).json({ error: "يوجد عنصر من نفس النوع والمسار بالفعل" });
   }
 });
 

@@ -142,6 +142,7 @@ export function ServiceRequestModal() {
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [orderId, setOrderId] = useState<string | null>(null)
+  const [trackingToken, setTrackingToken] = useState("")
 
   // Sync preselected options when modal opens
   useEffect(() => {
@@ -232,7 +233,9 @@ export function ServiceRequestModal() {
       if (!res.ok) throw new Error(data.error || "فشل إرسال الطلب")
 
       const newOrderId = String(data.id || "")
+       const trackingToken = String(data.trackingToken || "")
       setOrderId(newOrderId)
+       setTrackingToken(trackingToken)
       setStep("success")
 
       // Save customer info and order ID for presence tracking & chat sync
@@ -240,6 +243,7 @@ export function ServiceRequestModal() {
         sessionStorage.setItem("customer_name", clientName.trim())
         sessionStorage.setItem("customer_phone", normalizePhone(phone))
         sessionStorage.setItem("last_order_id", newOrderId)
+        if (trackingToken) sessionStorage.setItem("last_order_tracking_token", trackingToken)
       } catch {}
 
       // Notify visitor heartbeat
@@ -540,6 +544,13 @@ export function ServiceRequestModal() {
                     <span className="inline-block bg-primary/10 text-primary font-mono font-bold text-sm px-3 py-1 rounded-full mt-1">
                       رقم الطلب: #{orderId}
                     </span>
+                  )}
+                  {trackingToken && (
+                    <div className="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                      <p className="font-bold">رمز التحقق للتتبع</p>
+                      <code dir="ltr" className="mt-1 block select-all break-all font-mono">{trackingToken}</code>
+                      <p className="mt-1 text-[11px]">احتفظ به مع رقم الطلب؛ لا يمكن التتبع بالرقم وحده.</p>
+                    </div>
                   )}
                 </div>
                 <p className="text-xs text-gray-600 max-w-xs mx-auto leading-relaxed">

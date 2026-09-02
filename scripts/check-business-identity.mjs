@@ -13,6 +13,9 @@ const legacyPatterns = [
   /0536312121/g,
   /مؤسسة\s+تقي/giu,
   /Taqi Group Establishment/giu,
+  /aiservx/giu,
+  /facebook\.com\/Aiservx/giu,
+  /x\.com\/Aiservx/giu,
 ];
 const textExtensions = /\.(html?|js|css|json|xml|txt|php|webmanifest)$/i;
 function collectPublicFiles(directory) {

@@ -51,7 +51,7 @@ router.post("/admin/ads", requireAdmin, requireSectionPermission("ads"), async (
     }).returning();
     return res.status(201).json(row);
   } catch (e) {
-    return res.status(500).json({ error: String(e) });
+    return res.status(500).json({ error: "تعذر حفظ الإعلان حالياً" });
   }
 });
 
@@ -75,7 +75,7 @@ router.patch("/admin/ads/:id", requireAdmin, requireSectionPermission("ads"), as
     if (!row) return res.status(404).json({ error: "Not found" });
     return res.json(row);
   } catch (e) {
-    return res.status(500).json({ error: String(e) });
+    return res.status(500).json({ error: "تعذر تحديث الإعلان حالياً" });
   }
 });
 
@@ -86,7 +86,7 @@ router.delete("/admin/ads/:id", requireAdmin, requireSectionPermission("ads"), a
     await db.delete(adsTable).where(eq(adsTable.id, id));
     return res.status(204).send();
   } catch (e) {
-    return res.status(500).json({ error: String(e) });
+    return res.status(500).json({ error: "تعذر حذف الإعلان حالياً" });
   }
 });
 

@@ -36,6 +36,16 @@ function replaceIdentity(value, identity) {
     .replaceAll("0536312121", identity.call);
 }
 
+function removeRetiredSocialOrInfrastructureValue(value, key) {
+  if (typeof value !== "string" || !/aiservx/iu.test(value)) return value;
+  if (key.startsWith("social_")) return "";
+  if (key === "hostinger_ftp_username") {
+    console.warn("⚠️ تم تفريغ اسم مستخدم FTP قديم يحمل هوية Aiservx؛ يجب إدخال اسم مستخدم النشر الصحيح قبل الرفع.");
+    return "";
+  }
+  return value.replace(/aiservx/giu, "");
+}
+
 function replaceHomepageContactText(value, identity) {
   if (typeof value !== "string") return value;
   try {
@@ -91,6 +101,7 @@ function updateDatabase(dbPath) {
               `SELECT key FROM ${table} WHERE rowid = ?`,
             ).get(row.rowId)?.key;
             if (settingKey === "homepage_content") next = replaceHomepageContactText(next, identity);
+            next = removeRetiredSocialOrInfrastructureValue(next, String(settingKey || ""));
           }
           if (next !== row.value) {
             write.run(next, row.rowId);

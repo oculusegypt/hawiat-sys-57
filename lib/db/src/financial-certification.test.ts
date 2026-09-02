@@ -10,18 +10,21 @@ import { sqlite } from "./index.js";
 // This fixture intentionally includes the operational record boundary as well as
 // the ledger tables. It is safe, anonymous, deterministic, and isolated by the
 // package test command's DB_PATH.
-sqlite.exec(`
+  sqlite.exec(`
   CREATE TABLE IF NOT EXISTS container_system_records (
     id INTEGER PRIMARY KEY AUTOINCREMENT, kind TEXT NOT NULL,
     status TEXT NOT NULL DEFAULT 'active', reference TEXT NOT NULL DEFAULT '',
-    payload TEXT NOT NULL DEFAULT '{}'
+    payload TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
-  INSERT INTO container_system_records (kind, status, reference, payload)
-  VALUES ('customer', 'active', 'CUS-CERT', '{"name":"عميل اختبار مجهّل"}'),
-         ('contract', 'active', 'CON-CERT', '{"customerRecordId":1,"total":10000}'),
-         ('invoice', 'posted', 'INV-CERT', '{"contractRecordId":2,"total":10000}'),
-         ('purchase', 'posted', 'PUR-CERT', '{"amount":1000}'),
-         ('stock_issue', 'posted', 'ISS-CERT', '{"amount":300}');
+  INSERT INTO container_system_records
+    (kind, status, reference, payload, created_at, updated_at)
+  VALUES ('customer', 'active', 'CUS-CERT', '{"name":"عميل اختبار مجهّل"}', datetime('now'), datetime('now')),
+         ('contract', 'active', 'CON-CERT', '{"customerRecordId":1,"total":10000}', datetime('now'), datetime('now')),
+         ('invoice', 'posted', 'INV-CERT', '{"contractRecordId":2,"total":10000}', datetime('now'), datetime('now')),
+         ('purchase', 'posted', 'PUR-CERT', '{"amount":1000}', datetime('now'), datetime('now')),
+         ('stock_issue', 'posted', 'ISS-CERT', '{"amount":300}', datetime('now'), datetime('now'));
 `);
 
 const post = (sourceKind: string, sourceId: number, amount: number, extra: Record<string, unknown> = {}) =>
@@ -71,6 +74,9 @@ assert.equal(truth.balances.accountsReceivable, 9800);
 
 closeFinancialPeriod("2026-08", 1);
 assert.throws(() => post("expense", 1099, 10), /مغلقة/);
-assert.throws(() => reverseInFinancialCore({ sourceKind: "invoice", sourceId: 1001, amount: 10000 }, "فترة مغلقة", 1), /مغلقة/);
+const currentPeriodDate = new Date().toISOString().slice(0, 10);
+post("invoice", 1098, 10, { date: currentPeriodDate });
+closeFinancialPeriod(currentPeriodDate.slice(0, 7), 1);
+assert.throws(() => reverseInFinancialCore({ sourceKind: "invoice", sourceId: 1098, amount: 10 }, "فترة مغلقة", 1), /مغلقة/);
 
 console.log("financial certification assertions passed");

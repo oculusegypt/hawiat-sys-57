@@ -6,6 +6,7 @@
 import { Router } from "express";
 import { sqlite } from "@workspace/db";
 import { requireAdmin, requireManagerOrAdmin, requireSectionPermission } from "../middleware/adminAuth";
+import { logger } from "../lib/logger";
 
 const router = Router();
 
@@ -38,7 +39,7 @@ router.get("/admin/database/tables", (_req, res) => {
 
     return res.json(result);
   } catch (e) {
-    return res.status(500).json({ error: String(e) });
+    return res.status(500).json({ error: "تعذر تحميل جداول قاعدة البيانات حالياً" });
   }
 });
 
@@ -98,7 +99,7 @@ router.get("/admin/database/tables/:table", (req, res) => {
       pages: Math.ceil(total / limit),
     });
   } catch (e) {
-    return res.status(500).json({ error: String(e) });
+    return res.status(500).json({ error: "تعذر تحميل بيانات الجدول حالياً" });
   }
 });
 
@@ -151,7 +152,8 @@ router.delete("/admin/database/tables/:table/:id", (req, res) => {
         code: "FOREIGN_KEY",
       });
     }
-    return res.status(500).json({ error: msg });
+    logger.error({ err: e, table, id }, "Database row deletion failed");
+    return res.status(500).json({ error: "تعذر حذف السجل حالياً" });
   }
 });
 

@@ -9,6 +9,7 @@ DirectoryIndex index.html index.php
 
   # Block access to sensitive directories
   RewriteRule ^data/  - [F,L]
+  RewriteRule ^private-uploads/  - [F,L]
   RewriteRule ^\\.     - [F,L]
 
   # Public uploaded files live at the web root. Converge any cached legacy

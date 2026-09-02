@@ -319,8 +319,11 @@ export default function NeighborhoodPage() {
   }
 
   const whatsappDigits = String(phoneWhatsapp || "").replace(/[^\d]/g, "")
+  const normalizedWhatsapp = whatsappDigits.startsWith("966")
+    ? whatsappDigits
+    : `966${whatsappDigits.replace(/^0/, "")}`
   const wa = whatsappDigits
-    ? `https://wa.me/966${whatsappDigits.replace(/^0/, "")}?text=${encodeURIComponent(`السلام عليكم، أرغب في طلب تأجير حاوية في ${area.name} بالرياض`)}`
+    ? `https://wa.me/${normalizedWhatsapp}?text=${encodeURIComponent(`السلام عليكم، أرغب في طلب تأجير حاوية في ${area.name} بالرياض`)}`
     : ""
   const phoneHref = phoneCall ? `tel:${phoneCall}` : ""
 

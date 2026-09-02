@@ -82,7 +82,7 @@ router.post("/admin/whatsapp/test", async (_req, res) => {
 
     return res.json({ ok: true, account: me, phones });
   } catch (e) {
-    return res.status(400).json({ ok: false, error: String(e) });
+    return res.status(400).json({ ok: false, error: "تعذر إرسال رسالة واتساب" });
   }
 });
 
@@ -155,7 +155,7 @@ router.post("/admin/whatsapp/send", async (req, res) => {
 
     return res.json({ ok: true, result });
   } catch (e) {
-    return res.status(400).json({ error: String(e) });
+    return res.status(400).json({ error: "تعذر حفظ إعدادات واتساب" });
   }
 });
 

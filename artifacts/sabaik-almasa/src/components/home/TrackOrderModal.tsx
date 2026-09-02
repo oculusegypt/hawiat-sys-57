@@ -107,6 +107,7 @@ interface OrderData {
 export function TrackOrderModal({ isOpen, onClose, initialId }: TrackOrderModalProps) {
   const { companyName } = useSiteSettings()
   const [inputId, setInputId] = useState(initialId || "")
+  const [inputToken, setInputToken] = useState("")
   const [loading, setLoading]   = useState(false)
   const [order,   setOrder]     = useState<OrderData | null>(null)
   const [error,   setError]     = useState<string | null>(null)
@@ -115,6 +116,7 @@ export function TrackOrderModal({ isOpen, onClose, initialId }: TrackOrderModalP
   useEffect(() => {
     if (isOpen) {
       setInputId(initialId || "")
+      setInputToken(sessionStorage.getItem("last_order_tracking_token") || "")
       setOrder(null)
       setError(null)
     }
@@ -128,15 +130,20 @@ export function TrackOrderModal({ isOpen, onClose, initialId }: TrackOrderModalP
 
   const search = async () => {
     const id = inputId.trim().replace("#", "")
+    const token = inputToken.trim()
     if (!id || isNaN(Number(id))) {
       setError("أدخل رقم الطلب بشكل صحيح")
+      return
+    }
+    if (!token) {
+      setError("أدخل رمز التحقق الذي ظهر بعد إرسال الطلب")
       return
     }
     setLoading(true)
     setError(null)
     setOrder(null)
     try {
-      const res = await fetch(`${API_BASE}/api/service-requests/${id}`)
+      const res = await fetch(`${API_BASE}/api/service-requests/${id}?token=${encodeURIComponent(token)}`)
       if (res.status === 404) {
         setError("لم يُعثر على طلب بهذا الرقم. تأكد من الرقم وأعد المحاولة.")
         return
@@ -200,9 +207,10 @@ export function TrackOrderModal({ isOpen, onClose, initialId }: TrackOrderModalP
               {/* Search box */}
               <div className="mb-5">
                 <p className="text-sm text-gray-500 mb-3">
-                  أدخل رقم الطلب الذي وصلك عند إرسال الطلب
+                  أدخل رقم الطلب ورمز التحقق اللذين ظهرا بعد إرسال الطلب
                 </p>
-                <div className="flex gap-2">
+                <div className="space-y-2">
+                  <div className="flex gap-2">
                   <div className="relative flex-1">
                     <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 font-bold text-sm select-none">#</span>
                     <Input
@@ -226,6 +234,16 @@ export function TrackOrderModal({ isOpen, onClose, initialId }: TrackOrderModalP
                       : <Search size={18} />
                     }
                   </Button>
+                  </div>
+                  <Input
+                    value={inputToken}
+                    onChange={(e) => { setInputToken(e.target.value); setError(null) }}
+                    onKeyDown={(e) => { if (e.key === "Enter") search() }}
+                    placeholder="رمز التحقق"
+                    dir="ltr"
+                    className="h-10 bg-gray-50 border-gray-200 text-xs font-mono text-left"
+                    autoComplete="one-time-code"
+                  />
                 </div>
 
                 <AnimatePresence>

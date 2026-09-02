@@ -6,11 +6,18 @@ import { createNotification } from "../lib/pushNotifications";
 import { requireAdmin, requireAdminOnly, requireDriver, requireRequestAssignment, requireManagerOrAdmin, requireAnySectionPermission, requireSectionPermission, type AdminRequest } from "../middleware/adminAuth";
 import { sourceForRow } from "../lib/attribution";
 import { syncCustomerFromRequest } from "../lib/customerSync";
+import crypto from "node:crypto";
 
 const router = Router();
 
 const ONLINE_WINDOW_MS = 90 * 1000;
 const CONTAINER_RENTAL_DURATION = "حتى امتلاء الحاوية أو 10 أيام، أيهما أقرب";
+
+function createTrackingToken(id: number): string {
+  const secret = process.env.SESSION_SECRET;
+  if (!secret) throw new Error("SESSION_SECRET is required for tracking tokens");
+  return crypto.createHmac("sha256", secret).update(`service-request:${id}`).digest("base64url");
+}
 
 function normalizeContainerRentalDuration(value: unknown): string | null {
   const text = String(value ?? "").trim();
@@ -452,6 +459,14 @@ router.post("/service-requests", async (req, res) => {
     conversationId: rawConversationId,
     tracking: rawTracking,
   } = req.body;
+  if (
+    typeof clientName !== "string" ||
+    !clientName.trim() ||
+    typeof phone !== "string" ||
+    !phone.trim()
+  ) {
+    return res.status(400).json({ error: "الاسم ورقم الجوال مطلوبان" });
+  }
   const tracking = rawTracking && typeof rawTracking === "object"
     ? rawTracking as Record<string, unknown>
     : {};
@@ -573,13 +588,19 @@ router.post("/service-requests", async (req, res) => {
       .where(eq(conversationsTable.id, conversationId));
   }
 
-  return res.status(201).json(request);
+  return res.status(201).json({ ...request, trackingToken: createTrackingToken(request.id) });
 });
 
-// Public order tracking relies on this lookup, so keep the single-request
-// endpoint public while protecting the administrative list and mutations.
+// Numeric IDs alone must never disclose customer data. The opaque token is
+// returned only when the customer creates the request.
 router.get("/service-requests/:id", async (req, res) => {
   const id = parseInt(String(req.params.id), 10);
+  const token = typeof req.query.token === "string" ? req.query.token : "";
+  const expected = Number.isInteger(id) && id > 0 ? createTrackingToken(id) : "";
+  if (!token || !expected || token.length !== expected.length ||
+      !crypto.timingSafeEqual(Buffer.from(token), Buffer.from(expected))) {
+    return res.status(404).json({ error: "الطلب غير موجود" });
+  }
   const [request] = await db.select().from(serviceRequestsTable).where(eq(serviceRequestsTable.id, id));
   if (!request) return res.status(404).json({ error: "Not found" });
   const [decoratedRequest] = await addPresenceToRequests([request]);
@@ -590,7 +611,7 @@ router.get("/service-requests/:id", async (req, res) => {
     appointmentType, scheduledAt, createdAt, updatedAt,
   } = decoratedRequest;
   return res.json({
-    id: requestId, clientName, phone, serviceType, containerSize, status,
+    id: requestId, trackingToken: createTrackingToken(requestId), clientName, phone, serviceType, containerSize, status,
     appointmentType, scheduledAt, createdAt, updatedAt,
   });
 });
@@ -874,7 +895,7 @@ router.patch("/driver/work-orders/:id", requireAdmin, requireDriver, async (req,
       try {
         preparedContainerCompletion = await prepareContainerCompletion(current);
       } catch (error) {
-        return res.status(422).json({ error: error instanceof Error ? error.message : "تعذر التحقق من ارتباط الحاوية بالعقد" });
+        return res.status(422).json({ error: "تعذر التحقق من ارتباط الحاوية بالعقد" });
       }
       if (preparedContainerCompletion && (!receiverName || !signatureData || !proofPhotoUrl)) {
         return res.status(422).json({ error: "يلزم تسجيل اسم المستلم وتوقيع العميل وصورة إثبات قبل إكمال حركة الحاوية" });
@@ -944,7 +965,7 @@ router.patch("/driver/work-orders/:id", requireAdmin, requireDriver, async (req,
       preparedContainerCompletion = await prepareContainerCompletion(request);
     } catch (error) {
       return res.status(422).json({
-        error: error instanceof Error ? error.message : "لا يمكن إكمال أمر العمل قبل اكتمال ربط العقد والحاوية",
+        error: "لا يمكن إكمال أمر العمل قبل اكتمال ربط العقد والحاوية",
       });
     }
     if (preparedContainerCompletion && (!receiverName || !signatureData || !proofPhotoUrl)) {
@@ -1022,7 +1043,7 @@ router.patch("/driver/work-orders/:id", requireAdmin, requireDriver, async (req,
     });
   } catch (error) {
     return res.status(500).json({
-      error: error instanceof Error ? error.message : "تعذر حفظ انتقال أمر العمل بشكل كامل",
+      error: "تعذر حفظ انتقال أمر العمل بشكل كامل",
     });
   }
   if (["accepted", "rejected", "completed"].includes(nextStatus)) {

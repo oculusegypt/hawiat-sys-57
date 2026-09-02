@@ -9,6 +9,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { getSetting, setSetting } from "./settings";
 import { requireAdmin, requireSectionPermission, type AdminRequest } from "../middleware/adminAuth";
+import { logger } from "../lib/logger";
 
 const router = Router();
 const upload = multer({
@@ -147,13 +148,14 @@ router.post("/admin/hostinger/test", async (req, res) => {
     await client.cd(settings.remotePath);
     return res.json({ ok: true, path: settings.remotePath });
   } catch (error) {
-    return res.status(502).json({ ok: false, error: error instanceof Error ? error.message : "تعذر الاتصال بـ Hostinger" });
+    logger.error({ err: error }, "Hostinger connection test failed");
+    return res.status(502).json({ ok: false, error: "تعذر الاتصال بخادم الاستضافة حالياً" });
   } finally {
     client?.close();
   }
 });
 
-router.post("/admin/hostinger/deploy", upload.single("patch"), async (req: AdminRequest, res) => {
+router.post("/admin/hostinger/deploy", upload.single("patch"), async (req, res) => {
   let client: Client | undefined;
   let workDir = "";
   try {
@@ -181,7 +183,8 @@ router.post("/admin/hostinger/deploy", upload.single("patch"), async (req: Admin
     await client.uploadFromDir(extractedRoot, settings.remotePath);
     return res.json({ ok: true, uploaded: files.length, remotePath: settings.remotePath });
   } catch (error) {
-    return res.status(502).json({ ok: false, error: error instanceof Error ? error.message : "فشل رفع الباتش إلى Hostinger" });
+    logger.error({ err: error }, "Hostinger patch deployment failed");
+    return res.status(502).json({ ok: false, error: "فشل رفع التحديث إلى خادم الاستضافة" });
   } finally {
     client?.close();
     if (workDir) await rm(workDir, { recursive: true, force: true }).catch(() => {});

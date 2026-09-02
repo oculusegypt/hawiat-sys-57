@@ -1016,7 +1016,7 @@ function generateHomepageStaticContent() {
       </section>
       <section id="service-solutions" style="border-top:1px solid #e5eef1;margin-top:32px;padding-top:30px">
         <h2 style="margin:0 0 10px;color:#12384b;font-size:26px;font-weight:900">حلول عملية للمطاعم والمنشآت والمشاريع</h2>
-        <p style="margin:0 0 16px;color:#52707c;font-size:16px">نغطي احتياجات الموقع من اختيار الحاوية المناسبة إلى التوصيل والسحب ونقل المخلفات. تشمل الحلول حاويات نفايات للمطاعم والمنشآت، وحاويات أنقاض لمشاريع البناء والهدم.</p>
+        <p style="margin:0 0 16px;color:#52707c;font-size:16px">نغطي احتياجات الموقع من اختيار الحاوية المناسبة إلى التوصيل والسحب ونقل المخلفات. تشمل الحلول حاويات مخلفات المنشآت، وحاويات نفايات للمطاعم، وحاويات أنقاض لمشاريع البناء والهدم، مع نقل مخلفات البناء والهدم للمشاريع داخل الرياض.</p>
         <h3 style="margin:22px 0 8px;color:#12384b;font-size:19px;font-weight:800">طريقة الطلب</h3>
         <p style="margin:0;color:#52707c;font-size:15px">أرسل نوع المخلفات، المقاس المتوقع، عنوان الموقع، ومدة الاحتياج. نراجع التفاصيل ونقترح الحاوية المناسبة ثم ننسق موعد التوصيل والسحب بوضوح.</p>
       </section>
@@ -2509,7 +2509,7 @@ const NEIGHBORHOODS = [
   { slug: "south-riyadh", name: "جنوب الرياض", region: "جنوب الرياض", related: ["badr","al-shifa","al-aziziyah"] },
   { slug: "badr", name: "حي بدر", region: "جنوب الرياض", related: ["al-shifa","al-dar-al-baida","south-riyadh"] },
   { slug: "al-hair", name: "حي الحائر", region: "جنوب الرياض", related: ["al-shifa","al-manakh","south-riyadh"] },
-  { slug: "al-shifa", name: "حي الشفاء", region: "جنوب الرياض", related: ["badr","al-aziziyah","south-riyadh"] },
+  { slug: "al-shifa", name: "حي الشفا", region: "جنوب الرياض", related: ["badr","al-aziziyah","south-riyadh"] },
   { slug: "al-aziziyah", name: "حي العزيزية", region: "جنوب الرياض", related: ["al-shifa","al-iskan","south-riyadh"] },
   { slug: "al-dar-al-baida", name: "حي الدار البيضاء", region: "جنوب الرياض", related: ["al-aziziyah","al-manakh","south-riyadh"] },
   { slug: "al-manakh", name: "حي المناخ", region: "جنوب الرياض", related: ["al-dar-al-baida","al-iskan","al-hair"] },

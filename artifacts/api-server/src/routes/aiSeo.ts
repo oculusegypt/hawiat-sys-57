@@ -364,7 +364,7 @@ router.post("/admin/ai/generate-blog-basics", async (req, res) => {
     }
     return res.json(result);
   } catch (e) {
-    return res.status(503).json({ error: String(e) });
+    return res.status(503).json({ error: "خدمة توليد المحتوى غير متاحة حالياً" });
   }
 });
 
@@ -394,7 +394,7 @@ router.post("/admin/ai/generate-blog-content", async (req, res) => {
 
     return res.json({ content });
   } catch (e) {
-    return res.status(503).json({ error: String(e) });
+    return res.status(503).json({ error: "خدمة توليد المحتوى غير متاحة حالياً" });
   }
 });
 
@@ -412,7 +412,7 @@ router.post("/admin/ai/generate-blog-seo", async (req, res) => {
     if ("seoSlug" in result) result.seoSlug = normalizeArabicSlug(result.seoSlug);
     return res.json(result);
   } catch (e) {
-    return res.status(503).json({ error: String(e) });
+    return res.status(503).json({ error: "خدمة توليد بيانات SEO غير متاحة حالياً" });
   }
 });
 
@@ -429,7 +429,7 @@ router.post("/admin/ai/generate-page-basics", async (req, res) => {
     }
     return res.json(result);
   } catch (error) {
-    return res.status(503).json({ error: String(error) });
+    return res.status(503).json({ error: "خدمة توليد الصفحة غير متاحة حالياً" });
   }
 });
 
@@ -447,7 +447,7 @@ router.post("/admin/ai/generate-page-content", async (req, res) => {
     }
     return res.json({ content });
   } catch (error) {
-    return res.status(503).json({ error: String(error) });
+    return res.status(503).json({ error: "خدمة توليد المحتوى غير متاحة حالياً" });
   }
 });
 
@@ -465,7 +465,7 @@ router.post("/admin/ai/generate-page-seo", async (req, res) => {
     if ("seoSlug" in result) result.seoSlug = normalizeArabicSlug(result.seoSlug);
     return res.json(result);
   } catch (error) {
-    return res.status(503).json({ error: String(error) });
+    return res.status(503).json({ error: "خدمة توليد بيانات SEO غير متاحة حالياً" });
   }
 });
 
@@ -508,7 +508,6 @@ router.post("/admin/ai/generate-seo", async (req, res) => {
 
     return res.status(503).json({
       error: "فشل الاتصال بجميع مزودي الذكاء الاصطناعي. تحقق من مفاتيح API في إعدادات الذكاء الاصطناعي.",
-      attempts,
     });
   } catch {
     return res.status(500).json({ error: "خطأ داخلي في الخادم" });
@@ -826,7 +825,7 @@ router.post("/admin/ai/generate-llms-txt", async (req, res) => {
     const result = extractJson(raw);
     return res.json(result);
   } catch (e) {
-    return res.status(503).json({ error: String(e) });
+    return res.status(503).json({ error: "خدمة توليد النص غير متاحة حالياً" });
   }
 });
 
@@ -843,7 +842,7 @@ router.post("/admin/llms-txt/save", async (req, res) => {
 
     return res.json({ ok: true, savedTo: "public/llms.txt", size: content.length });
   } catch (e) {
-    return res.status(500).json({ error: String(e) });
+    return res.status(500).json({ error: "تعذر حفظ ملف llms.txt حالياً" });
   }
 });
 
@@ -863,7 +862,7 @@ router.post("/admin/ai/test", async (req, res) => {
     if (provider === "zhipu")   await callZhipu(zhipuKey, testPrompt);
     return res.json({ ok: true });
   } catch (e) {
-    return res.status(400).json({ ok: false, error: String(e) });
+    return res.status(400).json({ ok: false, error: "فشل اختبار مزود الذكاء الاصطناعي" });
   }
 });
 

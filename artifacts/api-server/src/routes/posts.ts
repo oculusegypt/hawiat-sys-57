@@ -134,7 +134,7 @@ router.get("/posts/:slug", async (req, res) => {
     } catch {}
     return res.json(castRow(row, await getSetting("company_name")));
   } catch (e) {
-    return res.status(500).json({ error: String(e) });
+    return res.status(500).json({ error: "تعذر تحميل المقالة حالياً" });
   }
 });
 
@@ -222,7 +222,7 @@ router.post("/admin/posts", requireAdmin, requireSectionPermission("blog"), asyn
     }).returning();
     return res.status(201).json(castRow(row, companyName));
   } catch (e) {
-    return res.status(500).json({ error: String(e) });
+    return res.status(500).json({ error: "تعذر إنشاء المقالة حالياً" });
   }
 });
 
@@ -302,7 +302,7 @@ router.patch("/admin/posts/:id", requireAdmin, requireSectionPermission("blog"),
     const [row] = await db.update(postsTable).set(update).where(eq(postsTable.id, id)).returning();
     return res.json(castRow(row, companyName));
   } catch (e) {
-    return res.status(500).json({ error: String(e) });
+    return res.status(500).json({ error: "تعذر تحديث المقالة حالياً" });
   }
 });
 
@@ -313,7 +313,7 @@ router.delete("/admin/posts/:id", requireAdmin, requireSectionPermission("blog")
     await db.delete(postsTable).where(eq(postsTable.id, id));
     return res.status(204).send();
   } catch (e) {
-    return res.status(500).json({ error: String(e) });
+    return res.status(500).json({ error: "تعذر حذف المقالة حالياً" });
   }
 });
 

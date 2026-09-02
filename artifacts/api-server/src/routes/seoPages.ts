@@ -87,7 +87,7 @@ router.get("/pages/:slug", async (req, res) => {
 
     return res.json(castRow(row, await getSetting("company_name")));
   } catch (error) {
-    return res.status(500).json({ error: String(error) });
+    return res.status(500).json({ error: "تعذر تحميل صفحة SEO حالياً" });
   }
 });
 
@@ -152,7 +152,7 @@ router.post("/admin/seo-pages", requireAdmin, requireSectionPermission("seo_page
     }).returning();
     return res.status(201).json(castRow(row, companyName));
   } catch (error) {
-    return res.status(500).json({ error: String(error) });
+    return res.status(500).json({ error: "تعذر إنشاء صفحة SEO حالياً" });
   }
 });
 
@@ -225,7 +225,7 @@ router.patch("/admin/seo-pages/:id", requireAdmin, requireSectionPermission("seo
     const [row] = await db.update(seoPagesTable).set(update).where(eq(seoPagesTable.id, id)).returning();
     return res.json(castRow(row, companyName));
   } catch (error) {
-    return res.status(500).json({ error: String(error) });
+    return res.status(500).json({ error: "تعذر تحديث صفحة SEO حالياً" });
   }
 });
 
@@ -235,7 +235,7 @@ router.delete("/admin/seo-pages/:id", requireAdmin, requireSectionPermission("se
     await db.delete(seoPagesTable).where(eq(seoPagesTable.id, id));
     return res.status(204).send();
   } catch (error) {
-    return res.status(500).json({ error: String(error) });
+    return res.status(500).json({ error: "تعذر حذف صفحة SEO حالياً" });
   }
 });
 

@@ -1110,7 +1110,8 @@ function hostingerContainerSystemRoute(PDO $pdo, string $path, string $method, a
             hsJson(['contract' => hsRecord($contractRow), 'assignment' => hsRecord($assignmentRow), 'appointment' => hsRecord($appointmentRow), 'serviceRequest' => ['id' => $serviceId], 'invoice' => $invoiceRow ? hsRecord($invoiceRow) : null, 'idempotent' => false], 201);
         } catch (Throwable $error) {
             if ($pdo->inTransaction()) $pdo->rollBack();
-            hsJson(['error' => $error->getMessage() ?: 'تعذر إنشاء دورة العقد كاملة'], 422);
+            error_log('[container-system] contract workflow failed: ' . $error->getMessage());
+            hsJson(['error' => 'تعذر إنشاء دورة العقد كاملة'], 422);
         }
     }
     if ($path === '/admin/container-system/financial/contract-ledgers' && $method === 'GET') {
@@ -1345,7 +1346,11 @@ function hostingerContainerSystemRoute(PDO $pdo, string $path, string $method, a
             $ledgerCreated = $pdo->prepare("SELECT * FROM container_system_records WHERE id = :id LIMIT 1");
             $ledgerCreated->execute([':id' => $ledgerId]);
             hsJson(['payment' => hsRecord($created->fetch(PDO::FETCH_ASSOC)), 'ledgerEntry' => hsRecord($ledgerCreated->fetch(PDO::FETCH_ASSOC)), 'idempotent' => false], 201);
-        } catch (Throwable $error) { if ($pdo->inTransaction()) $pdo->rollBack(); hsJson(['error' => $error->getMessage()], 422); }
+        } catch (Throwable $error) {
+            if ($pdo->inTransaction()) $pdo->rollBack();
+            error_log('[container-system] payment posting failed: ' . $error->getMessage());
+            hsJson(['error' => 'تعذر تسجيل السداد المالي'], 422);
+        }
     }
     if ($path === '/admin/container-system/records' && $method === 'GET') {
         $kind = isset($_GET['kind']) ? (string)$_GET['kind'] : null;

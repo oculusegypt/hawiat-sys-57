@@ -671,6 +671,9 @@ step("تجهيز مجلد uploads الكامل");
 const uploadsDir = join(ROOT, "build_php/uploads");
 rmSync(uploadsDir, { recursive: true, force: true });
 mkdirSync(uploadsDir, { recursive: true });
+const privateUploadsDir = join(ROOT, "build_php/private-uploads");
+rmSync(privateUploadsDir, { recursive: true, force: true });
+mkdirSync(privateUploadsDir, { recursive: true });
 const sourceUploadsDir = join(ROOT, "artifacts/api-server/uploads");
 let copiedUploadCount = 0;
 for (const filename of readdirSync(sourceUploadsDir)) {
@@ -743,6 +746,7 @@ writeFileSync(join(ROOT, "build_php/.htaccess"), `DirectoryIndex index.html inde
 
   # Block access to sensitive directories
   RewriteRule ^data/  - [F,L]
+  RewriteRule ^private-uploads/  - [F,L]
   RewriteRule ^\\\\\.     - [F,L]
 
   # Public uploaded files live at the web root. Converge any cached legacy

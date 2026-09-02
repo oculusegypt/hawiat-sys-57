@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, type Request, type Response, type NextFunction } from "express";
 import { and, desc, eq, like, ne, or } from "drizzle-orm";
 import { db, sqlite, containerSystemAuditTable, containerSystemRecordsTable, serviceRequestsTable, financialTruth, financialPeriods, closeFinancialPeriod, postToFinancialCore, reverseInFinancialCore } from "@workspace/db";
 import type { AdminRequest } from "../middleware/adminAuth";
@@ -113,8 +113,8 @@ function canManage(req: AdminRequest, kind: string): boolean {
 }
 
 function requireContainerPermission(kind: string) {
-  return (req: AdminRequest, res: import("express").Response, next: import("express").NextFunction): void => {
-    if (!canManage(req, kind)) {
+  return (req: Request, res: Response, next: NextFunction): void => {
+    if (!canManage(req as AdminRequest, kind)) {
       res.status(403).json({ error: "ليس لديك صلاحية للوصول إلى هذا القسم" });
       return;
     }
@@ -867,7 +867,7 @@ router.post("/admin/container-system/contracts/workflow", requireContainerPermis
     await validateContractPayload(contractPayload, undefined, true);
     if (await hasOverlappingContract(contractPayload)) return res.status(409).json({ error: "الحاوية مرتبطة بعقد آخر خلال نفس الفترة" });
   } catch (error) {
-    return res.status(422).json({ error: error instanceof Error ? error.message : "بيانات العقد غير صحيحة" });
+    return res.status(422).json({ error: "بيانات العقد غير صحيحة" });
   }
   try {
     const result = db.transaction((tx) => {
@@ -1102,7 +1102,7 @@ router.post("/admin/container-system/contracts/workflow", requireContainerPermis
     });
     return res.status(201).json({ contract: formatRecord(result.contract), assignment: formatRecord(result.assignment), appointment: formatRecord(result.appointment), workOrder: formatRecord(result.workOrder), serviceRequest: result.serviceRequest ?? null, invoice: result.invoice ? formatRecord(result.invoice) : null, idempotent: false });
   } catch (error) {
-    return res.status(422).json({ error: error instanceof Error ? error.message : "تعذر إنشاء دورة العقد كاملة" });
+    return res.status(422).json({ error: "تعذر إنشاء دورة العقد كاملة" });
   }
 });
 
@@ -1455,7 +1455,7 @@ router.post("/admin/container-system/financial/settle", requireContainerPermissi
         return res.json({ payment: formatRecord(raced), ledgerEntry: racedLedger ? formatRecord(racedLedger) : null, idempotent: true });
       }
     }
-    return res.status(422).json({ error: error instanceof Error ? error.message : "تعذر تسجيل التسوية المالية" });
+    return res.status(422).json({ error: "تعذر تسجيل التسوية المالية" });
   }
 });
 
@@ -1633,7 +1633,7 @@ router.post("/admin/container-system/contracts/:id/lifecycle", requireContainerP
       idempotent: result.idempotent,
     });
   } catch (error) {
-    return res.status(422).json({ error: error instanceof Error ? error.message : "تعذر تنفيذ دورة العقد بشكل ذري" });
+    return res.status(422).json({ error: "تعذر تنفيذ دورة العقد بشكل ذري" });
   }
 });
 
@@ -1676,7 +1676,7 @@ router.post("/admin/container-system/records", async (req, res) => {
     try {
       await validateContractPayload(payload);
     } catch (error) {
-      return res.status(422).json({ error: error instanceof Error ? error.message : "بيانات العقد غير صحيحة" });
+      return res.status(422).json({ error: "بيانات العقد غير صحيحة" });
     }
   }
   if (kind === "customer_site") {
@@ -1742,7 +1742,7 @@ router.post("/admin/container-system/records", async (req, res) => {
     try {
       validateMovementEvidence(payload);
     } catch (error) {
-      return res.status(422).json({ error: error instanceof Error ? error.message : "بيانات موقع الحركة غير صحيحة" });
+    return res.status(422).json({ error: "بيانات موقع الحركة غير صحيحة" });
     }
   }
   if (kind === "container" || kind === "container_asset") {
@@ -1753,7 +1753,7 @@ router.post("/admin/container-system/records", async (req, res) => {
   try {
     await validateFinancialPayload(kind, payload);
   } catch (error) {
-    return res.status(422).json({ error: error instanceof Error ? error.message : "بيانات مالية غير صحيحة" });
+    return res.status(422).json({ error: "بيانات مالية غير صحيحة" });
   }
   const requestedStatus = String(status);
   if (financialLifecycleKinds.has(kind) && requestedStatus === "posted") {
@@ -1849,14 +1849,14 @@ router.post("/admin/container-system/records", async (req, res) => {
       return current;
     });
   } catch (error) {
-    return res.status(422).json({ error: error instanceof Error ? error.message : "تعذر حفظ التخصيص بشكل كامل" });
+    return res.status(422).json({ error: "تعذر حفظ التخصيص بشكل كامل" });
   }
    if (kind === "container_movement") {
      try {
        await syncMovement(payload, adminReq.adminId);
      } catch (error) {
        await db.update(containerSystemRecordsTable).set({ status: "archived", updatedAt: new Date().toISOString() }).where(eq(containerSystemRecordsTable.id, created.id));
-       return res.status(422).json({ error: error instanceof Error ? error.message : "تعذر مزامنة حركة الحاوية" });
+       return res.status(422).json({ error: "تعذر مزامنة حركة الحاوية" });
      }
    }
   if (kind === "contract") {
@@ -1864,7 +1864,7 @@ router.post("/admin/container-system/records", async (req, res) => {
       await linkContractToRequest(payload, created.id, adminReq.adminId);
     } catch (error) {
       await db.update(containerSystemRecordsTable).set({ status: "archived", updatedAt: new Date().toISOString() }).where(eq(containerSystemRecordsTable.id, created.id));
-      return res.status(422).json({ error: error instanceof Error ? error.message : "تعذر ربط العقد بالطلب" });
+      return res.status(422).json({ error: "تعذر ربط العقد بالطلب" });
     }
   }
    if (["payment", "receipt", "expense", "deposit", "bank_deposit", "bank_fee", "invoice", "invoice_return", "payment_return", "transfer", "purchase", "purchase_return", "other_revenue"].includes(kind) && normalizedStatus === "posted") {
@@ -1920,7 +1920,7 @@ router.post("/admin/container-system/records", async (req, res) => {
        }
      } catch (error) {
        await db.update(containerSystemRecordsTable).set({ status: "archived", updatedAt: new Date().toISOString() }).where(eq(containerSystemRecordsTable.id, created.id));
-       return res.status(422).json({ error: error instanceof Error ? error.message : "تعذر ترحيل الحركة إلى النواة المالية" });
+       return res.status(422).json({ error: "تعذر ترحيل الحركة إلى النواة المالية" });
      }
   }
   return res.status(201).json(formatRecord(created));
@@ -1949,7 +1949,7 @@ router.patch("/admin/container-system/records/:id", async (req, res) => {
       adminReq.adminRole,
     );
   } catch (error) {
-    return res.status(422).json({ error: error instanceof Error ? error.message : "دورة اعتماد مالية غير صحيحة" });
+    return res.status(422).json({ error: "دورة اعتماد مالية غير صحيحة" });
   }
   if (financialLifecycleKinds.has(current.kind) && ["approved", "posted", "cancelled"].includes(current.status) &&
       body.payload && JSON.stringify(nextPayload) !== JSON.stringify(parsePayload(current.payload)) &&
@@ -1975,8 +1975,7 @@ router.patch("/admin/container-system/records/:id", async (req, res) => {
     try {
       await validateContractPayload(nextPayload, id);
     } catch (error) {
-      const message = error instanceof Error ? error.message : "بيانات العقد غير صحيحة";
-      return res.status(message.includes("مرتبطة بعقد") ? 409 : 422).json({ error: message });
+      return res.status(422).json({ error: "بيانات العقد غير صحيحة" });
     }
   }
   if (current.kind === "invoice") Object.assign(nextPayload, normalizeInvoicePayload(nextPayload));
@@ -2002,7 +2001,7 @@ router.patch("/admin/container-system/records/:id", async (req, res) => {
   try {
     await validateFinancialPayload(current.kind, nextPayload);
   } catch (error) {
-    return res.status(422).json({ error: error instanceof Error ? error.message : "بيانات مالية غير صحيحة" });
+    return res.status(422).json({ error: "بيانات مالية غير صحيحة" });
   }
   const nextStatus = current.kind === "container" || current.kind === "container_asset"
     ? canonicalAssetStatus(nextPayload.status, String(body.status ?? current.status))
@@ -2138,7 +2137,7 @@ router.patch("/admin/container-system/records/:id", async (req, res) => {
     try {
       await linkContractToRequest(nextPayload, id, adminReq.adminId);
     } catch (error) {
-      return res.status(422).json({ error: error instanceof Error ? error.message : "تعذر تحديث ربط الطلب" });
+      return res.status(422).json({ error: "تعذر تحديث ربط الطلب" });
     }
   }
   return res.json(formatRecord(updated));
@@ -2217,7 +2216,7 @@ router.post("/admin/container-system/financial/periods/:periodKey/close", requir
     closeFinancialPeriod(periodKey, adminReq.adminId);
     return res.json({ success: true, periodKey, status: "closed" });
   } catch (error) {
-    return res.status(422).json({ error: error instanceof Error ? error.message : "تعذر إغلاق الفترة المالية" });
+    return res.status(422).json({ error: "تعذر إغلاق الفترة المالية" });
   }
 });
 

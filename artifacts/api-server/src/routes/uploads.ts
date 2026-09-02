@@ -10,23 +10,28 @@ const router = Router();
 
 // ── Storage directory ──────────────────────────────────────────────────────────
 const UPLOADS_DIR = path.join(process.cwd(), "uploads");
+const PRIVATE_UPLOADS_DIR = path.join(process.cwd(), "private-uploads");
 if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+if (!fs.existsSync(PRIVATE_UPLOADS_DIR)) fs.mkdirSync(PRIVATE_UPLOADS_DIR, { recursive: true });
 
 // ── Multer config ──────────────────────────────────────────────────────────────
-const storage = multer.diskStorage({
-  destination: (_req, _file, cb) => cb(null, UPLOADS_DIR),
+function createStorage(directory: string) {
+  return multer.diskStorage({
+  destination: (_req, _file, cb) => cb(null, directory),
   filename: (_req, file, cb) => {
     const ext = path.extname(file.originalname).toLowerCase();
     const name = `${Date.now()}-${crypto.randomBytes(6).toString("hex")}${ext}`;
     cb(null, name);
   },
-});
+  });
+}
 
 const ALLOWED_TYPES = new Set(["image/jpeg", "image/jpg", "image/png", "image/webp", "image/gif", "image/avif"]);
 const MAX_FILE_SIZE = 8 * 1024 * 1024;
 
-const upload = multer({
-  storage,
+function createUpload(directory: string) {
+  return multer({
+  storage: createStorage(directory),
   limits: { fileSize: MAX_FILE_SIZE, files: 1, fields: 8 },
   fileFilter: (_req, file, cb) => {
     const extension = path.extname(file.originalname).toLowerCase();
@@ -34,7 +39,10 @@ const upload = multer({
     if (ALLOWED_TYPES.has(file.mimetype) && allowedExtension) cb(null, true);
     else cb(new Error("نوع الملف غير مسموح به — يُقبل JPEG/PNG/WebP/GIF/AVIF فقط"));
   },
-});
+  });
+}
+const upload = createUpload(UPLOADS_DIR);
+const privateUpload = createUpload(PRIVATE_UPLOADS_DIR);
 
 function hasImageSignature(filePath: string): boolean {
   const header = Buffer.alloc(32);
@@ -78,8 +86,9 @@ function compressImage(filePath: string): { path: string; filename: string; size
   }
 }
 
-function safeUpload(req: Request, res: Response, next: NextFunction): void {
-  upload.single("file")(req, res, (error: unknown) => {
+function safeUploadWith(middleware: ReturnType<typeof createUpload>) {
+  return (req: Request, res: Response, next: NextFunction): void => {
+  middleware.single("file")(req, res, (error: unknown) => {
     if (error) {
       const message = error instanceof multer.MulterError && error.code === "LIMIT_FILE_SIZE"
         ? "حجم الملف أكبر من 8 ميغابايت"
@@ -107,7 +116,10 @@ function safeUpload(req: Request, res: Response, next: NextFunction): void {
     }
     next();
   });
+  };
 }
+const safeUpload = safeUploadWith(upload);
+const safePrivateUpload = safeUploadWith(privateUpload);
 
 function rejectUnsafeFileName(req: Request, res: Response, next: NextFunction): void {
   const originalName = req.file?.originalname ?? "";
@@ -134,19 +146,48 @@ router.post("/admin/slides/upload", requireAdmin, requireSectionPermission("slid
 
 // Driver completion evidence uses a dedicated protected route because the
 // global /api/admin middleware intentionally blocks driver accounts.
-router.post("/driver/uploads", requireAdmin, requireDriver, safeUpload, rejectUnsafeFileName, (req: Request, res: Response): void => {
+router.post("/driver/uploads", requireAdmin, requireDriver, safePrivateUpload, rejectUnsafeFileName, (req: Request, res: Response): void => {
   if (!req.file) { res.status(400).json({ error: "لم يُرفَق ملف" }); return; }
-  const url = `/uploads/${req.file.filename}`;
+  const secret = process.env.SESSION_SECRET;
+  if (!secret) {
+    fs.rmSync(req.file.path, { force: true });
+    res.status(503).json({ error: "خدمة الملفات الخاصة غير متاحة حالياً" });
+    return;
+  }
+  const expires = Math.floor(Date.now() / 1000) + 30 * 60;
+  const signature = crypto.createHmac("sha256", secret).update(`${req.file.filename}.${expires}`).digest("base64url");
+  const url = `/api/private-uploads/${encodeURIComponent(req.file.filename)}?expires=${expires}&signature=${signature}`;
   res.json({ url, filename: req.file.filename, size: req.file.size, contentType: req.file.mimetype });
 });
 
-// Public conversation attachments. Files are still limited to safe image types
-// and are stored in the same deployment-aware uploads directory used by the
-// existing Hostinger build.
-router.post("/uploads", safeUpload, rejectUnsafeFileName, (req: Request, res: Response): void => {
-  if (!req.file) { res.status(400).json({ error: "لم يُرفَق ملف" }); return; }
-  const url = `/uploads/${req.file.filename}`;
-  res.json({ url, filename: req.file.filename, size: req.file.size, contentType: req.file.mimetype });
+// Anonymous persistent uploads are disabled to prevent storage abuse.
+router.post("/uploads", (_req: Request, res: Response): void => {
+  res.status(401).json({ error: "رفع المرفقات يتطلب جلسة مصرحاً بها" });
+});
+
+router.get("/private-uploads/:filename", (req: Request, res: Response): void => {
+  const filename = path.basename(String(req.params.filename ?? ""));
+  const now = Math.floor(Date.now() / 1000);
+  const expires = Number(req.query.expires);
+  const signature = String(req.query.signature ?? "");
+  const secret = process.env.SESSION_SECRET;
+  if (!secret || filename !== req.params.filename || !/^[a-zA-Z0-9._-]+$/.test(filename) ||
+      !Number.isInteger(expires) || expires < now || expires > now + 30 * 60 ||
+      !/^[A-Za-z0-9_-]+$/.test(signature)) {
+    res.sendStatus(404);
+    return;
+  }
+  const expected = crypto.createHmac("sha256", secret).update(`${filename}.${expires}`).digest("base64url");
+  if (signature.length !== expected.length || !crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) {
+    res.sendStatus(404);
+    return;
+  }
+  const filePath = path.join(PRIVATE_UPLOADS_DIR, filename);
+  if (!fs.existsSync(filePath)) { res.sendStatus(404); return; }
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("Content-Disposition", "inline");
+  res.setHeader("Cache-Control", "private, max-age=300");
+  res.sendFile(filePath);
 });
 
 // ── DELETE /api/admin/uploads/:filename ───────────────────────────────────────
