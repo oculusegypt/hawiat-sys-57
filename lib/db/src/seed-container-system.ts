@@ -935,14 +935,14 @@ const extendedDemo = [
     company_region: "منطقة الحزم",
     company_country: "SA",
     company_postal_code: "14964",
-    company_latitude: "24.5403799",
-    company_longitude: "46.6506105",
+    company_latitude: "24.617299",
+    company_longitude: "46.823511",
     company_logo: "/api/uploads/1787336693429-1c5ead9d52d0.webp",
     company_tax_number: "",
     company_price_range: "400",
     company_payment_methods: "نقدي، مدى، فيزا، ماستركارد، تحويل بنكي",
     company_map_embed:
-      '<iframe src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3629.413183006425!2d46.6506105!3d24.5403799" width="600" height="450" style="border:0;" allowfullscreen="" loading="lazy"></iframe>',
+      '<iframe src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3627.1852524484457!2d46.82351109999999!3d24.6172992!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x3e2f099b6e804395%3A0xca6899ca790ac434!2z2YXYpNiz2LPYqSDYs9ip2KfYptmDINin2YTZhdin2LPYqSDZhNmE2K3Yp9mI2YrYp9iq!5e0!3m2!1sar!2seg!4v1785403660233!5m2!1sar!2seg" width="600" height="450" style="border:0;" allowfullscreen="" loading="lazy"></iframe>',
     company_footer_description:
       "{{company_name}}، خيارك الأمثل في عالم تأجير الحاويات ونقل الأنقاض. نقدم خدماتنا بجودة عالية وأسعار تنافسية لنكون شركاء نجاحك في مشاريعك الإنشائية.",
     site_desc:

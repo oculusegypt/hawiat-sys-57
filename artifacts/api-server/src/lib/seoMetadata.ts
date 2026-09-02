@@ -60,6 +60,12 @@ function text(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
+function isCorruptedMetadata(value: unknown): boolean {
+  const candidate = text(value);
+  return /[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFD]/u.test(candidate)
+    || /picard\.replit\.dev|__replco|\/admin\/|desktop\d{4}-/iu.test(candidate);
+}
+
 function plainText(value: unknown): string {
   return text(value)
     .replace(/<[^>]*>/g, " ")
@@ -157,7 +163,7 @@ function generatedKeywords(source: SeoSource, displayName: string, keyword: stri
   const supplied = text(source.seoKeywords)
     .split(/[,،|]/g)
     .map((item) => item.trim())
-    .filter(Boolean);
+    .filter((item) => item && !isCorruptedMetadata(item));
   const kindKeywords = source.kind === "post"
     ? [`مدونة ${companyName}`, "دليل الحاويات", "أسعار الحاويات بالرياض"]
     : source.kind === "page"
@@ -262,8 +268,11 @@ export async function backfillSeoMetadata(): Promise<{ updated: number }> {
         metadata.seoSlug = finalSlug;
         metadata.canonicalUrl = `${ROUTE_PREFIXES[kind]}/${finalSlug}`;
         const needsUpdate = !text(source.seoTitle)
+          || isCorruptedMetadata(source.seoTitle)
           || !text(source.seoDescription)
+          || isCorruptedMetadata(source.seoDescription)
           || !text(source.seoKeywords)
+          || isCorruptedMetadata(source.seoKeywords)
           || !currentSlug
           || finalSlug !== currentSlug
           || ((kind === "post" || kind === "page") && text(row.canonicalUrl ?? row.canonical_url) !== metadata.canonicalUrl)
