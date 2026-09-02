@@ -729,8 +729,8 @@ try {
 
     function sessionSecret(): string {
         $secret = trim((string)getenv('SESSION_SECRET'));
-        $embeddedSecret = '39c10728fe8c44a61d158d02625d33d5cfa0a6d8850c3be5fd6e597e3e8e5c4b';
-        if ($secret === '' && $embeddedSecret !== '39c10728fe8c44a61d158d02625d33d5cfa0a6d8850c3be5fd6e597e3e8e5c4b') {
+        $embeddedSecret = 'f4b63d7d45bac58f27884bacd3bba24e94840b2a64e936a7a2d403622068ae3d';
+        if ($secret === '' && strlen($embeddedSecret) === 64) {
             $secret = $embeddedSecret;
         }
         if ($secret === '') {
