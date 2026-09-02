@@ -4,7 +4,7 @@ import type { Container } from "@workspace/api-client-react"
 import { Check, Maximize, Weight, Info, Clock, Phone, MessageCircle } from "lucide-react"
 import { normalizeCompanyText, resolveContactNumbers, useSiteSettings } from "@/context/SiteSettingsContext"
 import { entityPath } from "@/lib/friendlySlug"
-import { mediaForContainerName, ATTACHED_MEDIA } from "@/lib/siteMedia"
+import { firstManagedImage } from "@/lib/siteMedia"
 
 export interface PackageCardProps {
   container: Container
@@ -19,27 +19,8 @@ export const ARABIC_CATEGORY_NAMES: Record<string, string> = {
   contract: "عقود النظافة",
 }
 
-function parseImages(raw: unknown): string[] {
-  if (Array.isArray(raw)) return raw.filter((value): value is string => typeof value === "string" && value.trim().length > 0)
-  if (typeof raw === "string") {
-    try {
-      const parsed = JSON.parse(raw)
-      if (Array.isArray(parsed)) {
-        return parsed.filter((value): value is string => typeof value === "string" && value.trim().length > 0)
-      }
-    } catch {}
-  }
-  return []
-}
-
 export function getContainerImage(container: Container): string {
-  const configuredImage = container.imageUrl?.trim()
-  if (configuredImage) return configuredImage
-
-  const additionalImages = parseImages(container.images)
-  if (additionalImages[0]) return additionalImages[0]
-
-  return mediaForContainerName(container.name)
+  return firstManagedImage(container.imageUrl, container.images)
 }
 
 function parseFeatures(raw: unknown): string[] {
@@ -108,9 +89,7 @@ export function PackageCard({ container: c, companyName: configuredCompanyName, 
             width="960"
             height="640"
             loading="lazy"
-            onError={(e) => {
-              e.currentTarget.src = ATTACHED_MEDIA.smallContainer
-            }}
+            onError={(e) => { e.currentTarget.style.display = "none" }}
           />
         ) : (
           <div className="w-full h-full bg-gradient-to-br from-slate-900 to-slate-800 flex items-center justify-center text-white font-bold text-lg">

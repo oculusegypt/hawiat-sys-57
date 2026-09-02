@@ -1,9 +1,9 @@
 {
   "buildType": "full-hostinger-archive",
-  "builtAt": "2026-09-02T00:51:40.935Z",
+  "builtAt": "2026-09-02T01:08:56.630Z",
   "sourceDatabase": "data/sabaik.db",
   "tableCounts": {
-    "active_visitors": 4,
+    "active_visitors": 5,
     "admins": 9,
     "ads": 2,
     "bank_reconciliations": 0,
@@ -22,7 +22,7 @@
     "messages": 0,
     "notifications": 34,
     "packages": 5,
-    "page_views": 4518,
+    "page_views": 4519,
     "partners": 6,
     "posts": 71,
     "push_subscriptions": 2,
@@ -38,7 +38,7 @@
   "verification": {
     "publicOrigin": "https://sabaik.net",
     "sitemapUrls": 161,
-    "sitemapImages": 196,
+    "sitemapImages": 93,
     "arabicAreaUrls": 50,
     "articleUrlsWithImages": 67,
     "command": "SITE_URL=https://sabaik.net pnpm --filter @workspace/scripts run seo-quality-gate"

@@ -9,7 +9,7 @@ import { ServiceCard } from "@/components/home/services/ServiceCard"
 import { useDocumentSEO } from "@/hooks/useDocumentSEO"
 import { useSiteSettings } from "@/context/SiteSettingsContext"
 import { siteUrl } from "@/lib/siteUrl"
-import { firstManagedImage, mediaForIndex } from "@/lib/siteMedia"
+import { firstManagedImage } from "@/lib/siteMedia"
 
 const iconMap: Record<string, typeof Settings> = {
   truck: Truck, Truck, factory: Factory, Factory, trash2: Trash2, Trash2,
@@ -19,7 +19,7 @@ const iconMap: Record<string, typeof Settings> = {
 
 function serviceImages(service: Service, index = 0): string[] {
   const managedImage = firstManagedImage(service.imageUrl, service.images)
-  return [managedImage || mediaForIndex(service.id + index)]
+  return managedImage ? [managedImage] : []
 }
 
 export default function ServicesPage() {

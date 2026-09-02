@@ -72,7 +72,7 @@ export default function PackageDetail() {
       : "تفاصيل الباقة — خدمات التنظيف",
     description: container?.description ?? "تفاصيل وأسعار باقات تنظيف المنازل والفلل بالرياض.",
     canonical: siteUrl(`/containers/${entityPath({ slug: container?.seoSlug, title: container?.name, id: container?.id, fallback: "container" })}`),
-    ogImage: container ? getContainerImage(container) : "/images/container-large.png",
+    ogImage: container ? getContainerImage(container) : "",
     ogImageAlt: container ? `${container.name} لتأجير الحاويات بالرياض` : "حاويات للإيجار بالرياض",
     indexable: Boolean(container) && (typeof window === "undefined" || window.location.pathname.startsWith("/containers/")),
   })

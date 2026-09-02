@@ -1,119 +1,36 @@
 {
-  "version": 1,
-  "generatedAt": "2026-09-02T00:51:23.443Z",
+  "version": 2,
+  "generatedAt": "2026-09-02T01:08:38.988Z",
   "siteUrl": "https://sabaik.net",
+  "source": "images referenced by the current sitemap",
   "assets": [
     {
-      "key": "home",
-      "path": "/images/container-large.webp",
-      "purpose": "SEO campaign image",
-      "pages": [
-        "/"
-      ],
-      "required": true
+      "key": "rendered-1",
+      "path": "/images/container-large.png",
+      "purpose": "Image referenced by current managed content",
+      "pages": [],
+      "required": false
     },
     {
-      "key": "services",
-      "path": "/images/container-small.webp",
-      "purpose": "SEO campaign image",
-      "pages": [
-        "/services",
-        "/why-us/what-we-do"
-      ],
-      "required": true
+      "key": "rendered-2",
+      "path": "/images/waste-small.png",
+      "purpose": "Image referenced by current managed content",
+      "pages": [],
+      "required": false
     },
     {
-      "key": "containers",
-      "path": "/images/container-large.webp",
-      "purpose": "SEO campaign image",
-      "pages": [
-        "/containers"
-      ],
-      "required": true
+      "key": "rendered-3",
+      "path": "/images/electric-compactor.jpeg",
+      "purpose": "Image referenced by current managed content",
+      "pages": [],
+      "required": false
     },
     {
-      "key": "pricing",
-      "path": "/images/electric-compactor.webp",
-      "purpose": "SEO campaign image",
-      "pages": [
-        "/pricing"
-      ],
-      "required": true
-    },
-    {
-      "key": "areas",
-      "path": "/images/waste-small.webp",
-      "purpose": "SEO campaign image",
-      "pages": [
-        "/areas"
-      ],
-      "required": true
-    },
-    {
-      "key": "blog",
-      "path": "/images/container-small.webp",
-      "purpose": "SEO campaign image",
-      "pages": [
-        "/blog"
-      ],
-      "required": true
-    },
-    {
-      "key": "about",
-      "path": "/images/container-large.webp",
-      "purpose": "SEO campaign image",
-      "pages": [
-        "/about",
-        "/why-us/experience"
-      ],
-      "required": true
-    },
-    {
-      "key": "contact",
-      "path": "/images/electric-compactor.webp",
-      "purpose": "SEO campaign image",
-      "pages": [
-        "/contact",
-        "/why-us/commitment"
-      ],
-      "required": true
-    },
-    {
-      "key": "faq",
-      "path": "/images/waste-small.webp",
-      "purpose": "SEO campaign image",
-      "pages": [
-        "/faq"
-      ],
-      "required": true
-    },
-    {
-      "key": "partners",
-      "path": "/images/container-small.webp",
-      "purpose": "SEO campaign image",
-      "pages": [
-        "/partners"
-      ],
-      "required": true
-    },
-    {
-      "key": "why-us",
-      "path": "/images/container-large.webp",
-      "purpose": "SEO campaign image",
-      "pages": [
-        "/why-us/leadership"
-      ],
-      "required": true
-    },
-    {
-      "key": "legal",
-      "path": "/images/electric-compactor.webp",
-      "purpose": "SEO campaign image",
-      "pages": [
-        "/privacy",
-        "/terms"
-      ],
-      "required": true
+      "key": "rendered-4",
+      "path": "/images/container-small.png",
+      "purpose": "Image referenced by current managed content",
+      "pages": [],
+      "required": false
     }
   ]
 }

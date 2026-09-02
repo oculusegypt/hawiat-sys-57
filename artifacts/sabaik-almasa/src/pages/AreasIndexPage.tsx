@@ -22,7 +22,6 @@ export default function AreasIndexPage() {
     description,
     keywords: "مناطق تأجير الحاويات بالرياض, أحياء الرياض, توصيل حاويات الأنقاض",
     canonical: siteUrl("/areas"),
-    ogImage: "/images/waste-small.png",
     ogImageAlt: "مناطق خدمة تأجير الحاويات في جميع أحياء الرياض",
   })
 

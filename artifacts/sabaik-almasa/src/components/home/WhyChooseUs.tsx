@@ -9,7 +9,7 @@ export function WhyChooseUs() {
   const titlePrefix = content.titlePrefix || "لماذا تختار"
   const titleHighlight = content.titleHighlight || (companyName ? `خدمات ${companyName} لتأجير الحاويات بالرياض؟` : "خدماتنا لتأجير الحاويات بالرياض؟")
   const description = content.description || "نوفر حلولاً لوجستية متطورة لإدارة مخلفات البناء والهدم والمشاريع الكبرى بأعلى درجات الالتزام والأمان والسلامة بالرياض."
-  const imageUrl = content.imageUrl || "/images/container-large.png"
+  const imageUrl = content.imageUrl || ""
   const points = (content.points && content.points.length > 0) ? content.points.filter(Boolean) : [
     "سرعة الاستجابة والتوصيل الفوري 24/7",
     "تنوع مقاسات الحاويات (6، 10، 12، 15، 20، 30 ياردة)",
@@ -35,16 +35,18 @@ export function WhyChooseUs() {
             transition={{ duration: 0.6 }}
             className="order-2 lg:order-1 relative"
           >
-            <div className="aspect-[4/3] rounded-3xl overflow-hidden shadow-2xl relative">
-              <img
-                src={imageUrl}
-                alt={titleHighlight}
-                className="w-full h-full object-cover"
-                width={960}
-                height={720}
-                loading="lazy"
-                decoding="async"
-              />
+            <div className={`aspect-[4/3] rounded-3xl overflow-hidden shadow-2xl relative ${imageUrl ? "" : "bg-primary"}`}>
+              {imageUrl && (
+                <img
+                  src={imageUrl}
+                  alt={titleHighlight}
+                  className="w-full h-full object-cover"
+                  width={960}
+                  height={720}
+                  loading="lazy"
+                  decoding="async"
+                />
+              )}
               <div className="absolute top-8 right-8 bg-white p-4 rounded-xl shadow-xl flex items-center gap-4">
                 <div className="w-12 h-12 bg-secondary/20 rounded-full flex items-center justify-center text-secondary">
                   <span className="font-bold text-xl">{badgeValue}</span>

@@ -233,7 +233,6 @@ if (archiveDir) {
     "robots.txt",
     "api/index.php",
     "images/logo.png",
-    "images/container-large.webp",
     "cleanflow-platform/index.html",
   ]) requireFile(join(archiveDir, file), `archive ${file}`);
 
@@ -299,7 +298,6 @@ if (archiveDir) {
     ["homepage og:title", /<meta\b[^>]*\bproperty=["']og:title["'][^>]*>/i, 1],
     ["homepage og:description", /<meta\b[^>]*\bproperty=["']og:description["'][^>]*>/i, 1],
     ["homepage og:url", /<meta\b[^>]*\bproperty=["']og:url["'][^>]*>/i, 1],
-    ["homepage og:image", /<meta\b[^>]*\bproperty=["']og:image["'][^>]*>/i, 1],
     ["homepage robots", /<meta\b[^>]*\bname=["']robots["'][^>]*>/i, 1],
     ["homepage H1", /<h1\b/gi, 1],
   ];
@@ -321,7 +319,8 @@ if (archiveDir) {
   else fail("homepage Google Maps / Business Profile reference is missing");
   const homepageOgImage = (homepage.match(/<meta\b[^>]*property=["']og:image["'][^>]*>/i) || [])[0] || "";
   const ogImageUrl = getAttribute(homepageOgImage, "content");
-  if (/^https:\/\//i.test(ogImageUrl) && ogImageUrl.startsWith(`${siteUrl}/`)) pass("homepage og:image is absolute");
+  if (!homepageOgImage) pass("homepage og:image is optional when no managed image exists");
+  else if (/^https:\/\//i.test(ogImageUrl) && ogImageUrl.startsWith(`${siteUrl}/`)) pass("homepage og:image is absolute");
   else fail(`homepage og:image is not an absolute production URL (${ogImageUrl || "missing"})`);
 
   const htmlFiles = [];
@@ -514,11 +513,8 @@ if (archiveDir) {
     asset.required && !allArchiveText.includes(String(asset.path || "")) &&
     !sitemapImages.some((image) => decodePath(image).endsWith(String(asset.path || ""))),
   );
-  if (missingManifestAssets.length === 0 && mediaAssets.length > 0) {
-    pass(`SEO media manifest resolves (${mediaAssets.length})`);
-  } else {
-    fail(`missing SEO media manifest assets: ${missingManifestAssets.map((asset) => asset.path).join(", ") || "manifest empty"}`);
-  }
+  if (missingManifestAssets.length === 0) pass(`SEO media manifest resolves (${mediaAssets.length} managed references)`);
+  else fail(`missing SEO media manifest assets: ${missingManifestAssets.map((asset) => asset.path).join(", ")}`);
   if (unusedRequiredMedia.length === 0) pass("all required SEO media assets are used by production output");
   else fail(`required SEO media assets are unused: ${unusedRequiredMedia.map((asset) => asset.path).join(", ")}`);
 

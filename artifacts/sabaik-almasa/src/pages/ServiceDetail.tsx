@@ -34,7 +34,7 @@ import { normalizeSeoDescription } from "@/lib/seoText"
 import { entityPath, entitySlug, legacyEntitySlug } from "@/lib/friendlySlug"
 import { breadcrumbSchema, pageSchema, serviceSchema } from "@/lib/seoSchema"
 import { useDocumentSchema } from "@/hooks/useDocumentSchema"
-import { ATTACHED_MEDIA, firstManagedImage } from "@/lib/siteMedia"
+import { firstManagedImage } from "@/lib/siteMedia"
 
 function normalizeSlug(value: string): string {
   return decodeURIComponent(value).trim().toLowerCase()
@@ -177,7 +177,10 @@ export default function ServiceDetail() {
   }, [services, slug])
 
   const images = useMemo(
-    () => service ? [firstManagedImage(service.imageUrl, service.images) || ATTACHED_MEDIA.smallContainer] : [],
+    () => {
+      const image = service ? firstManagedImage(service.imageUrl, service.images) : ""
+      return image ? [image] : []
+    },
     [service],
   )
   const resolvedCompany = companyName || ""
@@ -194,7 +197,7 @@ export default function ServiceDetail() {
     keywords: service?.seoKeywords || `${service?.title || "حاويات"}, تأجير حاويات بالرياض, حاويات أنقاض الرياض, حاويات نفايات الرياض`,
     canonical,
     ogType: "website",
-    ogImage: images[0] || "/images/container-small.png",
+    ogImage: images[0] || "",
     indexable: Boolean(service) && (typeof window === "undefined" || window.location.pathname.startsWith("/services/")),
   })
 
@@ -206,7 +209,7 @@ export default function ServiceDetail() {
         name: service.title,
         description: metaText,
         url: canonical,
-        image: images[0] || "/images/container-small.png",
+        image: images[0] || "",
         companyName: resolvedCompany || "سبائك الماسه",
         about: service.title,
       }),
@@ -214,7 +217,7 @@ export default function ServiceDetail() {
         service: service.title,
         description: metaText,
         url: canonical,
-        image: images[0] || "/images/container-small.png",
+        image: images[0] || "",
         companyName: resolvedCompany || "سبائك الماسه",
         phoneNumbers: [phoneCall, phoneWhatsapp, ...phones],
         address,

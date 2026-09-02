@@ -28,7 +28,7 @@ interface Post {
 }
 
 function postImage(post: { coverImage?: string | null; ogImage?: string | null }): string {
-  return post.coverImage?.trim() || post.ogImage?.trim() || "/images/container-large.png"
+  return post.coverImage?.trim() || post.ogImage?.trim() || ""
 }
 
 function formatDate(iso: string | null): string {
@@ -159,7 +159,7 @@ function ArticleContainers({ onOpen }: { onOpen: (size?: string) => void }) {
                   src={getContainerImage(c)}
                  alt={`${c.name} - ${c.size}`}
                 className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                  onError={(e) => { e.currentTarget.src = "/images/container-small.png" }}
+                  onError={(e) => { e.currentTarget.style.display = "none" }}
               />
             </div>
             <div className="p-4 flex-1 flex flex-col justify-between">
@@ -224,7 +224,7 @@ function RelatedPosts({ category, currentSlug }: { category: string; currentSlug
                     src={postImage(p).startsWith("http") ? postImage(p) : `${API_BASE}${postImage(p)}`}
                     alt={p.title}
                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                    onError={(e) => { e.currentTarget.src = "/images/container-small.png" }}
+                    onError={(e) => { e.currentTarget.style.display = "none" }}
                   />
                 </div>
               )}
@@ -447,7 +447,7 @@ export default function BlogPost() {
             src={postImage(post).startsWith("http") ? postImage(post) : `${API_BASE}${postImage(post)}`}
             alt={resolvedPost.title}
             className="w-full max-h-[36rem] object-contain"
-            onError={(e) => { e.currentTarget.src = "/images/container-large.png" }}
+            onError={(e) => { e.currentTarget.style.display = "none" }}
           />
         </div>
       )}

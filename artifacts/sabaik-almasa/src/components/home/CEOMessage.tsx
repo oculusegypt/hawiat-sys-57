@@ -40,7 +40,7 @@ export function CEOMessage() {
                    loading="lazy"
                    decoding="async"
                   onError={(e) => {
-                    e.currentTarget.src = "/images/container-small.png"
+                    e.currentTarget.style.display = "none"
                   }}
                 />
               </div>

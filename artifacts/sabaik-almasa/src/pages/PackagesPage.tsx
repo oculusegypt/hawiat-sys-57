@@ -70,13 +70,6 @@ export default function PackagesPage() {
     description: currentMeta.desc,
     keywords: currentMeta.keywords,
     canonical: siteUrl(category === "all" ? "/containers" : `/containers/${category}`),
-    ogImage: category === "debris"
-      ? "/images/container-large.png"
-      : category === "waste"
-        ? "/images/waste-small.png"
-        : category === "contract"
-          ? "/images/container-small.png"
-          : "/images/container-large.png",
     ogImageAlt: currentMeta.heading,
   })
 

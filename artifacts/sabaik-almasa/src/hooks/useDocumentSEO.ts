@@ -1,7 +1,7 @@
 import { useEffect } from "react"
 import { replaceLegacyCompanyName, useSiteSettings } from "@/context/SiteSettingsContext"
 import { sitePath, siteUrl } from "@/lib/siteUrl"
-import { seoImageAlt, seoImageForPath } from "@/lib/seoMedia"
+import { seoImageAlt } from "@/lib/seoMedia"
 import { normalizeSeoDescription } from "@/lib/seoText"
 import { mergeGoldenSeoKeywords } from "@/lib/seoKeywords"
 
@@ -25,6 +25,10 @@ function setMeta(attr: string, value: string, attrName = "name") {
     document.head.appendChild(el)
   }
   el.content = value
+}
+
+function removeMeta(attr: string, attrName = "name") {
+  document.querySelector(`meta[${attrName}="${attr}"]`)?.remove()
 }
 
 function setCanonical(href: string) {
@@ -70,10 +74,10 @@ export function useDocumentSEO({
     )
     const resolvedKeywords = mergeGoldenSeoKeywords(replaceCompanyName(keywords))
     const resolvedOgImageAlt = replaceCompanyName(ogImageAlt)
-    const resolvedOgImage = ogImage || seoImageForPath(canonical || window.location.pathname)
-    const absoluteOgImage = /^https?:\/\//i.test(resolvedOgImage)
-      ? resolvedOgImage
-      : siteUrl(sitePath(resolvedOgImage))
+    const resolvedOgImage = ogImage?.trim() || ""
+    const absoluteOgImage = resolvedOgImage
+      ? (/^https?:\/\//i.test(resolvedOgImage) ? resolvedOgImage : siteUrl(sitePath(resolvedOgImage)))
+      : ""
     const prevTitle = document.title
     const prevDesc  = document.querySelector('meta[name="description"]')?.getAttribute("content") ?? ""
     const prevCanon = document.querySelector("link[rel='canonical']")?.getAttribute("href") ?? ""
@@ -93,20 +97,30 @@ export function useDocumentSEO({
     setMeta("og:site_name",   companyName, "property")
     if (resolvedDescription) setMeta("og:description", resolvedDescription, "property")
     if (canonical)   setMeta("og:url",          canonical,  "property")
-    setMeta("og:image",             absoluteOgImage, "property")
-    setMeta("og:image:secure_url",  absoluteOgImage, "property")
-    setMeta("og:image:type",        "image/jpeg", "property")
-    setMeta("og:image:width",       "1200", "property")
-    setMeta("og:image:height",      "675", "property")
-    setMeta("og:image:alt",         resolvedOgImageAlt || seoImageAlt(resolvedTitle, companyName), "property")
+    if (absoluteOgImage) {
+      setMeta("og:image",             absoluteOgImage, "property")
+      setMeta("og:image:secure_url",  absoluteOgImage, "property")
+      setMeta("og:image:type",        "image/jpeg", "property")
+      setMeta("og:image:width",       "1200", "property")
+      setMeta("og:image:height",      "675", "property")
+      setMeta("og:image:alt",         resolvedOgImageAlt || seoImageAlt(resolvedTitle, companyName), "property")
+    } else {
+      ["og:image", "og:image:secure_url", "og:image:type", "og:image:width", "og:image:height", "og:image:alt"]
+        .forEach((name) => removeMeta(name, "property"))
+    }
 
     // Twitter / X
     setMeta("twitter:card",        "summary_large_image")
     setMeta("twitter:title",       resolvedTitle)
     if (resolvedDescription) setMeta("twitter:description", resolvedDescription)
     if (canonical)   setMeta("twitter:url",         canonical)
-    setMeta("twitter:image",       absoluteOgImage)
-    setMeta("twitter:image:alt",   resolvedOgImageAlt || seoImageAlt(resolvedTitle, companyName))
+    if (absoluteOgImage) {
+      setMeta("twitter:image",       absoluteOgImage)
+      setMeta("twitter:image:alt",   resolvedOgImageAlt || seoImageAlt(resolvedTitle, companyName))
+    } else {
+      removeMeta("twitter:image")
+      removeMeta("twitter:image:alt")
+    }
 
     // Canonical link
     if (canonical) {

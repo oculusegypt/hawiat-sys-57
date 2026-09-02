@@ -26,7 +26,7 @@ function formatDate(iso: string | null): string {
 }
 
 function postImage(post: Pick<Post, "coverImage" | "ogImage">): string {
-  return post.coverImage?.trim() || post.ogImage?.trim() || "/images/container-small.png"
+  return post.coverImage?.trim() || post.ogImage?.trim() || ""
 }
 
 export function BlogSection() {
@@ -105,7 +105,7 @@ export function BlogSection() {
                         height={600}
                         loading="lazy"
                         decoding="async"
-                        onError={(e) => { e.currentTarget.src = "/images/container-small.png" }}
+                        onError={(e) => { e.currentTarget.style.display = "none" }}
                       />
                     ) : (
                       <div className="absolute inset-0 flex items-center justify-center">

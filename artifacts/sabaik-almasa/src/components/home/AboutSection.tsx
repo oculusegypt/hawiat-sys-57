@@ -11,7 +11,7 @@ export function AboutSection() {
   const highlight = content.highlight || "تأجير الحاويات وإدارة المخلفات"
   const eyebrow = content.eyebrow || "عن المنشأة"
   const description = content.description || (resolvedCompany ? `${resolvedCompany} خيارك الأمثل في عالم تأجير الحاويات ونقل الأنقاض ومخلفات البناء والهدم والنفايات بالرياض. نقدم خدماتنا بأسطول حديث ومعايير سلامة بيئية صارمة وسرعة استجابة فائقة.` : "الخيار الأمثل في عالم تأجير الحاويات ونقل الأنقاض ومخلفات البناء والهدم والنفايات بالرياض. نقدم خدماتنا بأسطول حديث ومعايير سلامة بيئية صارمة وسرعة استجابة فائقة.")
-  const imageUrl = content.imageUrl || "/images/container-small.png"
+  const imageUrl = content.imageUrl || ""
   const points = (content.points && content.points.length > 0) ? content.points.filter(Boolean) : [
     "أسطول شاحنات وحاويات بمقاسات متنوعة من 6 إلى 30 ياردة",
     "توصيل وسحب سريع خلال 2 إلى 4 ساعات على مدار الساعة",
@@ -80,16 +80,18 @@ export function AboutSection() {
             transition={{ duration: 0.7 }}
             className="relative"
           >
-            <div className="relative rounded-2xl overflow-hidden aspect-[4/5] md:aspect-square lg:aspect-[4/5] shadow-2xl">
-              <img
-                src={imageUrl}
-                alt={title}
-                className="w-full h-full object-cover"
-                width={960}
-                height={1200}
-                loading="lazy"
-                decoding="async"
-              />
+            <div className={`relative rounded-2xl overflow-hidden aspect-[4/5] md:aspect-square lg:aspect-[4/5] shadow-2xl ${imageUrl ? "" : "bg-primary"}`}>
+              {imageUrl && (
+                <img
+                  src={imageUrl}
+                  alt={title}
+                  className="w-full h-full object-cover"
+                  width={960}
+                  height={1200}
+                  loading="lazy"
+                  decoding="async"
+                />
+              )}
               <div className="absolute bottom-0 left-0 right-0 p-8 bg-gradient-to-t from-primary to-transparent">
                 <div className="bg-white/10 backdrop-blur-md border border-white/20 p-6 rounded-xl text-white">
                   <p className="font-bold text-2xl mb-2">{content.statValue || "8+"}</p>

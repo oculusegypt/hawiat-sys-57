@@ -124,11 +124,14 @@ const seoPages = db.prepare(`
 const today = new Date().toISOString().slice(0, 10);
 const entries = [];
 const seenUrls = new Set();
+const referencedMediaPaths = new Set();
 
 const addEntry = ({ path, priority, changefreq, title, lastmod = today, images = [] }) => {
   const loc = absoluteUrl(path);
   if (!loc || loc.includes("localhost") || seenUrls.has(loc)) return;
   seenUrls.add(loc);
+  const normalizedImages = images.filter(Boolean).slice(0, 3);
+  normalizedImages.forEach((image) => referencedMediaPaths.add(normalizePublicUploadUrl(image)));
   entries.push([
     "  <url>",
     `    <loc>${xmlEscape(loc)}</loc>`,
@@ -136,7 +139,7 @@ const addEntry = ({ path, priority, changefreq, title, lastmod = today, images =
     `    <changefreq>${changefreq}</changefreq>`,
     `    <priority>${priority}</priority>`,
     `    <xhtml:link rel="alternate" hreflang="ar" href="${xmlEscape(loc)}"/>`,
-    ...images.filter(Boolean).slice(0, 3).map((image, index) => [
+     ...normalizedImages.map((image, index) => [
       "    <image:image>",
       `      <image:loc>${xmlEscape(absoluteUrl(image))}</image:loc>`,
       `      <image:title>${xmlEscape(`${title || siteName} — صورة ${index + 1}`)}</image:title>`,
@@ -147,12 +150,7 @@ const addEntry = ({ path, priority, changefreq, title, lastmod = today, images =
 };
 
 for (const [path, priority, changefreq] of staticPages) {
-  const staticImages = path === "/"
-    ? ["/images/container-large.png", "/images/container-small.png"]
-    : path === "/services"
-      ? ["/images/container-small.png"]
-      : [];
-  addEntry({ path, priority, changefreq, title: siteName, images: staticImages });
+  addEntry({ path, priority, changefreq, title: siteName });
 }
 
 const parseImages = (raw) => {
@@ -162,32 +160,6 @@ const parseImages = (raw) => {
   } catch {
     return [];
   }
-};
-
-const articleImage = (post) => {
-  const text = `${post.slug || ""} ${post.title || ""}`.toLowerCase();
-  const keywordMedia = [
-    [["سعر", "أسعار", "تكلفة", "pricing"], "/images/electric-compactor.jpeg"],
-    [["مناطق", "أحياء", "تغطية", "areas"], "/images/waste-small.png"],
-    [["مطاعم", "مصانع", "مستودعات", "منشآت"], "/images/container-small.png"],
-    [["حاويات", "أنقاض", "مخلفات", "هدم", "بناء", "ترميم", "رفع", "نقل"], "/images/container-large.png"],
-  ];
-  return keywordMedia.find(([keywords]) => keywords.some(keyword => text.includes(keyword)))?.[1]
-    || "/images/container-small.png";
-};
-
-const seoPageImage = (page) => {
-  if (page.ogImage || page.coverImage) return page.ogImage || page.coverImage;
-  const text = `${page.slug || ""} ${page.title || ""} ${page.targetKeyword || ""}`.toLowerCase();
-  const keywordMedia = [
-    [["سعر", "أسعار", "تكلفة", "pricing"], "/images/electric-compactor.jpeg"],
-    [["حي", "أحياء", "مناطق", "تغطية", "ضواحي", "areas"], "/images/waste-small.png"],
-    [["سؤال", "أسئلة", "faq"], "/images/waste-small.png"],
-    [["مطاعم", "مصانع", "مستودعات", "منشآت"], "/images/container-small.png"],
-    [["حاويات", "أنقاض", "مخلفات", "هدم", "بناء", "ترميم", "رفع", "نقل"], "/images/container-large.png"],
-  ];
-  return keywordMedia.find(([keywords]) => keywords.some(keyword => text.includes(keyword)))?.[1]
-    || "/images/container-small.png";
 };
 
 for (const service of services) {
@@ -217,7 +189,7 @@ for (const post of posts) {
     changefreq: "weekly",
     title: post.title,
     lastmod: post.updatedAt || post.publishedAt || today,
-    images: normalizeImages([post.coverImage, post.ogImage, articleImage(post)].filter(Boolean)),
+     images: normalizeImages([post.coverImage, post.ogImage].filter(Boolean)),
   });
 }
 
@@ -228,7 +200,7 @@ for (const page of seoPages) {
     changefreq: "weekly",
     title: page.title,
     lastmod: page.updatedAt || page.publishedAt || today,
-    images: normalizeImages([page.ogImage, page.coverImage, seoPageImage(page)].filter(Boolean)),
+     images: normalizeImages([page.ogImage, page.coverImage].filter(Boolean)),
   });
 }
 
@@ -302,7 +274,7 @@ for (const area of ALL_NEIGHBORHOODS) {
     priority: "0.85",
     changefreq: "weekly",
     title,
-    images: ["/images/container-large.png"],
+     images: [],
   });
 }
 assertAreaRouteParity("generate-sitemap.mjs", ALL_NEIGHBORHOODS.map((area) => area.slug));
@@ -322,7 +294,7 @@ const xml = [
 
 mkdirSync(dirname(outputPath), { recursive: true });
 writeFileSync(outputPath, xml, "utf8");
-writeSeoInventory(root, db, baseUrl);
+writeSeoInventory(root, db, baseUrl, [...referencedMediaPaths]);
 writeFileSync(
   join(root, "artifacts", "sabaik-almasa", "public", "robots.txt"),
   [

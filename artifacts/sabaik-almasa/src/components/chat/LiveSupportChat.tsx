@@ -342,7 +342,6 @@ function ChatInterface({ conversationId, clientName, phone, packageName, isSound
                 if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted") {
                   new Notification("💬 الدعم المباشر", {
                     body: latestAdminMsg.content || "أرسل لك الدعم رسالة جديدة",
-                    icon: "/images/container-small.png",
                   })
                 }
               } catch {}

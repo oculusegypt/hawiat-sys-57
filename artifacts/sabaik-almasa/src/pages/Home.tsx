@@ -7,10 +7,6 @@ import { useDocumentSEO } from "@/hooks/useDocumentSEO"
 import { useDocumentSchema } from "@/hooks/useDocumentSchema"
 import { homepageSchema } from "@/lib/seoSchema"
 
-const SEO_DEFAULTS = {
-  image: "/images/container-large.png",
-} as const
-
 import { HeroSlider } from "@/components/home/HeroSlider"
 
 type HomeSectionLoader = () => Promise<{ default: ComponentType<any> }>
@@ -292,7 +288,6 @@ export default function Home() {
     title: homeTitle,
     description: homeDescription,
     canonical: getSiteUrl() ? `${getSiteUrl()}/` : undefined,
-    ogImage: "/images/container-large.png",
     ogImageAlt: "تأجير حاويات الأنقاض والنفايات بالرياض مع التوصيل والسحب",
   })
   const homeSchema = homepageSchema({
@@ -300,7 +295,6 @@ export default function Home() {
     siteName: resolvedCompanyName,
     description: homeDescription,
     logo: logoUrl,
-    image: SEO_DEFAULTS.image,
     phoneNumbers: [phoneCall, phoneWhatsapp, ...phones],
     address,
     city,

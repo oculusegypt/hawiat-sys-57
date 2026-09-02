@@ -31,7 +31,7 @@ export default function SeoPagesIndexPage() {
     title: `فهرس الأدلة والصفحات | ${companyName || "سبائك الماسه"}`,
     description: `فهرس الأدلة التخصصية من ${companyName || "سبائك الماسه"} لاختيار الحاوية المناسبة وتنظيم رفع ونقل مخلفات البناء والأنقاض من المنازل والمشاريع داخل مدينة الرياض.`,
     canonical: `${getSiteUrl().replace(/\/$/, "")}/pages`,
-    ogImage: managedOgImage || "/images/container-large.png",
+    ogImage: managedOgImage,
     ogImageAlt: "أدلة تأجير الحاويات ونقل المخلفات في الرياض",
   })
 

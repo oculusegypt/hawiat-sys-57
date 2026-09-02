@@ -7,7 +7,7 @@ import { Footer } from "@/components/layout/Footer"
 import { useServiceRequest } from "@/context/ServiceRequestContext"
 import { normalizeCompanyText, useSiteSettings } from "@/context/SiteSettingsContext"
 import { entityPath } from "@/lib/friendlySlug"
-import { seoImageAlt, seoImageForPath } from "@/lib/seoMedia"
+import { seoImageAlt } from "@/lib/seoMedia"
 import { getSiteUrl, sitePath, siteUrl } from "@/lib/siteUrl"
 import { AREAS, ARABIC_AREA_SLUGS } from "@/pages/NeighborhoodPage"
 import { breadcrumbSchema, pageSchema } from "@/lib/seoSchema"
@@ -57,6 +57,10 @@ function setMeta(name: string, content: string, attribute = "name") {
     document.head.appendChild(element)
   }
   element.content = content
+}
+
+function removeMeta(name: string, attribute = "name") {
+  document.querySelector(`meta[${attribute}="${name}"]`)?.remove()
 }
 
 function toAbsoluteAsset(value: string): string {
@@ -163,7 +167,7 @@ export default function SeoPage() {
         const title = resolvedData.seoTitle || resolvedData.title
         const description = resolvedData.seoDescription || resolvedData.excerpt
          const canonical = siteUrl(`/page/${entityPath({ slug: resolvedData.slug, title: resolvedData.title, id: resolvedData.id, fallback: "page" })}`)
-        const image = toAbsoluteAsset(pageManagedImage(resolvedData)) || siteUrl(seoImageForPath(`/page/${resolvedData.slug}`))
+        const image = toAbsoluteAsset(pageManagedImage(resolvedData))
         const resolvedTitle = normalizeCompanyText(`${title} | ${companyName || "سبائك الماسه"}`)
         document.title = resolvedTitle
         setMeta("description", description)
@@ -184,6 +188,8 @@ export default function SeoPage() {
         setMeta("og:url", canonical, "property")
         setMeta("og:locale", "ar_SA", "property")
         if (image) setMeta("og:image", image, "property")
+        else ["og:image", "og:image:secure_url", "og:image:type", "og:image:width", "og:image:height", "og:image:alt"]
+          .forEach(name => removeMeta(name, "property"))
         if (image) {
            setMeta("og:image:secure_url", image, "property")
            setMeta("og:image:type", "image/jpeg", "property")
@@ -197,7 +203,10 @@ export default function SeoPage() {
         if (image) {
            setMeta("twitter:image", image)
             setMeta("twitter:image:alt", seoImageAlt(title, companyName))
-         }
+        } else {
+          removeMeta("twitter:image")
+          removeMeta("twitter:image:alt")
+        }
 
         document.querySelector("link[rel='canonical']")?.remove()
         const canonicalLink = document.createElement("link")
@@ -225,7 +234,7 @@ export default function SeoPage() {
     ? siteUrl(`/page/${entityPath({ slug: page.slug, title: page.title, id: page.id, fallback: "page" })}`)
     : ""
   const pageImage = page
-    ? toAbsoluteAsset(pageManagedImage(page)) || siteUrl(seoImageForPath(`/page/${page.slug}`))
+    ? toAbsoluteAsset(pageManagedImage(page))
     : ""
   useDocumentSchema("seo-page-schema", page ? {
     "@graph": [
@@ -284,7 +293,7 @@ export default function SeoPage() {
     )
   }
 
-  const image = toAbsoluteAsset(pageManagedImage(page)) || siteUrl(seoImageForPath(`/page/${page.slug}`))
+  const image = toAbsoluteAsset(pageManagedImage(page))
   const readableExcerpt = readableSeoExcerpt(page.excerpt)
   const activeServices = (services as Service[]).filter(service => service.isActive)
   const whatsappHref = phoneWhatsapp

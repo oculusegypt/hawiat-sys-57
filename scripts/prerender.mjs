@@ -32,7 +32,6 @@ const settingMap = Object.fromEntries(settingRows.map(row => [row.key, row.value
 const SEO_DEFAULTS = {
   companyName: "سبائك الماسه",
   description: "",
-  image: "/images/container-large.png",
   priceRange: "",
 };
 const siteCompanyName = settingMap.company_name?.trim() || SEO_DEFAULTS.companyName;
@@ -198,8 +197,8 @@ const heroLcpImage = String(
     WHERE is_active = 1
     ORDER BY "order" ASC, id ASC
     LIMIT 1
-  `).get()?.image_url || SEO_DEFAULTS.image,
-).trim() || SEO_DEFAULTS.image;
+  `).get()?.image_url || "",
+).trim();
 
 if (!existsSync(join(distPublic, "index.html"))) {
   console.error("❌ لم يُعثر على dist/public/index.html — شغّل vite build أولاً");
@@ -265,7 +264,7 @@ function absoluteImg(url) {
   return `${SITE_URL}${url.startsWith("/") ? "" : "/"}${url}`;
 }
 
-function resolveLocalImage(url, fallback = "/images/container-small.png") {
+function resolveLocalImage(url, fallback = "") {
   const value = String(url || "").trim();
   if (!value || /^https?:\/\//i.test(value)) return value || fallback;
   const normalized = value.replace(/\/api\/uploads\//g, "/uploads/");
@@ -274,18 +273,7 @@ function resolveLocalImage(url, fallback = "/images/container-small.png") {
 }
 
 function seoPageImage(page) {
-  const configured = page.og_image || page.cover_image;
-  if (configured) return absoluteImg(configured);
-  const text = `${page.slug || ""} ${page.title || ""} ${page.target_keyword || ""}`.toLowerCase();
-  const keywordMedia = [
-    [["سعر", "أسعار", "تكلفة", "pricing"], "/images/electric-compactor.webp"],
-    [["حي", "أحياء", "مناطق", "تغطية", "ضواحي", "areas"], "/images/waste-small.webp"],
-    [["سؤال", "أسئلة", "faq"], "/images/waste-small.webp"],
-    [["مطاعم", "مصانع", "مستودعات", "منشآت"], "/images/container-small.webp"],
-    [["حاويات", "أنقاض", "مخلفات", "هدم", "بناء", "ترميم", "رفع", "نقل"], "/images/container-large.webp"],
-  ];
-  const match = keywordMedia.find(([keywords]) => keywords.some(keyword => text.includes(keyword)));
-  return absoluteImg(match?.[1] || "/images/container-small.webp");
+  return absoluteImg(resolveLocalImage(page.og_image || page.cover_image));
 }
 
 function imageMimeType(url) {
@@ -407,10 +395,21 @@ function renderPage({
   // Keep canonical and social URLs absolute so crawlers do not have to infer
   // the preferred origin from a relative URL.
   const canonicalUrl = canonical || `${SITE_URL}/`;
-  const imgUrl = ogImage || `${SITE_URL}/images/container-large.png`;
+  const imgUrl = ogImage ? absoluteImg(ogImage) : "";
   const normalizedTitle = normalizeSeoTitle(title);
   const resolvedKeywords = mergeGoldenKeywords(keywords);
   const imgAlt   = normalizedTitle.replace(/\|.*/,"").trim();
+  const socialImageTags = imgUrl
+    ? `
+   <meta property="og:image" content="${esc(imgUrl)}" />
+   <meta property="og:image:type" content="${imageMimeType(imgUrl)}" />
+   <meta property="og:image:alt" content="${esc(imgAlt)}" />`
+    : "";
+  const twitterImageTags = imgUrl
+    ? `
+   <meta name="twitter:image" content="${esc(imgUrl)}" />
+   <meta name="twitter:image:alt" content="${esc(imgAlt)}" />`
+    : "";
 
   const schemaTags = centralizedJsonLd(schemas);
   const pagePath = (() => {
@@ -504,16 +503,13 @@ function renderPage({
   <meta property="og:title" content="${esc(normalizedTitle)}" />
   <meta property="og:description" content="${esc(description)}" />
   <meta property="og:url" content="${esc(canonicalUrl)}" />
-  <meta property="og:image" content="${esc(imgUrl)}" />
-  <meta property="og:image:type" content="${imageMimeType(imgUrl)}" />
-  <meta property="og:image:alt" content="${esc(imgAlt)}" />
+   ${socialImageTags}
 
   <!-- Twitter Card -->
-  <meta name="twitter:card" content="summary_large_image" />
+   <meta name="twitter:card" content="${imgUrl ? "summary_large_image" : "summary"}" />
   <meta name="twitter:title" content="${esc(normalizedTitle)}" />
   <meta name="twitter:description" content="${esc(description)}" />
-  <meta name="twitter:image" content="${esc(imgUrl)}" />
-  <meta name="twitter:image:alt" content="${esc(imgAlt)}" />
+   ${twitterImageTags}
 
   <!-- Favicon and Google Search icon -->
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
@@ -586,6 +582,7 @@ function dynamicHomeSchema() {
   const businessProfile = safeGoogleBusinessProfileUrl(settingMap.company_google_business_profile);
   const sameAs = [...new Set([...socialLinks, ...(businessProfile ? [businessProfile] : [])])];
   const phoneValues = publicPhones.map(toInternational).filter(Boolean);
+  const configuredBusinessImage = settingMap.company_image?.trim() || siteLogo;
   const contactPoint = phoneValues.length ? {
     "@type": "ContactPoint",
     telephone: phoneValues.length === 1 ? phoneValues[0] : phoneValues,
@@ -601,8 +598,8 @@ function dynamicHomeSchema() {
     ...(siteDescription ? { description: siteDescription } : {}),
     "url": publicUrl("/"),
     "parentOrganization": { "@id": `${publicUrl("/")}#organization` },
-    "logo": absoluteImg(siteLogo),
-    "image": absoluteImg(settingMap.company_image?.trim() || siteLogo || SEO_DEFAULTS.image),
+     ...(siteLogo ? { logo: absoluteImg(siteLogo) } : {}),
+     ...(configuredBusinessImage ? { image: absoluteImg(configuredBusinessImage) } : {}),
     ...(phoneValues.length ? { telephone: phoneValues.length === 1 ? phoneValues[0] : phoneValues } : {}),
     ...(settingMap.company_price_range?.trim() ? { priceRange: settingMap.company_price_range.trim() } : {}),
     ...(settingMap.company_payment_methods ? { paymentAccepted: settingMap.company_payment_methods } : {}),
@@ -625,7 +622,7 @@ function dynamicHomeSchema() {
       "name": HOMEPAGE_SCHEMA_NAME,
       "alternateName": siteCompanyName,
       "url": publicUrl("/"),
-      "logo": absoluteImg(siteLogo),
+       ...(siteLogo ? { logo: absoluteImg(siteLogo) } : {}),
       ...(siteDescription ? { description: siteDescription } : {}),
       ...(sameAs.length ? { sameAs: [...new Set(sameAs)] } : {}),
     },
@@ -736,7 +733,7 @@ function generateFullHomepageStaticContent() {
   <header style="background:#1e3a5f;color:#fff;padding:12px 20px;border-bottom:1px solid rgba(255,255,255,0.1)">
     <div style="max-width:1200px;margin:0 auto;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px">
       <div style="display:flex;align-items:center;gap:12px">
-        <img src="/images/container-large.png" alt="${esc(siteCompanyName)}" width="48" height="48" style="height:48px;width:auto;border-radius:8px" />
+        ${siteLogo ? `<img src="${esc(absoluteImg(siteLogo))}" alt="${esc(siteCompanyName)}" width="48" height="48" style="height:48px;width:auto;border-radius:8px" />` : ""}
         <span style="font-size:20px;font-weight:800">${esc(siteCompanyName)}</span>
       </div>
       <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
@@ -972,7 +969,7 @@ function generateHomepageStaticContent() {
   const waHref = phoneWa ? waLink(phoneWa, `السلام عليكم، أرغب في طلب خدمة من ${siteCompanyName}`) : "";
   const businessProfile = safeGoogleBusinessProfileUrl(settingMap.company_google_business_profile);
   const logoUrl = absoluteImg(siteLogo);
-  const heroUrl = absoluteImg(heroLcpImage);
+  const heroUrl = heroLcpImage ? absoluteImg(heroLcpImage) : "";
   const internalLinks = [
     ["/pricing", "أسعار وخدمات تأجير الحاويات"],
     ["/packages", "باقات الحاويات المتاحة"],
@@ -1004,7 +1001,7 @@ function generateHomepageStaticContent() {
              ${phoneHref ? `<a href="${esc(phoneHref)}" style="border:1px solid #b9ced4;color:#12384b;padding:13px 22px;border-radius:11px;text-decoration:none;font-weight:800">اتصال مباشر ${esc(phoneCall)}</a>` : ""}
           </div>
         </div>
-        <img src="${esc(heroUrl)}" alt="حاويات ونقل مخلفات البناء في الرياض" width="1200" height="675" style="width:100%;height:auto;max-height:340px;object-fit:cover;border-radius:22px;box-shadow:0 18px 40px rgba(18,56,75,.16)" />
+        ${heroUrl ? `<img src="${esc(heroUrl)}" alt="حاويات ونقل مخلفات البناء في الرياض" width="1200" height="675" style="width:100%;height:auto;max-height:340px;object-fit:cover;border-radius:22px;box-shadow:0 18px 40px rgba(18,56,75,.16)" />` : ""}
       </section>
       <section style="border-top:1px solid #e5eef1;padding-top:30px">
          <h2 style="margin:0 0 10px;color:#12384b;font-size:26px;font-weight:900">تأجير حاويات الرياض ونقل المخلفات بخدمة واضحة</h2>
@@ -1060,8 +1057,10 @@ function updateIndexSeo(html) {
   const title = HOMEPAGE_SEO_TITLE;
   const description = HOMEPAGE_SEO_DESCRIPTION;
   const logo = siteLogo ? absoluteImg(siteLogo) : "";
-  const homeOgImage = publicUrl("/images/container-large.png");
-  const heroPreload = `<link rel="preload" as="image" href="${esc(absoluteImg(heroLcpImage))}" fetchpriority="high" imagesizes="100vw" data-lcp-hero="true" />`;
+  const homeOgImage = siteLogo ? absoluteImg(siteLogo) : "";
+  const heroPreload = heroLcpImage
+    ? `<link rel="preload" as="image" href="${esc(absoluteImg(heroLcpImage))}" fetchpriority="high" imagesizes="100vw" data-lcp-hero="true" />`
+    : "";
   const replace = (source, pattern, value) => source.replace(pattern, value);
   const upsert = (source, pattern, tag) => pattern.test(source)
     ? source.replace(pattern, tag)
@@ -1110,14 +1109,21 @@ function updateIndexSeo(html) {
   next = replace(next, /(<meta\s+property="og:title"\s+content=")[^"]*(")/i, `$1${esc(title)}$2`);
   next = replace(next, /(<meta\s+property="og:description"\s+content=")[^"]*(")/i, `$1${esc(description)}$2`);
   next = upsert(next, /<meta\s+property=["']og:url["'][^>]*>/i, `<meta property="og:url" content="${esc(publicUrl("/"))}" />`);
-  next = replace(next, /(<meta\s+property="og:image"\s+content=")[^"]*(")/i, `$1${esc(homeOgImage)}$2`);
-  next = upsert(next, /<meta\s+property=["']og:image:type["'][^>]*>/i, `<meta property="og:image:type" content="${imageMimeType(homeOgImage)}" />`);
-  next = replace(next, /(<meta\s+property="og:image:alt"\s+content=")[^"]*(")/i, `$1${esc(siteCompanyName)}$2`);
+  next = next.replace(/<meta\s+property=["']og:image(?::[^"']+)?["'][^>]*>\s*/gi, "");
+  if (homeOgImage) {
+    next = upsert(next, /<meta\s+property=["']og:image["'][^>]*>/i, `<meta property="og:image" content="${esc(homeOgImage)}" />`);
+    next = upsert(next, /<meta\s+property=["']og:image:type["'][^>]*>/i, `<meta property="og:image:type" content="${imageMimeType(homeOgImage)}" />`);
+    next = upsert(next, /<meta\s+property=["']og:image:alt["'][^>]*>/i, `<meta property="og:image:alt" content="${esc(siteCompanyName)}" />`);
+  }
   next = upsert(next, /<link\s+rel=["']alternate["'][^>]+hreflang=["']ar["'][^>]*>/i, `<link rel="alternate" hreflang="ar" href="${esc(publicUrl("/"))}" />`);
   next = upsert(next, /<link\s+rel=["']alternate["'][^>]+hreflang=["']x-default["'][^>]*>/i, `<link rel="alternate" hreflang="x-default" href="${esc(publicUrl("/"))}" />`);
   next = replace(next, /(<meta\s+name="twitter:title"\s+content=")[^"]*(")/i, `$1${esc(title)}$2`);
   next = replace(next, /(<meta\s+name="twitter:description"\s+content=")[^"]*(")/i, `$1${esc(description)}$2`);
-  next = replace(next, /(<meta\s+name="twitter:image"\s+content=")[^"]*(")/i, `$1${esc(homeOgImage)}$2`);
+  next = next.replace(/<meta\s+name=["']twitter:image(?::[^"']+)?["'][^>]*>\s*/gi, "");
+  if (homeOgImage) {
+    next = upsert(next, /<meta\s+name=["']twitter:image["'][^>]*>/i, `<meta name="twitter:image" content="${esc(homeOgImage)}" />`);
+    next = upsert(next, /<meta\s+name=["']twitter:image:alt["'][^>]*>/i, `<meta name="twitter:image:alt" content="${esc(siteCompanyName)}" />`);
+  }
   next = next.replace(
     /<script\b(?=[^>]*\btype=["']application\/ld\+json["'])[^>]*>[\s\S]*?<\/script>\s*/gi,
     "",
@@ -1152,13 +1158,14 @@ function savePage(relPath, html, { noindex = false } = {}) {
   writeFileSync(fullPath, html, "utf8");
 }
 
-function saveSimplePage({ relPath, title, description, canonicalPath, keywords = "", ogImage = "/images/container-small.png", bodyContent, breadcrumbs = [] }) {
+function saveSimplePage({ relPath, title, description, canonicalPath, keywords = "", ogImage = "", bodyContent, breadcrumbs = [] }) {
   const canonical = publicUrl(canonicalPath);
+  const resolvedOgImage = ogImage ? publicUrl(ogImage) : "";
   savePage(relPath, renderPage({
     title,
     description,
     canonical,
-    ogImage: publicUrl(ogImage),
+    ogImage: resolvedOgImage,
     keywords,
     schemas: [{
       "@context": "https://schema.org",
@@ -1167,7 +1174,7 @@ function saveSimplePage({ relPath, title, description, canonicalPath, keywords =
       "url": canonical,
       "name": title,
       "description": description,
-      "image": { "@type": "ImageObject", "url": publicUrl(ogImage), "name": title },
+       ...(resolvedOgImage ? { "image": { "@type": "ImageObject", "url": resolvedOgImage, "name": title } } : {}),
       "inLanguage": "ar",
       "isPartOf": { "@id": `${publicUrl("/")}#website` },
       "about": { "@id": `${publicUrl("/")}#organization` },
@@ -1212,7 +1219,7 @@ for (const post of posts) {
     description = normalizeMetaDescription(description, post.title);
   }
   usedBlogDescriptions.add(description);
-  const ogImage     = post.og_image || post.cover_image || `${SITE_URL}/images/container-small.png`;
+  const ogImage     = resolveLocalImage(post.og_image || post.cover_image);
   const postDate    = post.published_at || post.created_at || new Date().toISOString();
 
   const articleSchema = {
@@ -1220,7 +1227,7 @@ for (const post of posts) {
     "@type": "BlogPosting",
     "headline": post.title,
     "description": description,
-    "image": absoluteImg(ogImage),
+    ...(ogImage ? { "image": absoluteImg(ogImage) } : {}),
     "datePublished": postDate,
     "dateModified": post.updated_at || postDate,
     "mainEntityOfPage": { "@type": "WebPage", "@id": canonical },
@@ -1290,7 +1297,7 @@ console.log(`   ✅ ${posts.length} مقالة`);
     siteDescription || "مقالات ونصائح تساعدك على اختيار الخدمات المناسبة لتأجير الحاويات ونقل المخلفات.",
     "مدونة تأجير الحاويات ونقل المخلفات",
   );
-  const blogOgImage    = `${SITE_URL}/images/container-small.png`;
+  const blogOgImage    = "";
 
   const blogSchema = {
     "@context": "https://schema.org",
@@ -1370,7 +1377,7 @@ for (const svc of services) {
 
   let ogImage = svc.image_url || "";
   try { const imgs = JSON.parse(svc.images || "[]"); ogImage = imgs[0] || ogImage; } catch {}
-  ogImage = resolveLocalImage(ogImage, "/images/container-small.png");
+  ogImage = resolveLocalImage(ogImage);
 
   const serviceSchema = {
     "@context": "https://schema.org",
@@ -1378,7 +1385,7 @@ for (const svc of services) {
     "@id": `${canonical}#service`,
     "name": svc.title,
     "description": desc,
-    "image": absoluteImg(ogImage),
+    ...(ogImage ? { "image": absoluteImg(ogImage) } : {}),
     "url": canonical,
     "inLanguage": "ar",
     "provider": {
@@ -1579,7 +1586,7 @@ console.log(`   ✅ ${services.length} خدمة`);
       title,
       description,
       canonical,
-      ogImage: publicUrl("/images/container-small.png"),
+      ogImage: "",
       keywords: "خدمات تأجير الحاويات بالرياض, نقل مخلفات البناء, نقل الأنقاض بالرياض, خدمات ميدانية",
       schemas: [
         {
@@ -1653,7 +1660,7 @@ for (const c of containers) {
   const desc      = normalizeMetaDescription(c.seo_description || c.description, c.name);
   let containerImage = c.image_url || "";
   try { const imgs = JSON.parse(c.images || "[]"); containerImage = imgs[0] || containerImage; } catch {}
-  const ogImage   = resolveLocalImage(containerImage, "/images/container-large.png");
+   const ogImage   = resolveLocalImage(containerImage);
 
   let featuresList = [];
   try {
@@ -1674,7 +1681,7 @@ for (const c of containers) {
     "@id": `${canonical}#service`,
     "name": c.name,
     "description": desc,
-    "image": absoluteImg(ogImage),
+     ...(ogImage ? { "image": absoluteImg(ogImage) } : {}),
     "url": canonical,
     "inLanguage": "ar",
     "serviceType": catArabic,
@@ -1781,7 +1788,6 @@ saveSimplePage({
   ),
   canonicalPath: "/containers",
   keywords: "تأجير حاويات بالرياض, أسعار الحاويات, حاويات أنقاض, حاويات نفايات, عقود نظافة بلدي",
-  ogImage: "/images/container-large.png",
   breadcrumbs: [{ name: "الحاويات والباقات", path: "/containers" }],
   bodyContent: `
     <h1 style="font-size:clamp(24px,4vw,36px);font-weight:900;color:#1e3a5f;margin:0 0 16px">
@@ -1867,7 +1873,7 @@ for (const page of seoPages) {
     "url": canonical,
     "name": title,
     "description": description,
-    "image": { "@type": "ImageObject", "url": ogImage, "name": page.title },
+     ...(ogImage ? { "image": { "@type": "ImageObject", "url": ogImage, "name": page.title } } : {}),
     "inLanguage": "ar",
     "isPartOf": { "@id": `${SITE_URL}/#website` },
     "about": { "@id": `${SITE_URL}/#organization` },
@@ -1875,9 +1881,9 @@ for (const page of seoPages) {
 
   const bodyContent = `
     <article>
-      <figure style="margin:0 0 24px;overflow:hidden;border-radius:18px;background:#edf6f6">
-        <img src="${esc(ogImage)}" alt="${esc(page.title)}" width="1200" height="675" style="display:block;width:100%;height:auto;max-height:380px;object-fit:cover" />
-      </figure>
+       ${ogImage ? `<figure style="margin:0 0 24px;overflow:hidden;border-radius:18px;background:#edf6f6">
+         <img src="${esc(ogImage)}" alt="${esc(page.title)}" width="1200" height="675" style="display:block;width:100%;height:auto;max-height:380px;object-fit:cover" />
+       </figure>` : ""}
       ${primaryCallout}
       <h1 style="font-size:clamp(24px,4vw,36px);font-weight:800;color:#1a202c;margin:0 0 16px;line-height:1.3">
         ${esc(page.title)}
@@ -1927,7 +1933,6 @@ console.log(`   ✅ ${seoPages.length} صفحة SEO (مولدة كـ /page/ و /
     title: `فهرس الأدلة والصفحات | ${siteCompanyName}`,
     description: `فهرس الأدلة التخصصية من ${siteCompanyName} لاختيار الحاوية المناسبة وتنظيم رفع ونقل مخلفات البناء والأنقاض من المنازل والمشاريع داخل مدينة الرياض.`,
     canonicalPath: "/pages",
-  ogImage: "/images/container-large.png",
     keywords: "أدلة تأجير الحاويات بالرياض, نقل مخلفات البناء, حاويات الأنقاض",
     breadcrumbs: [{ name: "فهرس الأدلة", path: "/pages" }],
     bodyContent: `
@@ -1949,7 +1954,7 @@ console.log(`   ✅ ${seoPages.length} صفحة SEO (مولدة كـ /page/ و /
     "دليل مقاسات وأسعار تأجير حاويات الأنقاض والنفايات والمكابس بالرياض. اطلب عرضاً حسب نوع المخلفات والموقع ومدة التأجير.",
     "أسعار ومقاسات تأجير الحاويات",
   );
-  const ogImage = `${SITE_URL}/images/electric-compactor.jpeg`;
+  const ogImage = "";
 
   const crumbs = [
     { name: "الرئيسية", url: SITE_URL },
@@ -2082,7 +2087,7 @@ console.log(`   ✅ ${seoPages.length} صفحة SEO (مولدة كـ /page/ و /
     "إجابات واضحة حول مقاسات وأسعار تأجير حاويات الأنقاض والنفايات، التوصيل والسحب، ونقل مخلفات البناء داخل الرياض.",
     "الأسئلة الشائعة حول تأجير الحاويات",
   );
-  const ogImage = `${SITE_URL}/images/waste-small.png`;
+  const ogImage = "";
   const crumbs = [
     { name: "الرئيسية", url: SITE_URL },
     { name: "الأسئلة الشائعة", url: canonical }
@@ -2154,7 +2159,7 @@ console.log(`   ✅ ${seoPages.length} صفحة SEO (مولدة كـ /page/ و /
     "سياسة الخصوصية وحماية البيانات الشخصية لعملاء تأجير الحاويات ونقل مخلفات البناء وفق الأنظمة واللوائح المعمول بها في المملكة العربية السعودية.",
     "سياسة الخصوصية وحماية البيانات",
   );
-  const ogImage = `${SITE_URL}/images/electric-compactor.jpeg`;
+  const ogImage = "";
   const crumbs = [
     { name: "الرئيسية", url: SITE_URL },
     { name: "سياسة الخصوصية", url: canonical }
@@ -2209,7 +2214,7 @@ console.log(`   ✅ ${seoPages.length} صفحة SEO (مولدة كـ /page/ و /
     "الشروط والضوابط المنظمة لتأجير الحاويات وتوصيلها وسحبها ونقل الأنقاض ومخلفات البناء داخل الرياض.",
     "الشروط والأحكام",
   );
-  const ogImage = `${SITE_URL}/images/container-small.png`;
+  const ogImage = "";
   const crumbs = [
     { name: "الرئيسية", url: SITE_URL },
     { name: "الشروط والأحكام", url: canonical }
@@ -2259,7 +2264,7 @@ console.log(`   ✅ ${seoPages.length} صفحة SEO (مولدة كـ /page/ و /
     `تواصل مع ${siteCompanyName} لطلب تأجير حاوية أو نقل أنقاض ومخلفات بناء في جميع أحياء الرياض، وتأكيد المقاس والموعد.`,
     "التواصل مع فريق تأجير الحاويات",
   );
-  const ogImage = `${SITE_URL}/images/electric-compactor.jpeg`;
+  const ogImage = "";
   const crumbs = [
     { name: "الرئيسية", url: SITE_URL },
     { name: "اتصل بنا", url: canonical }
@@ -2318,7 +2323,7 @@ console.log(`   ✅ ${seoPages.length} صفحة SEO (مولدة كـ /page/ و /
     `تعرف على ${siteCompanyName} وحلول تأجير حاويات الأنقاض والنفايات والمكابس ونقل مخلفات البناء وعقود النظافة الإلكترونية بالرياض.`,
     `خدمات ${siteCompanyName}`,
   );
-  const ogImage = `${SITE_URL}/images/container-large.png`;
+  const ogImage = "";
   const crumbs = [
     { name: "الرئيسية", url: SITE_URL },
     { name: "من نحن", url: canonical }
@@ -2380,7 +2385,6 @@ const supportingSeoPages = [
       `شركاء ${siteCompanyName}`,
     ),
     keywords: "شركاء تأجير الحاويات بالرياض, شركاء نقل مخلفات البناء",
-    ogImage: "/images/container-small.png",
     breadcrumbs: [{ name: "شركاؤنا", path: "/partners" }],
     bodyContent: `
       <h1 style="font-size:clamp(24px,4vw,36px);font-weight:900;color:#1e3a5f;margin:0 0 16px">شركاؤنا</h1>
@@ -2403,7 +2407,6 @@ const supportingSeoPages = [
       `قيادة ${siteCompanyName}`,
     ),
     keywords: `قيادة ${siteCompanyName}, رؤية المؤسسة, تأجير الحاويات بالرياض`,
-    ogImage: "/images/container-large.png",
     breadcrumbs: [{ name: "لماذا نحن", path: "/#about" }, { name: "القيادة", path: "/why-us/leadership" }],
     bodyContent: `
       <h1 style="font-size:clamp(24px,4vw,36px);font-weight:900;color:#1e3a5f;margin:0 0 16px">قيادتنا</h1>
@@ -2423,7 +2426,6 @@ const supportingSeoPages = [
       `خدمات ${siteCompanyName}`,
     ),
     keywords: "خدمات تأجير الحاويات, نقل مخلفات البناء بالرياض, مكابس نفايات, عقود النظافة الإلكترونية",
-    ogImage: "/images/container-small.png",
     breadcrumbs: [{ name: "لماذا نحن", path: "/#about" }, { name: "ماذا نقدم", path: "/why-us/what-we-do" }],
     bodyContent: `
       <h1 style="font-size:clamp(24px,4vw,36px);font-weight:900;color:#1e3a5f;margin:0 0 16px">ماذا نقدم</h1>
@@ -2446,7 +2448,6 @@ const supportingSeoPages = [
       `التزام ${siteCompanyName}`,
     ),
     keywords: `التزام ${siteCompanyName}, قيم المؤسسة, جودة نقل مخلفات البناء`,
-    ogImage: "/images/electric-compactor.jpeg",
     breadcrumbs: [{ name: "لماذا نحن", path: "/#about" }, { name: "التزامنا", path: "/why-us/commitment" }],
     bodyContent: `
       <h1 style="font-size:clamp(24px,4vw,36px);font-weight:900;color:#1e3a5f;margin:0 0 16px">التزامنا</h1>
@@ -2469,7 +2470,6 @@ const supportingSeoPages = [
       `خبرة ${siteCompanyName}`,
     ),
     keywords: `خبرة تأجير الحاويات, نقل مخلفات البناء بالرياض, ${siteCompanyName}`,
-    ogImage: "/images/container-large.png",
     breadcrumbs: [{ name: "لماذا نحن", path: "/#about" }, { name: "خبرتنا", path: "/why-us/experience" }],
     bodyContent: `
       <h1 style="font-size:clamp(24px,4vw,36px);font-weight:900;color:#1e3a5f;margin:0 0 16px">خبرتنا المتراكمة</h1>
@@ -2563,7 +2563,7 @@ for (const area of NEIGHBORHOODS) {
     `تأجير حاويات الأنقاض والنفايات ونقل مخلفات البناء في ${location}. اختر المقاس المناسب ونسق التوصيل والسحب مع فريق العمليات.`,
     `تأجير الحاويات في ${location}`,
   );
-  const ogImage    = `${SITE_URL}/images/waste-small.png`;
+  const ogImage    = "";
 
   const serviceSchema = {
     "@context": "https://schema.org",
@@ -2763,7 +2763,7 @@ console.log(`   ✅ ${NEIGHBORHOODS.length} صفحة حي (بالعربي وال
     title,
     description,
     canonical,
-    ogImage: `${SITE_URL}/images/waste-small.png`,
+    ogImage: "",
     keywords: "تأجير حاويات أحياء الرياض, حاويات أنقاض شمال الرياض, نقل مخلفات جنوب الرياض, حاويات نفايات شرق الرياض",
     schemas: [areaListSchema, breadcrumbSchema(crumbs)],
     breadcrumbs: crumbs,

@@ -25,7 +25,7 @@ function formatDate(iso: string | null): string {
 }
 
 function postImage(post: Pick<Post, "coverImage" | "ogImage">): string {
-  return post.coverImage?.trim() || post.ogImage?.trim() || "/images/container-small.png"
+  return post.coverImage?.trim() || post.ogImage?.trim() || ""
 }
 
 export default function Blog() {
@@ -34,7 +34,6 @@ export default function Blog() {
     description: "اقرأ أحدث المقالات والأدلة الفنية حول مقاسات تأجير حاويات الأنقاض والنفايات وعقود النظافة الإلكترونية ورخص بلدي بالرياض.",
     keywords: "مدونة تأجير الحاويات بالرياض, حاويات أنقاض الرياض, عقد نظافة بلدي, نقل مخلفات البناء بالرياض",
     canonical: siteUrl("/blog"),
-    ogImage: "/images/container-small.png",
     ogImageAlt: "مدونة تأجير الحاويات وإدارة مخلفات البناء بالرياض",
   })
 
@@ -173,7 +172,7 @@ export default function Blog() {
                           src={postImage(post).startsWith("http") ? postImage(post) : `${API_BASE}${postImage(post)}`}
                           alt={post.title}
                           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                          onError={(e) => { e.currentTarget.src = "/images/container-small.png" }}
+                          onError={(e) => { e.currentTarget.style.display = "none" }}
                         />
                       ) : (
                         <div className="absolute inset-0 flex items-center justify-center">

@@ -253,7 +253,6 @@ export default function NeighborhoodPage() {
     description: areaDescription || "تعرف على خدمات تأجير الحاويات ونقل مخلفات البناء في أحياء الرياض.",
     keywords: area?.keywords.join("، "),
     canonical,
-    ogImage: "/images/waste-small.png",
     ogImageAlt: area ? `تأجير الحاويات ونقل المخلفات في ${area.name}` : "خدمات تأجير الحاويات في أحياء الرياض",
     indexable: Boolean(area),
   })

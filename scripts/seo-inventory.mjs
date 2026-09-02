@@ -32,21 +32,6 @@ export const STATIC_SEO_ROUTES = Object.freeze([
   ["/pages", "seo-page-index"],
 ]);
 
-export const SEO_MEDIA_MANIFEST = Object.freeze([
-  ["home", "/images/container-large.webp", ["/"]],
-  ["services", "/images/container-small.webp", ["/services", "/why-us/what-we-do"]],
-  ["containers", "/images/container-large.webp", ["/containers"]],
-  ["pricing", "/images/electric-compactor.webp", ["/pricing"]],
-  ["areas", "/images/waste-small.webp", ["/areas"]],
-  ["blog", "/images/container-small.webp", ["/blog"]],
-  ["about", "/images/container-large.webp", ["/about", "/why-us/experience"]],
-  ["contact", "/images/electric-compactor.webp", ["/contact", "/why-us/commitment"]],
-  ["faq", "/images/waste-small.webp", ["/faq"]],
-  ["partners", "/images/container-small.webp", ["/partners"]],
-  ["why-us", "/images/container-large.webp", ["/why-us/leadership"]],
-  ["legal", "/images/electric-compactor.webp", ["/privacy", "/terms"]],
-]);
-
 function tableExists(db, tableName) {
   return Boolean(db.prepare(
     "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
@@ -188,21 +173,25 @@ export function inventoryJson(entries, siteUrl) {
   };
 }
 
-export function writeSeoInventory(root, db, siteUrl) {
+export function writeSeoInventory(root, db, siteUrl, mediaPaths = []) {
   const entries = buildSeoInventory(db);
   const destination = join(root, "artifacts", "sabaik-almasa", "public", "seo-inventory.json");
   writeFileSync(destination, JSON.stringify(inventoryJson(entries, siteUrl), null, 2) + "\n", "utf8");
   const mediaDestination = join(root, "artifacts", "sabaik-almasa", "public", "seo-media-manifest.json");
+  const uniqueMediaPaths = [...new Set(mediaPaths
+    .filter((value) => typeof value === "string" && value.trim())
+    .map((value) => value.trim()))];
   writeFileSync(mediaDestination, JSON.stringify({
-    version: 1,
+    version: 2,
     generatedAt: new Date().toISOString(),
     siteUrl,
-    assets: SEO_MEDIA_MANIFEST.map(([key, path, pages]) => ({
-      key,
+    source: "images referenced by the current sitemap",
+    assets: uniqueMediaPaths.map((path, index) => ({
+      key: `rendered-${index + 1}`,
       path,
-      purpose: "SEO campaign image",
-      pages,
-      required: true,
+      purpose: "Image referenced by current managed content",
+      pages: [],
+      required: false,
     })),
   }, null, 2) + "\n", "utf8");
   return entries;

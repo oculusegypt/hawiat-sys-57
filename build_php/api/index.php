@@ -706,7 +706,7 @@ try {
     }
 
     function generateToken(int $adminId): string {
-        $tokenSecret = getenv('SESSION_SECRET') ?: 'ff6610c3075b69a7c0a599c4ca94573ae00a81816f5aada2786e27bdd66cecf8';
+        $tokenSecret = getenv('SESSION_SECRET') ?: 'e0770039c3020141202cd7a091f444c62de88871bcd2774e6f7de2a2201e38ce';
         $payload = json_encode(['adminId' => $adminId, 'ts' => (int)(microtime(true) * 1000)]);
         $b64 = base64url_encode((string)$payload);
         $sig = base64url_encode(hash_hmac('sha256', $b64, $tokenSecret, true));
@@ -718,7 +718,7 @@ try {
             $parts = explode('.', $token);
             if (count($parts) !== 2) return null;
             [$b64, $sig] = $parts;
-            $tokenSecret = getenv('SESSION_SECRET') ?: 'ff6610c3075b69a7c0a599c4ca94573ae00a81816f5aada2786e27bdd66cecf8';
+            $tokenSecret = getenv('SESSION_SECRET') ?: 'e0770039c3020141202cd7a091f444c62de88871bcd2774e6f7de2a2201e38ce';
             $expectedSig = base64url_encode(hash_hmac('sha256', $b64, $tokenSecret, true));
             if (!hash_equals($sig, $expectedSig)) return null;
             $payload = json_decode(base64url_decode($b64), true);
@@ -1667,7 +1667,7 @@ try {
     // Hostinger deployment settings and Patch upload. This is intentionally
     // implemented here (PHP/FTP) because production has no Node.js process.
     function hostingerPatchKey(): string {
-        $secret = getenv('SESSION_SECRET') ?: 'ff6610c3075b69a7c0a599c4ca94573ae00a81816f5aada2786e27bdd66cecf8';
+        $secret = getenv('SESSION_SECRET') ?: 'e0770039c3020141202cd7a091f444c62de88871bcd2774e6f7de2a2201e38ce';
         return hash('sha256', 'hostinger-ftp:' . $secret, true);
     }
 
