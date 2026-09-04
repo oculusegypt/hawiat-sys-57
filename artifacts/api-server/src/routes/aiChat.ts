@@ -806,13 +806,19 @@ async function handleConfirm(message: string, intent: string, state: FlowState, 
       logger.warn({ err: error, requestId: request.id }, "customer auto-save skipped");
     });
 
-    await createNotification({
+    try {
+      await createNotification({
         title: isQuoteRequest ? "📋 طلب عرض سعر عبر البوت" : "🤖 طلب جديد عبر البوت الذكي",
-        message: `${name} - ${serviceType} - ${location}`,
+        message: `${name || "عميل غير محدد"} - ${serviceType || "خدمة غير محددة"} - ${location || "موقع غير محدد"}`,
         type: "service_request",
         refId: request.id,
         refType: "service_request",
-      }).catch(() => {});
+      });
+    } catch (error) {
+      // A notification failure must not hide a successfully-created customer
+      // order, but it must remain visible in the API logs for diagnosis.
+      logger.error({ err: error, requestId: request.id }, "AI order notification could not be created");
+    }
 
     return {
       reply: `تم إرسال طلبك بنجاح! 🎉`,

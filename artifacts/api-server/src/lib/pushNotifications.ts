@@ -151,9 +151,16 @@ export async function createNotification(
     .returning();
 
   if (notification) {
-    void sendNotificationPush(notification).catch((error: unknown) => {
+    // Wait for delivery to be scheduled before the request finishes. This is
+    // important for the AI order flow, which can otherwise return success while
+    // a short-lived workflow/process is still holding the only pending promise.
+    try {
+      await sendNotificationPush(notification);
+    } catch (error: unknown) {
+      // The database notification is still valid even when a browser push
+      // provider is temporarily unavailable.
       logger.error({ err: error, notificationId: notification.id }, "Push notification delivery failed");
-    });
+    }
   }
   return notification;
 }
