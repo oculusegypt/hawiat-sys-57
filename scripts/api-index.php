@@ -3347,52 +3347,37 @@ try {
 
             // 3. Location
             if ($step === 'collect_location' || $step === 'location') {
-                $data['location'] = $msg;
-                echo json_encode([
-                    'reply' => "ممتاز! 📍 هل ترغب في **توصيل فوري خلال ساعتين** أم **حجز موعد محدد**؟",
-                    'messageType' => 'options',
-                    'options' => [
-                        ['label' => 'توصيل فوري الآن ⚡', 'value' => 'immediate', 'emoji' => '⚡'],
-                        ['label' => 'حجز موعد محدد 📅', 'value' => 'scheduled', 'emoji' => '📅']
-                    ],
-                    'flowState' => ['step' => 'appointment_type', 'data' => $data]
-                ], JSON_UNESCAPED_UNICODE);
-                exit;
-            }
-
-            // 4. Appointment Type
-            if ($step === 'appointment_type') {
-                if ($msg === 'scheduled' || str_contains($msg, 'موعد') || str_contains($msg, 'محدد')) {
-                    $data['appointmentType'] = 'scheduled';
+                if (mb_strlen(trim($msg)) < 3) {
                     echo json_encode([
-                        'reply' => "يرجى تحديد التاريخ والوقت المناسب لتوصيل الحاوية 👇",
-                        'messageType' => 'date_input',
-                        'flowState' => ['step' => 'date_select', 'data' => $data]
-                    ], JSON_UNESCAPED_UNICODE);
-                    exit;
-                } else {
-                    $data['appointmentType'] = 'immediate';
-                    echo json_encode([
-                        'reply' => "رائع! ما هو اسمك الكريم؟ 👤",
+                        'reply' => "الرجاء إرسال العنوان بشكل أوضح أو رابط الموقع من قوقل ماب 📍",
                         'messageType' => 'text',
-                        'flowState' => ['step' => 'collect_name', 'data' => $data]
+                        'flowState' => ['step' => 'collect_location', 'data' => $data]
                     ], JSON_UNESCAPED_UNICODE);
                     exit;
                 }
-            }
-
-            // 5. Date Selection
-            if ($step === 'date_select' || $step === 'collect_scheduled_at') {
-                $data['scheduledAt'] = $msg;
+                $data['location'] = $msg;
                 echo json_encode([
-                    'reply' => "تم تحديد الموعد: **{$msg}** 📅\n\nما هو اسمك الكريم؟ 👤",
+                    'reply' => "تم تسجيل الموقع ✅\n\nما اسمك الكريم أو اسم الشركة؟",
                     'messageType' => 'text',
                     'flowState' => ['step' => 'collect_name', 'data' => $data]
                 ], JSON_UNESCAPED_UNICODE);
                 exit;
             }
 
-            // 6. Name (Accepts any name input!)
+            // 4. Compatibility for sessions created by the old appointment flow.
+            // New sessions never enter this branch; they go from location to name.
+            if ($step === 'appointment_type' || $step === 'date_select' || $step === 'collect_scheduled_at') {
+                $data['appointmentType'] = 'immediate';
+                unset($data['scheduledAt']);
+                echo json_encode([
+                    'reply' => "تم ✅\n\nما اسمك الكريم أو اسم الشركة؟",
+                    'messageType' => 'text',
+                    'flowState' => ['step' => 'collect_name', 'data' => $data]
+                ], JSON_UNESCAPED_UNICODE);
+                exit;
+            }
+
+            // 5. Name (Accepts any name input!)
             if ($step === 'collect_name' || $step === 'name') {
                 $data['name'] = $msg;
                 echo json_encode([

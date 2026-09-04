@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "generatedAt": "2026-09-04T11:23:33.187Z",
+  "generatedAt": "2026-09-04T11:37:52.821Z",
   "siteUrl": "https://sabaik.net",
   "source": "images referenced by the current sitemap",
   "assets": [
@@ -28,6 +28,20 @@
     {
       "key": "rendered-4",
       "path": "/images/container-small.png",
+      "purpose": "Image referenced by current managed content",
+      "pages": [],
+      "required": false
+    },
+    {
+      "key": "rendered-5",
+      "path": "/uploads/1788521523113-dec3efce45f4.webp",
+      "purpose": "Image referenced by current managed content",
+      "pages": [],
+      "required": false
+    },
+    {
+      "key": "rendered-6",
+      "path": "/uploads/1788521531274-abe27d8963be.webp",
       "purpose": "Image referenced by current managed content",
       "pages": [],
       "required": false
