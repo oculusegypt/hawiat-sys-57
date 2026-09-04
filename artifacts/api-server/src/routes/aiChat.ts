@@ -581,11 +581,12 @@ function handlePackageDetails(message: string, state: FlowState): BotResponse {
   };
 }
 
-function durationOptions(): OptionItem[] {
-  return [
-    { label: "شهري", value: "شهري", emoji: "🗓️" },
-    { label: "سنوي", value: "سنوي", emoji: "📋" },
-  ];
+function durationOptions(category?: string): OptionItem[] {
+  return getCategoryDurationOptions(category).map((duration) => ({
+    label: duration,
+    value: duration,
+    emoji: duration === DEBRIS_RENTAL_DURATION ? "📦" : duration === "شهري" ? "🗓️" : "📋",
+  }));
 }
 
 function isContractFlow(state: FlowState): boolean {
@@ -608,10 +609,12 @@ function nextAfterAppointment(state: FlowState): BotResponse {
       flowState: { step: "collect_activity", data: state.data },
     };
   }
+  const category = state.data.containerCategory || "debris";
+  const durationLabel = category === "debris" ? "مدة الإيجار المناسبة" : "مدة الإيجار المتوقعة";
   return {
-    reply: "اختر المدة المتوقعة للخدمة، أو اختر «لا ينطبق»:",
+    reply: `اختر ${durationLabel}:`,
     messageType: "options",
-    options: durationOptions(),
+    options: durationOptions(category),
     flowState: { step: "collect_duration", data: state.data },
   };
 }
@@ -652,8 +655,8 @@ function handleScheduledAt(message: string, state: FlowState): BotResponse {
 }
 
 function handleDuration(message: string, state: FlowState): BotResponse {
-  const category = state.data.containerCategory === "debris" ? "debris" : "recurring";
-  const allowed = category === "debris" ? [DEBRIS_RENTAL_DURATION] : RECURRING_REQUEST_DURATIONS;
+  const category = state.data.containerCategory || "debris";
+  const allowed = getCategoryDurationOptions(category);
   const duration = allowed.includes(message.trim()) ? message.trim() : allowed[0];
   return {
     reply: `✅ المدة: **${duration}**\n\nأين تحتاج تنفيذ الخدمة؟ أرسل الحي أو العنوان بالرياض 📍`,
@@ -685,7 +688,7 @@ function handleCollectEvacuations(message: string, state: FlowState): BotRespons
   return {
     reply: `✅ التفريغات: **${evacuations} شهرياً**\n\nاختر مدة العقد المتوقعة:`,
     messageType: "options",
-    options: durationOptions(),
+     options: durationOptions("contract"),
     flowState: {
       step: "collect_duration",
       data: { ...state.data, monthlyEvacuations: evacuations },
