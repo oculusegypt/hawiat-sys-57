@@ -10,6 +10,7 @@ const AdminNotifications = lazy(() => import("@/pages/admin/Notifications"))
 const AdminSlides = lazy(() => import("@/pages/admin/Slides"))
 const AdminServices = lazy(() => import("@/pages/admin/Services"))
 const AdminPackages = lazy(() => import("@/pages/admin/Packages"))
+const AdminContainerMap = lazy(() => import("@/pages/admin/ContainerMap"))
 const AdminContainerSystem = lazy(() => import("@/pages/admin/ContainerSystem"))
 const ContainerRecordProfile = lazy(() => import("@/pages/admin/ContainerRecordProfile").then(module => ({ default: module.ContainerRecordProfile })))
 const ContractPrintPage = lazy(() => import("@/pages/admin/ContainerRecordProfile").then(module => ({ default: module.ContractPrintPage })))
@@ -48,6 +49,7 @@ export function AdminRoutes() {
           <Route path="/admin/cleaning-packages" component={AdminPackages} />
           <Route path="/admin/packages" component={AdminPackages} />
           <Route path="/admin/containers" component={AdminPackages} />
+          <Route path="/admin/container-map" component={AdminContainerMap} />
           <Route path="/admin/container-system" component={AdminContainerSystem} />
           <Route path="/admin/container-system/profile/customer/:id" component={() => <ContainerRecordProfile mode="customer" />} />
           <Route path="/admin/container-system/profile/employee/:id" component={() => <ContainerRecordProfile mode="employee" />} />
