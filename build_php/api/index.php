@@ -732,7 +732,7 @@ try {
 
     function sessionSecret(): string {
         $secret = trim((string)getenv('SESSION_SECRET'));
-        $embeddedSecret = 'f0745277c541fa99e33cfc2feb0affa1e24f4e02bda4d35510f8f0f6b8937e49';
+        $embeddedSecret = '1a5473ff2222db7d40b1fb05af453cbae73799e7e1b19750e222e9c48a10104e';
         if ($secret === '' && strlen($embeddedSecret) === 64) {
             $secret = $embeddedSecret;
         }
@@ -3587,6 +3587,43 @@ try {
                 } catch (\Throwable $ignored) {
                     // The order has already been saved; indexing is best-effort.
                 }
+
+                 // The Hostinger AI route is independent from the Node route.
+                 // Persist the same operational notification and dispatch the
+                 // browser push before returning success to the customer.
+                 $isQuoteRequest = !empty($data['isQuoteRequest']);
+                 $notificationTitle = $isQuoteRequest
+                     ? '📋 طلب عرض سعر عبر البوت'
+                     : '🤖 طلب جديد عبر البوت الذكي';
+                 $notificationMessage = "{$clientName} - {$serviceType} - {$location}";
+                 $notificationId = $newReqId;
+                 try {
+                     $notificationStmt = $pdo->prepare(
+                         "INSERT INTO notifications
+                          (title, message, type, is_read, ref_id, ref_type, created_at)
+                          VALUES (:title, :message, 'service_request', 0, :ref_id, 'service_request', :created_at)"
+                     );
+                     $notificationStmt->execute([
+                         ':title' => $notificationTitle,
+                         ':message' => $notificationMessage,
+                         ':ref_id' => $newReqId,
+                         ':created_at' => $now,
+                     ]);
+                     $notificationId = (int)$pdo->lastInsertId();
+                 } catch (\Throwable $notificationError) {
+                     error_log('[cleanflow] AI chat notification insert failed: ' . $notificationError->getMessage());
+                 }
+
+                 $pushSentCount = dispatchPushToAllAdmins($pdo, [
+                     'id' => $notificationId,
+                     'title' => $notificationTitle,
+                     'message' => $notificationMessage,
+                     'type' => 'service_request',
+                     'refId' => $newReqId,
+                     'refType' => 'service_request',
+                     'createdAt' => $now,
+                 ]);
+                 error_log("[cleanflow] AI chat order #{$newReqId}: notification={$notificationId}, push_sent={$pushSentCount}");
 
                 echo json_encode([
                     'reply' => "🎉 **تم تأكيد طلبك بنجاح!**\n\nرقم الطلب الخاص بك: **#{$newReqId}**\nسيتواصل معك السائق / المشرف الميداني لتأكيد تفريغ الحاوية وبدء التوصيل فوراً.",
