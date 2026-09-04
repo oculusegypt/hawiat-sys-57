@@ -1,9 +1,8 @@
 import { useState, useEffect } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import {
-  X, ChevronRight, ChevronLeft, MapPin, Navigation, CheckCircle,
-  Phone, User, Loader2, AlertCircle, Box, Truck, FileText,
-  Calendar, Clock, Zap, CalendarClock, HelpCircle, Search
+  X, ChevronLeft, MapPin, Navigation, CheckCircle,
+  Phone, Loader2, Box, Search, Plus, Minus
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -13,39 +12,18 @@ import { DraggableMapPicker } from "@/components/ui/DraggableMapPicker"
 import { useGetContainers } from "@workspace/api-client-react"
 import { getVisitorTracking, sendVisitorHeartbeat } from "@/lib/visitorAttribution"
 import { getHighAccuracyPosition } from "@/lib/reverseGeocode"
-import { getActiveContainers, getContainerValue } from "@/lib/packageOptions"
+import { getContainersForCategory, getContainerValue } from "@/lib/packageOptions"
+import {
+  DEBRIS_RENTAL_DURATION,
+  REQUEST_CATEGORY_LABELS,
+  REQUEST_CATEGORY_OPTIONS,
+  getDefaultRequestDuration,
+  getRequestCategory,
+  getRequestDurationOptions,
+  type RequestCategory,
+} from "@/lib/requestRules"
 
 const API_BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") || ""
-const CONTAINER_RENTAL_DURATION = "حتى امتلاء الحاوية أو 10 أيام، أيهما أقرب"
-
-function getTodayString() {
-  const now = new Date()
-  const year = now.getFullYear()
-  const month = String(now.getMonth() + 1).padStart(2, "0")
-  const day = String(now.getDate()).padStart(2, "0")
-  return `${year}-${month}-${day}`
-}
-
-function getTomorrowString() {
-  const tomorrow = new Date()
-  tomorrow.setDate(tomorrow.getDate() + 1)
-  const year = tomorrow.getFullYear()
-  const month = String(tomorrow.getMonth() + 1).padStart(2, "0")
-  const day = String(tomorrow.getDate()).padStart(2, "0")
-  return `${year}-${month}-${day}`
-}
-
-function formatScheduledAppointment(date: string, time: string) {
-  if (!date) return ""
-  try {
-    return new Intl.DateTimeFormat("ar-SA", {
-      dateStyle: "full",
-      timeStyle: "short",
-    }).format(new Date(`${date}T${time || "10:00"}:00`))
-  } catch {
-    return `${date} ${time || "10:00"}`
-  }
-}
 
 function normalizePhone(value: string) {
   const arabicDigits = "٠١٢٣٤٥٦٧٨٩"
@@ -127,17 +105,15 @@ export function ServiceRequestModal() {
   const { data: apiContainers } = useGetContainers()
 
   const [step, setStep] = useState<"service" | "container" | "details" | "success">("service")
+  const [serviceCategory, setServiceCategory] = useState<RequestCategory>("debris")
   const [serviceType, setServiceType] = useState("")
   const [containerSize, setContainerSize] = useState("")
-  const [appointmentType, setAppointmentType] = useState<"immediate" | "scheduled">("immediate")
-  const [scheduledDate, setScheduledDate] = useState("")
-  const [scheduledTime, setScheduledTime] = useState("10:00")
-  const [duration, setDuration] = useState(CONTAINER_RENTAL_DURATION)
+  const [duration, setDuration] = useState(DEBRIS_RENTAL_DURATION)
+  const [containerCount, setContainerCount] = useState(1)
   const [location, setLocation] = useState("")
   const [clientName, setClientName] = useState("")
   const [phone, setPhone] = useState("")
   const [email, setEmail] = useState("")
-  const [notes, setNotes] = useState("")
 
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -147,23 +123,24 @@ export function ServiceRequestModal() {
   // Sync preselected options when modal opens
   useEffect(() => {
     if (isOpen) {
-      const initService = preselect?.serviceType || preselectedService || "حاويات الأنقاض"
+      const initialCategory = getRequestCategory(preselect?.serviceType || preselectedService || preselect?.containerName || preselectedContainerName)
       const initContainer = preselect?.containerSize || preselect?.containerName || preselectedContainerSize || preselectedContainerName || ""
-      setServiceType(initService)
+      setServiceCategory(initialCategory)
+      setServiceType(REQUEST_CATEGORY_LABELS[initialCategory])
       setContainerSize(initContainer)
-      setAppointmentType("immediate")
-      setScheduledDate(getTomorrowString())
-      setScheduledTime("10:00")
+      setDuration(getDefaultRequestDuration(initialCategory))
+      setContainerCount(1)
       setLocation("")
       setClientName(preselect?.clientName || "")
       setPhone(preselect?.phone || "")
       setEmail("")
-      setNotes("")
       setErrors({})
       setOrderId(null)
 
-      if (initContainer || preselect?.serviceType || preselectedService) {
+      if (initContainer) {
         setStep("details")
+      } else if (preselect?.serviceType || preselectedService) {
+        setStep("container")
       } else {
         setStep("service")
       }
@@ -172,16 +149,30 @@ export function ServiceRequestModal() {
 
   if (!isOpen) return null
 
+  const handleSelectCategory = (category: RequestCategory) => {
+    setServiceCategory(category)
+    setServiceType(REQUEST_CATEGORY_LABELS[category])
+    setContainerSize("")
+    setDuration(getDefaultRequestDuration(category))
+    setContainerCount(1)
+    setStep("container")
+  }
+
   const handleSelectPackage = (pkg: NonNullable<typeof apiContainers>[number]) => {
-    setServiceType(pkg.name)
+    const category = pkg.category === "waste" || pkg.category === "contract" ? pkg.category : "debris"
+    setServiceCategory(category)
+    setServiceType(REQUEST_CATEGORY_LABELS[category])
     setContainerSize(getContainerValue(pkg))
+    setDuration(getDefaultRequestDuration(category))
     setStep("details")
   }
 
   const validateDetails = () => {
     const errs: Record<string, string> = {}
-    if (duration !== CONTAINER_RENTAL_DURATION) {
-      errs.duration = "مدة الإيجار القصوى 10 أيام أو حتى امتلاء الحاوية، أيهما أقرب"
+    if (!getRequestDurationOptions(serviceCategory).includes(duration)) {
+      errs.duration = serviceCategory === "debris"
+        ? DEBRIS_RENTAL_DURATION
+        : "اختر مدة شهرية أو سنوية"
     }
     if (!clientName.trim() || clientName.trim().length < 2) {
       errs.clientName = "الرجاء كتابة الاسم بشكل صحيح (حرفين على الأقل)"
@@ -191,9 +182,6 @@ export function ServiceRequestModal() {
     }
     if (!location.trim() || location.trim().length < 3) {
       errs.location = "الرجاء تحديد موقع المشروع أو الحي بالرياض"
-    }
-    if (appointmentType === "scheduled" && !scheduledDate) {
-      errs.scheduledDate = "الرجاء تحديد تاريخ الموعد المطلوب"
     }
     setErrors(errs)
     return Object.keys(errs).length === 0
@@ -205,10 +193,6 @@ export function ServiceRequestModal() {
 
     setIsSubmitting(true)
     try {
-      const scheduledAt = appointmentType === "scheduled" && scheduledDate
-        ? `${scheduledDate}T${scheduledTime || "10:00"}:00`
-        : undefined
-
       const payload = {
         clientName: clientName.trim(),
         phone: normalizePhone(phone),
@@ -216,10 +200,9 @@ export function ServiceRequestModal() {
         serviceType: serviceType || "حاويات الأنقاض",
         containerSize: containerSize || undefined,
         location: location.trim(),
-         duration: CONTAINER_RENTAL_DURATION,
-        notes: notes.trim() || undefined,
-        appointmentType,
-        scheduledAt,
+        duration,
+        notes: `عدد الوحدات المطلوبة: ${containerCount}`,
+        appointmentType: "immediate",
         tracking: getVisitorTracking(),
       }
 
@@ -272,9 +255,7 @@ export function ServiceRequestModal() {
                 serviceType: serviceType || "حاويات الأنقاض",
                 containerSize: containerSize || "",
                 location: location.trim(),
-                duration: duration || "يومي (رد واحد)",
-                appointmentType,
-                scheduledAt
+                 duration,
               }),
             }),
           })
@@ -286,9 +267,6 @@ export function ServiceRequestModal() {
       setIsSubmitting(false)
     }
   }
-
-  const minDateStr = getTodayString()
-  const availablePackages = getActiveContainers(apiContainers)
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
@@ -334,14 +312,14 @@ export function ServiceRequestModal() {
                 exit={{ opacity: 0, x: -20 }}
                 className="space-y-4"
               >
-                <p className="text-xs text-gray-500 font-medium">اختر إحدى الباقات المتاحة من الكتالوج:</p>
+                <p className="text-xs text-gray-500 font-medium">اختر نوع الطلب:</p>
                 <div className="space-y-2.5">
-                  {availablePackages.map((pkg) => {
+                  {REQUEST_CATEGORY_OPTIONS.map((option) => {
                     return (
                       <button
-                        key={pkg.id}
+                        key={option.id}
                         type="button"
-                        onClick={() => handleSelectPackage(pkg)}
+                        onClick={() => handleSelectCategory(option.id)}
                         className="w-full text-right p-4 rounded-2xl border border-slate-200 bg-gradient-to-r from-white to-slate-50 hover:border-secondary/60 hover:shadow-md transition-all flex items-center justify-between group"
                       >
                         <div className="flex items-center gap-3">
@@ -350,10 +328,10 @@ export function ServiceRequestModal() {
                           </div>
                           <div>
                             <h4 className="font-bold text-gray-900 text-sm group-hover:text-primary transition-colors">
-                              {pkg.name}
+                              {option.label}
                             </h4>
                             <p className="text-xs text-gray-500 leading-tight line-clamp-1 mt-0.5">
-                              {pkg.size || pkg.description}
+                              {option.description}
                             </p>
                           </div>
                         </div>
@@ -361,9 +339,58 @@ export function ServiceRequestModal() {
                       </button>
                     )
                   })}
-                  {availablePackages.length === 0 && (
+                </div>
+              </motion.div>
+            )}
+
+            {/* STEP 2: Select a package from the chosen category */}
+            {step === "container" && (
+              <motion.div
+                key="step-container"
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                className="space-y-4"
+              >
+                <div className="flex items-center justify-between">
+                  <p className="text-xs text-gray-500 font-medium">
+                    {REQUEST_CATEGORY_LABELS[serviceCategory]} — اختر الباقة:
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setStep("service")}
+                    className="text-xs font-bold text-secondary hover:underline"
+                  >
+                    تغيير النوع
+                  </button>
+                </div>
+                <div className="space-y-2.5">
+                  {getContainersForCategory(apiContainers, serviceCategory).map((pkg) => (
+                    <button
+                      key={pkg.id}
+                      type="button"
+                      onClick={() => handleSelectPackage(pkg)}
+                      className="w-full text-right p-4 rounded-2xl border border-slate-200 bg-gradient-to-r from-white to-slate-50 hover:border-secondary/60 hover:shadow-md transition-all flex items-center justify-between group"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-secondary/10 shadow-sm flex items-center justify-center text-secondary shrink-0 group-hover:scale-110 transition-transform">
+                          <Box size={20} />
+                        </div>
+                        <div>
+                          <h4 className="font-bold text-gray-900 text-sm group-hover:text-primary transition-colors">
+                            {pkg.name}
+                          </h4>
+                          <p className="text-xs text-gray-500 leading-tight line-clamp-1 mt-0.5">
+                            {[pkg.size, pkg.description].filter(Boolean).join(" — ")}
+                          </p>
+                        </div>
+                      </div>
+                      <ChevronLeft size={18} className="text-gray-400 shrink-0" />
+                    </button>
+                  ))}
+                  {getContainersForCategory(apiContainers, serviceCategory).length === 0 && (
                     <p className="rounded-2xl border border-amber-100 bg-amber-50 p-4 text-center text-sm text-amber-700">
-                      لا توجد باقات متاحة للحجز حالياً.
+                      لا توجد باقات متاحة في هذه الفئة حالياً. تواصل معنا لإتمام الطلب.
                     </p>
                   )}
                 </div>
@@ -397,56 +424,6 @@ export function ServiceRequestModal() {
                   </button>
                 </div>
 
-                {/* Appointment Type Toggle */}
-                <div className="grid grid-cols-2 gap-2 p-1 bg-gray-100 rounded-xl">
-                  <button
-                    type="button"
-                    onClick={() => setAppointmentType("immediate")}
-                    className={`py-2 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition-all ${
-                      appointmentType === "immediate" ? "bg-white text-primary shadow-sm" : "text-gray-500"
-                    }`}
-                  >
-                    <Zap size={14} className={appointmentType === "immediate" ? "text-secondary" : ""} />
-                    طلب فوري (خلال ساعتين)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setAppointmentType("scheduled")}
-                    className={`py-2 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition-all ${
-                      appointmentType === "scheduled" ? "bg-white text-primary shadow-sm" : "text-gray-500"
-                    }`}
-                  >
-                    <CalendarClock size={14} className={appointmentType === "scheduled" ? "text-secondary" : ""} />
-                    موعد محدد مسبقاً
-                  </button>
-                </div>
-
-                {/* Scheduled Date/Time if selected */}
-                {appointmentType === "scheduled" && (
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="text-xs font-bold text-gray-700 block mb-1">تاريخ التوصيل *</label>
-                      <Input
-                        type="date"
-                        min={minDateStr}
-                        value={scheduledDate}
-                        onChange={e => setScheduledDate(e.target.value)}
-                        className="rounded-xl h-11 text-xs"
-                      />
-                      {errors.scheduledDate && <p className="text-red-500 text-[11px] mt-1">{errors.scheduledDate}</p>}
-                    </div>
-                    <div>
-                      <label className="text-xs font-bold text-gray-700 block mb-1">وقت التوصيل</label>
-                      <Input
-                        type="time"
-                        value={scheduledTime}
-                        onChange={e => setScheduledTime(e.target.value)}
-                        className="rounded-xl h-11 text-xs"
-                      />
-                    </div>
-                  </div>
-                )}
-
                 {/* Location Picker */}
                 <div>
                   <label className="text-xs font-bold text-gray-700 block mb-1">موقع المشروع / الحي بالرياض *</label>
@@ -456,15 +433,37 @@ export function ServiceRequestModal() {
 
                 {/* Duration */}
                 <div>
-                  <label className="text-xs font-bold text-gray-700 block mb-1">مدة الإيجار</label>
+                  <label className="text-xs font-bold text-gray-700 block mb-1">
+                    {serviceCategory === "contract" ? "مدة العقد" : "مدة الإيجار"}
+                  </label>
                   <select
                     value={duration}
                     onChange={e => setDuration(e.target.value)}
                     className="w-full text-xs border rounded-xl p-2.5 bg-white h-11"
                   >
-                     <option value={CONTAINER_RENTAL_DURATION}>{CONTAINER_RENTAL_DURATION}</option>
+                    {getRequestDurationOptions(serviceCategory).map((option) => (
+                      <option key={option} value={option}>{option}</option>
+                    ))}
                   </select>
-                   {errors.duration && <p className="text-red-500 text-[11px] mt-1">{errors.duration}</p>}
+                  {errors.duration && <p className="text-red-500 text-[11px] mt-1">{errors.duration}</p>}
+                </div>
+
+                <div>
+                  <label className="text-xs font-bold text-gray-700 block mb-1">العدد</label>
+                  <div className="flex items-center justify-between rounded-xl border border-gray-200 bg-white px-3 py-2">
+                    <span className="text-xs text-gray-500">
+                      {serviceCategory === "contract" ? "عدد العقود المطلوبة" : "عدد الحاويات المطلوبة"}
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <button type="button" onClick={() => setContainerCount(value => Math.max(1, value - 1))} className="flex h-7 w-7 items-center justify-center rounded-lg border border-gray-200 text-gray-600">
+                        <Minus size={12} />
+                      </button>
+                      <span className="min-w-6 text-center text-sm font-bold text-primary">{containerCount}</span>
+                      <button type="button" onClick={() => setContainerCount(value => value + 1)} className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary text-white">
+                        <Plus size={12} />
+                      </button>
+                    </div>
+                  </div>
                 </div>
 
                 {/* Name & Phone */}
@@ -491,17 +490,6 @@ export function ServiceRequestModal() {
                     />
                     {errors.phone && <p className="text-red-500 text-[11px] mt-1">{errors.phone}</p>}
                   </div>
-                </div>
-
-                {/* Notes */}
-                <div>
-                  <label className="text-xs font-bold text-gray-700 block mb-1">ملاحظات إضافية (اختياري)</label>
-                  <Input
-                    value={notes}
-                    onChange={e => setNotes(e.target.value)}
-                    placeholder="أي ملاحظة عن نوع المخلفات أو موقع التوصيل..."
-                    className="rounded-xl h-11 text-xs"
-                  />
                 </div>
 
                 {errors.submit && (
@@ -538,6 +526,7 @@ export function ServiceRequestModal() {
                 <div className="w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto shadow-inner">
                   <CheckCircle size={36} />
                 </div>
+
                 <div>
                   <h3 className="text-xl font-bold text-gray-900 mb-1">تم إرسال طلبك بنجاح!</h3>
                   {orderId && (
@@ -563,14 +552,8 @@ export function ServiceRequestModal() {
                    {clientName && <p><span className="font-bold">الاسم:</span> {clientName}</p>}
                    {phone && <p><span className="font-bold">الجوال:</span> {phone}</p>}
                    {location && <p><span className="font-bold">الموقع:</span> {location}</p>}
-                   <p>
-                     <span className="font-bold">الموعد:</span>{" "}
-                     {appointmentType === "scheduled"
-                       ? formatScheduledAppointment(scheduledDate, scheduledTime)
-                       : "فوري خلال ساعتين"}
-                   </p>
                    {duration && <p><span className="font-bold">المدة:</span> {duration}</p>}
-                   {notes && <p><span className="font-bold">الملاحظات:</span> {notes}</p>}
+                    <p><span className="font-bold">العدد:</span> {containerCount}</p>
                  </div>
 
                 <div className="pt-4 flex flex-col gap-2">
@@ -594,10 +577,9 @@ export function ServiceRequestModal() {
                           phone ? `📱 *الجوال:* ${phone}` : "",
                           serviceType ? `🏗️ *نوع الخدمة:* ${serviceType}` : "",
                           containerSize ? `📦 *المقاس:* ${containerSize}` : "",
-                          duration ? `⏱️ *المدة:* ${duration}` : "",
+                           duration ? `⏱️ *المدة:* ${duration}` : "",
+                           `🔢 *العدد:* ${containerCount}`,
                           location ? `📍 *الموقع:* ${location}` : "",
-                          appointmentType === "scheduled" && scheduledDate ? `📅 *الموعد:* ${scheduledDate} ${scheduledTime}` : `⚡ *التوصيل:* فوري خلال ساعتين`,
-                          notes ? `📝 *ملاحظات:* ${notes}` : "",
                         ].filter(Boolean).join("\n"))}`}
                         target="_blank"
                         rel="noreferrer"

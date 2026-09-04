@@ -1,4 +1,5 @@
 import type { Container } from "@workspace/api-client-react"
+import type { RequestCategory } from "@/lib/requestRules"
 
 export function getActiveContainers(containers: Container[] | undefined): Container[] {
   return (containers ?? [])
@@ -29,4 +30,11 @@ export function getContainersForService(
     return active.filter((container) => container.category === "contract")
   }
   return active
+}
+
+export function getContainersForCategory(
+  containers: Container[] | undefined,
+  category: RequestCategory,
+): Container[] {
+  return getActiveContainers(containers).filter((container) => container.category === category)
 }

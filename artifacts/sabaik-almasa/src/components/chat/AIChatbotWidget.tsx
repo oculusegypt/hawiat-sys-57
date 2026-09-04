@@ -5,7 +5,7 @@ import {
   Package, Sparkles, Navigation, Loader2, AlertCircle,
   Headphones, Lock, Pencil, Phone, User, Search,
   CalendarClock, Clock, FileText, Zap,
-  Plus, Minus, CheckSquare, Square,
+  Plus, Minus,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -14,6 +14,10 @@ import { getHighAccuracyPosition } from "@/lib/reverseGeocode"
 import { DraggableMapPicker } from "@/components/ui/DraggableMapPicker"
 import { useSiteSettings } from "@/context/SiteSettingsContext"
 import { playNotificationChime, unlockNotificationAudio, sendVisitorHeartbeat, getKnownCustomerInfo, getVisitorTracking } from "@/lib/visitorAttribution"
+import {
+  getRequestCategory,
+  getRequestDurationOptions,
+} from "@/lib/requestRules"
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -24,6 +28,7 @@ interface FlowState {
     containerSize?: string
     containerPrice?: number
     containerCategory?: string
+    containerCount?: number
     isQuoteRequest?: boolean
     activityType?: string
     monthlyEvacuations?: string
@@ -367,27 +372,6 @@ function ChatChoices({ options, value, onChange }: { options: string[]; value: s
   )
 }
 
-function ChatMultiChoices({ options, values, onToggle }: { options: string[]; values: string[]; onToggle: (value: string) => void }) {
-  return (
-    <div className="grid grid-cols-2 gap-1.5">
-      {options.map((option) => {
-        const selected = values.includes(option)
-        return (
-          <button
-            type="button"
-            key={option}
-            onClick={() => onToggle(option)}
-            className={`flex items-center gap-1 rounded-lg border px-2 py-1.5 text-right text-[10px] font-semibold transition-colors ${selected ? "border-primary bg-primary text-white" : "border-gray-200 bg-white text-gray-700 hover:border-primary/40"}`}
-          >
-            {selected ? <CheckSquare size={10} /> : <Square size={10} />}
-            {option}
-          </button>
-        )
-      })}
-    </div>
-  )
-}
-
 function PackageDetailsForm({
   category, serviceType, onSubmit, locked,
 }: {
@@ -396,53 +380,24 @@ function PackageDetailsForm({
   onSubmit: (payload: PackageDetailsPayload) => void
   locked?: boolean
 }) {
-  const [usageType, setUsageType] = useState("مخلفات هدم وترميم")
   const [containerCount, setContainerCount] = useState(1)
-  const [rentalDuration, setRentalDuration] = useState("يومي (رد واحد)")
-  const [wasteTypes, setWasteTypes] = useState(["خرسانة وبلك وأسمنت"])
-  const [deliveryUrgency, setDeliveryUrgency] = useState("توصيل فوري خلال ساعتين")
-  const [addOns, setAddOns] = useState<string[]>([])
+  const requestCategory = getRequestCategory(category)
+  const durationOptions = getRequestDurationOptions(requestCategory)
+  const [rentalDuration, setRentalDuration] = useState(durationOptions[0])
   const [submitted, setSubmitted] = useState(false)
-
-  const toggle = (value: string) => setAddOns((current) => current.includes(value) ? current.filter((item) => item !== value) : [...current, value])
-  const toggleValue = (values: string[], value: string, setter: (next: string[]) => void) =>
-    setter(values.includes(value) ? values.filter((item) => item !== value) : [...values, value])
 
   const submit = () => {
     const details: Record<string, unknown> = {
-      "نوع الاستخدام": usageType,
-      "عدد الحاويات المطلوبة": containerCount,
+      "العدد": containerCount,
       "مدة الإيجار المطلوبة": rentalDuration,
-      "نوع المخلفات": wasteTypes,
-      "وقت التوصيل المفضل": deliveryUrgency,
-    }
-    if (addOns.length) {
-      details["الخدمات والخيارات الإضافية"] = addOns
-    }
-    const displayValue = (value: unknown): string => {
-      if (Array.isArray(value)) return value.join("، ")
-      if (value && typeof value === "object") {
-        return Object.entries(value as Record<string, unknown>)
-          .map(([label, nested]) => `${label}: ${displayValue(nested)}`)
-          .join("، ")
-      }
-      return String(value)
     }
     const summary = [
-      ...Object.entries(details).map(([label, value]) => `${label}: ${displayValue(value)}`),
-      ...(addOns.length ? [`الخدمات الإضافية: ${addOns.join("، ")}`] : []),
+      `العدد: ${containerCount}`,
+      `${requestCategory === "contract" ? "مدة العقد" : "مدة الإيجار"}: ${rentalDuration}`,
     ].join("\n")
     setSubmitted(true)
-    onSubmit({ details, addOns, summary })
+    onSubmit({ details, addOns: [], summary })
   }
-
-  const addons = [
-    "توصيل وسحب فوري بنفس اليوم 24/7",
-    "خدمة عمالة للتحميل والتنزيل",
-    "عقد نظافة موثق لتجديد رخص بلدي",
-    "توفير مكبس نفايات كهربائي / هيدروليكي",
-    "تفريغ في مرادم معتمدة بيئياً",
-  ]
 
   if (submitted || locked) return null
   return (
@@ -450,55 +405,23 @@ function PackageDetailsForm({
       {serviceType && <p className="rounded-xl bg-primary/5 px-3 py-2 text-[11px] font-bold text-primary">{serviceType}</p>}
       
       <div className="space-y-2 rounded-xl bg-gray-50 p-3">
-        <p className="text-[11px] font-bold text-gray-700">الغرض من طلب الحاوية ونوع الاستخدام</p>
-        <ChatChoices
-          options={["مخلفات هدم وترميم", "مخلفات بناء وإنشاءات", "نفايات تجارية / منشآت", "مخلفات أشجار وحدائق"]}
-          value={usageType}
-          onChange={setUsageType}
-        />
-        <ChatCounter label="عدد الحاويات المطلوبة" value={containerCount} min={1} onChange={setContainerCount} />
-        
-        <p className="text-[11px] font-bold text-gray-700 mt-2">نوع المواد والمخلفات</p>
-        <ChatMultiChoices
-          options={["خرسانة وبلك وأسمنت", "أتربة وردميات", "أخشاب وحديد", "كرتون وبلاستيك ونفايات عامة"]}
-          values={wasteTypes}
-          onToggle={(val) => toggleValue(wasteTypes, val, setWasteTypes)}
+        <ChatCounter
+          label={requestCategory === "contract" ? "عدد العقود المطلوبة" : "عدد الحاويات المطلوبة"}
+          value={containerCount}
+          min={1}
+          onChange={setContainerCount}
         />
 
-        <p className="text-[11px] font-bold text-gray-700 mt-2">مدة الإيجار</p>
+        <p className="text-[11px] font-bold text-gray-700 mt-2">
+          {requestCategory === "contract" ? "مدة العقد" : "مدة الإيجار"}
+        </p>
         <ChatChoices
-          options={["يومي (رد واحد)", "3 أيام", "أسبوع", "شهر", "عقد سنوي دوري"]}
+          options={durationOptions}
           value={rentalDuration}
           onChange={setRentalDuration}
         />
-
-        <p className="text-[11px] font-bold text-gray-700 mt-2">سرعة التوصيل المطلوبة</p>
-        <ChatChoices
-          options={["توصيل فوري خلال ساعتين", "توصيل في نفس اليوم", "توصيل في موعد محدد"]}
-          value={deliveryUrgency}
-          onChange={setDeliveryUrgency}
-        />
       </div>
 
-      <div className="space-y-2">
-        <p className="text-[11px] font-bold text-gray-700">خيارات وخدمات إضافية (اختياري)</p>
-        {addons.map((addon) => (
-          <button
-            key={addon}
-            type="button"
-            onClick={() => toggle(addon)}
-            className={`flex w-full items-center justify-between rounded-xl border px-3 py-2 text-[10px] transition-colors ${
-              addOns.includes(addon) ? "border-primary bg-primary/10 font-bold text-primary" : "border-gray-200 bg-white text-gray-700"
-            }`}
-          >
-            <span className="flex items-center gap-1.5">
-              {addOns.includes(addon) ? <CheckSquare size={13} /> : <Square size={13} />}
-              {addon}
-            </span>
-            <span>{addOns.includes(addon) ? "محددة" : "+ إضافة"}</span>
-          </button>
-        ))}
-      </div>
       <button
         type="button"
         onClick={submit}
@@ -560,6 +483,7 @@ function OrderConfirmCard({
     ...(data.appointmentType ? [{ label: "نوع الطلب", value: data.appointmentType === "scheduled" ? "موعد مسبق" : "طلب فوري", icon: <Zap size={12} /> }] : []),
     ...(data.scheduledAt ? [{ label: "الموعد", value: data.scheduledAt as string, icon: <CalendarClock size={12} /> }] : []),
     ...(data.duration ? [{ label: "المدة", value: data.duration as string, icon: <Clock size={12} /> }] : []),
+    ...(data.containerCount ? [{ label: "العدد", value: String(data.containerCount), icon: <Package size={12} /> }] : []),
     ...(data.activityType  ? [{ label: "النشاط",  value: data.activityType  as string, icon: <Package size={12} /> }] : []),
     ...(data.monthlyEvacuations ? [{ label: "التفريغات", value: `${data.monthlyEvacuations} / شهر`, icon: <Package size={12} /> }] : []),
     ...(data.packageDetailsText ? [{ label: "تفاصيل الباقة", value: data.packageDetailsText as string, icon: <FileText size={12} /> }] : []),
@@ -623,8 +547,9 @@ function SuccessCard({ data, orderTrackingEnabled }: {
       data.phone ? `📱 *الجوال:* ${data.phone}` : "",
       data.serviceType ? `🏗️ *نوع الخدمة:* ${data.serviceType}` : "",
       data.containerSize ? `📦 *الحاوية:* ${data.containerSize}` : "",
+      data.containerCount ? `🔢 *العدد:* ${data.containerCount}` : "",
+      data.duration ? `⏱️ *المدة:* ${data.duration}` : "",
       data.location ? `📍 *الموقع:* ${data.location}` : "",
-      data.appointmentType === "scheduled" && data.scheduledAt ? `📅 *الموعد:* ${data.scheduledAt}` : `⚡ *التوصيل:* فوري خلال ساعتين`,
       data.packageDetailsText ? `📝 *المواصفات:* ${data.packageDetailsText}` : "",
     ].filter(Boolean)
     return encodeURIComponent(lines.join("\n"))

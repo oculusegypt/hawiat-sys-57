@@ -16,6 +16,7 @@ interface FlowData {
   containerSize?: string;
   containerPrice?: number;
   containerCategory?: string;
+  containerCount?: number;
   activityType?: string;
   monthlyEvacuations?: string;
   appointmentType?: "immediate" | "scheduled";
@@ -100,6 +101,9 @@ const CATEGORY_META: Record<string, { title: string; description: string; emoji:
   waste: { title: "حاويات النفايات والمكابس", description: "حاويات 6 و10 ياردة ومكابس نفايات كهربائية للمنشآت", emoji: "🚛" },
   contract: { title: "عقود النظافة ورخص بلدي", description: "عقود نظافة إلكترونية معتمدة من أمانة الرياض", emoji: "📋" },
 };
+const ORDER_CATEGORY_IDS = ["debris", "waste", "contract"] as const;
+const DEBRIS_RENTAL_DURATION = "حتى امتلاء الحاوية أو 10 أيام، أيهما أقرب";
+const RECURRING_REQUEST_DURATIONS = ["شهري", "سنوي"];
 
 interface ContainerData {
   allContainers: ContainerCard[];
@@ -161,6 +165,21 @@ function mapContainersToServiceCards(containers: ContainerCard[]): ServiceCard[]
     },
     ...categoryCards,
   ];
+}
+
+function mapContainersToOrderServiceCards(containers: ContainerCard[]): ServiceCard[] {
+  return ORDER_CATEGORY_IDS.map((category) => {
+    const meta = CATEGORY_META[category];
+    const first = containers.find((container) => container.category === category);
+    return {
+      id: category,
+      category,
+      title: category === "debris" ? "طلب حاوية أنقاض" : category === "waste" ? "طلب حاوية نفايات" : "طلب عقد نظافة",
+      description: meta.description,
+      image: first?.image || "/images/hero-1.webp",
+      emoji: meta.emoji,
+    };
+  });
 }
 
 async function fetchContainerData(): Promise<ContainerData> {
@@ -340,7 +359,7 @@ async function handleMainMenu(message: string, intent: string, state: FlowState,
     return {
       reply: "ممتاز! 💪 اختر نوع الخدمة:",
       messageType: "service_cards",
-      cards: cd.services,
+      cards: mapContainersToOrderServiceCards(cd.allContainers),
       flowState: { step: "service_type", data: {} },
     };
   }
@@ -419,7 +438,7 @@ async function handleServiceType(message: string, state: FlowState, cd: Containe
   return {
     reply: "اختر نوع الخدمة 👇",
     messageType: "service_cards",
-    cards: cd.services,
+    cards: mapContainersToOrderServiceCards(cd.allContainers),
     flowState: { step: "service_type", data: state.data },
   };
 }
@@ -435,7 +454,7 @@ function goToServiceFlow(serviceId: string, existingData: FlowData, cd: Containe
     return {
       reply: "لا توجد باقات متاحة في هذه الفئة حالياً. اختر فئة أخرى أو تواصل معنا مباشرة.",
       messageType: "service_cards",
-      cards: cd.services,
+      cards: mapContainersToOrderServiceCards(cd.allContainers),
       flowState: { step: "service_type", data: existingData },
     };
   }
@@ -460,7 +479,7 @@ function goToServiceFlow(serviceId: string, existingData: FlowData, cd: Containe
 function handlePackageSelect(message: string, state: FlowState, cd: ContainerData): BotResponse {
   const t = message.toLowerCase();
   if (/رجوع|رجع|تغيير|قائمة/.test(t)) {
-    return { reply: "اختر نوع الخدمة 👇", messageType: "service_cards", cards: cd.services, flowState: { step: "service_type", data: {} } };
+    return { reply: "اختر نوع الخدمة 👇", messageType: "service_cards", cards: mapContainersToOrderServiceCards(cd.allContainers), flowState: { step: "service_type", data: {} } };
   }
 
   const visibleContainers = state.data.containerCategory && state.data.containerCategory !== "all"
@@ -517,6 +536,10 @@ function parsePackageDetails(message: string): { details: Record<string, unknown
   }
 }
 
+function getCategoryDurationOptions(category?: string): string[] {
+  return category === "debris" ? [DEBRIS_RENTAL_DURATION] : [...RECURRING_REQUEST_DURATIONS];
+}
+
 function handlePackageDetails(message: string, state: FlowState): BotResponse {
   const parsed = parsePackageDetails(message);
   if (!parsed) {
@@ -531,20 +554,27 @@ function handlePackageDetails(message: string, state: FlowState): BotResponse {
     };
   }
 
-  const summary = parsed.summary || [
-    ...Object.entries(parsed.details).map(([label, value]) =>
-      `${label}: ${Array.isArray(value) ? value.join("، ") : String(value)}`),
-    ...(parsed.addOns.length ? [`الخدمات الإضافية: ${parsed.addOns.join("، ")}`] : []),
+  const category = state.data.containerCategory || "debris";
+  const allowedDurations = getCategoryDurationOptions(category);
+  const requestedDuration = String(parsed.details["مدة الإيجار المطلوبة"] || "").trim();
+  const duration = allowedDurations.includes(requestedDuration) ? requestedDuration : allowedDurations[0];
+  const rawCount = Number(parsed.details["العدد"]);
+  const containerCount = Number.isFinite(rawCount) && rawCount >= 1 ? Math.floor(rawCount) : 1;
+  const summary = [
+    `العدد: ${containerCount}`,
+    `${category === "contract" ? "مدة العقد" : "مدة الإيجار"}: ${duration}`,
   ].join("\n");
 
   return {
-    reply: "تم حفظ تفاصيل الباقة ✅\n\nأين تحتاج إيصال وتنفيذ الخدمة بالرياض؟",
+    reply: "تم حفظ العدد والمدة ✅\n\nأين تحتاج تنفيذ الخدمة بالرياض؟",
     messageType: "text",
     flowState: {
       step: "collect_location",
       data: {
         ...state.data,
-        propertyDetails: parsed.details,
+        propertyDetails: { العدد: containerCount, المدة: duration },
+        containerCount,
+        duration,
         packageDetailsText: summary,
       },
     },
@@ -553,11 +583,8 @@ function handlePackageDetails(message: string, state: FlowState): BotResponse {
 
 function durationOptions(): OptionItem[] {
   return [
-    { label: "يومي", value: "يومي", emoji: "1️⃣" },
-    { label: "أسبوعي", value: "أسبوعي", emoji: "📆" },
     { label: "شهري", value: "شهري", emoji: "🗓️" },
-    { label: "عقد سنوي", value: "عقد سنوي", emoji: "📋" },
-    { label: "لا ينطبق", value: "لا ينطبق", emoji: "➖" },
+    { label: "سنوي", value: "سنوي", emoji: "📋" },
   ];
 }
 
@@ -625,10 +652,13 @@ function handleScheduledAt(message: string, state: FlowState): BotResponse {
 }
 
 function handleDuration(message: string, state: FlowState): BotResponse {
+  const category = state.data.containerCategory === "debris" ? "debris" : "recurring";
+  const allowed = category === "debris" ? [DEBRIS_RENTAL_DURATION] : RECURRING_REQUEST_DURATIONS;
+  const duration = allowed.includes(message.trim()) ? message.trim() : allowed[0];
   return {
-    reply: `✅ المدة: **${message.trim()}**\n\nأين تحتاج إيصال الخدمة؟ أرسل الحي أو العنوان بالرياض 📍`,
+    reply: `✅ المدة: **${duration}**\n\nأين تحتاج تنفيذ الخدمة؟ أرسل الحي أو العنوان بالرياض 📍`,
     messageType: "text",
-    flowState: { step: "collect_location", data: { ...state.data, duration: message.trim() } },
+    flowState: { step: "collect_location", data: { ...state.data, duration } },
   };
 }
 
@@ -673,9 +703,9 @@ function handleCollectLocation(message: string, state: FlowState): BotResponse {
     };
   }
   return {
-    reply: `تم تسجيل الموقع ✅\n\nهل لديك ملاحظات أو تفاصيل إضافية عن الخدمة؟ يمكنك كتابتها أو اختيار «تخطي».`,
+    reply: `تم تسجيل الموقع ✅\n\nما اسمك الكريم أو اسم الشركة؟`,
     messageType: "text",
-    flowState: { step: "collect_notes", data: { ...state.data, location } },
+    flowState: { step: "collect_name", data: { ...state.data, location } },
   };
 }
 
@@ -742,13 +772,14 @@ async function handleConfirm(message: string, intent: string, state: FlowState, 
   if (intent === "confirm" || /تأكيد|ارسل|يلا|ماشي|نعم|اوكي|موافق/.test(t)) {
     const {
       serviceType, containerSize, location, name, phone, activityType,
-      monthlyEvacuations, appointmentType, scheduledAt, duration, notes, isQuoteRequest,
+      monthlyEvacuations, appointmentType, scheduledAt, duration, notes, containerCount, isQuoteRequest,
       packageDetailsText,
     } = state.data;
 
     const notesParts = [isQuoteRequest ? "[طلب عرض سعر] طلب عبر البوت الذكي" : "طلب عبر البوت الذكي"];
     if (activityType) notesParts.push(`نوع النشاط: ${activityType}`);
     if (monthlyEvacuations) notesParts.push(`التفريغات الشهرية: ${monthlyEvacuations}`);
+    if (containerCount) notesParts.push(`العدد: ${containerCount}`);
     if (packageDetailsText) notesParts.push(`تفاصيل الباقة:\n${packageDetailsText}`);
     if (notes) notesParts.push(`ملاحظات العميل: ${notes}`);
 
@@ -785,7 +816,7 @@ async function handleConfirm(message: string, intent: string, state: FlowState, 
       messageType: "success",
       orderData: {
         orderId: request.id, phone, name, serviceType, containerSize, location,
-        duration, appointmentType, scheduledAt, notes, packageDetailsText,
+        duration, containerCount, appointmentType, scheduledAt, notes, packageDetailsText,
       },
       flowState: { step: "done", data: {} },
     };
@@ -795,14 +826,14 @@ async function handleConfirm(message: string, intent: string, state: FlowState, 
     return {
       reply: "لا بأس! اختر الخدمة من جديد:",
       messageType: "service_cards",
-      cards: cd.services,
+      cards: mapContainersToOrderServiceCards(cd.allContainers),
       flowState: { step: "service_type", data: {} },
     };
   }
 
   const {
     serviceType, containerSize, containerPrice, location, name, phone,
-    appointmentType, scheduledAt, duration, notes, activityType, monthlyEvacuations,
+    appointmentType, scheduledAt, duration, containerCount, notes, activityType, monthlyEvacuations,
     packageDetailsText,
   } = state.data;
   return {
@@ -810,7 +841,7 @@ async function handleConfirm(message: string, intent: string, state: FlowState, 
     messageType: "order_confirm",
     orderData: {
       serviceType, containerSize, containerPrice, location, name, phone,
-      appointmentType, scheduledAt, duration, notes, activityType, monthlyEvacuations, packageDetailsText,
+      appointmentType, scheduledAt, duration, containerCount, notes, activityType, monthlyEvacuations, packageDetailsText,
     },
     flowState: state,
   };

@@ -10,21 +10,28 @@ import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Lock, CalendarClock, Zap, FileText, Phone, CheckCircle, Loader2, Box, Truck, MapPin, Navigation } from "lucide-react"
+import { Lock, FileText, Phone, CheckCircle, Loader2, MapPin, Navigation } from "lucide-react"
 import { DraggableMapPicker } from "@/components/ui/DraggableMapPicker"
 import { useSiteSettings } from "@/context/SiteSettingsContext"
-import { getActiveContainers, getContainerValue } from "@/lib/packageOptions"
+import { getContainerValue, getContainersForCategory } from "@/lib/packageOptions"
 import { getVisitorTracking } from "@/lib/visitorAttribution"
+import {
+  DEBRIS_RENTAL_DURATION,
+  REQUEST_CATEGORY_LABELS,
+  REQUEST_CATEGORY_OPTIONS,
+  getDefaultRequestDuration,
+  getRequestDurationOptions,
+  type RequestCategory,
+} from "@/lib/requestRules"
 
 const API_BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") || ""
-const CONTAINER_RENTAL_DURATION = "حتى امتلاء الحاوية أو 10 أيام، أيهما أقرب"
-
 const formSchema = z.object({
   clientName: z.string().min(2, "الاسم مطلوب"),
   phone: z.string().min(9, "رقم الجوال غير صحيح"),
   email: z.string().email("البريد الإلكتروني غير صحيح").optional().or(z.literal('')),
   serviceType: z.string().min(1, "الرجاء اختيار نوع الخدمة"),
   containerSize: z.string().optional(),
+  containerCount: z.coerce.number().int().min(1).default(1),
   location: z.string().min(3, "موقع المشروع مطلوب"),
   duration: z.string().optional(),
   notes: z.string().optional(),
@@ -40,19 +47,7 @@ type SubmittedRequestSummary = {
   containerSize?: string
   location: string
   duration?: string
-  notes?: string
-  appointmentType: "immediate" | "scheduled"
-  scheduledAt?: string
-}
-
-function formatScheduledAppointment(value?: string) {
-  if (!value) return ""
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return value
-  return new Intl.DateTimeFormat("ar-SA", {
-    dateStyle: "full",
-    timeStyle: "short",
-  }).format(date)
+  containerCount: number
 }
 
 export function ServiceRequestForm() {
@@ -64,7 +59,7 @@ export function ServiceRequestForm() {
   const [submittedSummary, setSubmittedSummary] = useState<SubmittedRequestSummary | null>(null)
   const [isLocked, setIsLocked] = useState(false)
   const [lockedMessage, setLockedMessage] = useState("")
-  const [appointmentType, setAppointmentType] = useState<"immediate" | "scheduled">("immediate")
+  const [requestCategory, setRequestCategory] = useState<RequestCategory>("debris")
 
   // Quote request state
   const [showQuoteForm, setShowQuoteForm] = useState(false)
@@ -95,6 +90,7 @@ export function ServiceRequestForm() {
       email: "",
       serviceType: "",
       containerSize: "",
+      containerCount: 1,
       location: "",
       duration: "",
       notes: "",
@@ -103,22 +99,9 @@ export function ServiceRequestForm() {
     },
   })
 
-  const availablePackages = getActiveContainers(apiContainers)
+  const availablePackages = getContainersForCategory(apiContainers, requestCategory)
 
   // Tomorrow as minimum date for scheduling
-  function getLocalDateTimeValue(date: Date) {
-    const year = date.getFullYear()
-    const month = String(date.getMonth() + 1).padStart(2, "0")
-    const day = String(date.getDate()).padStart(2, "0")
-    const hours = String(date.getHours()).padStart(2, "0")
-    const minutes = String(date.getMinutes()).padStart(2, "0")
-    return `${year}-${month}-${day}T${hours}:${minutes}`
-  }
-
-  const minDate = new Date()
-  minDate.setDate(minDate.getDate() + 1)
-  minDate.setHours(0, 0, 0, 0)
-  const minDateStr = getLocalDateTimeValue(minDate)
   async function handleQuoteSubmit() {
     const errs: { name?: string; phone?: string } = {}
     if (!quoteForm.name.trim()) errs.name = "الاسم مطلوب"
@@ -173,9 +156,10 @@ export function ServiceRequestForm() {
 
     const payload = {
        ...values,
-       duration: CONTAINER_RENTAL_DURATION,
-      appointmentType,
-      scheduledAt: appointmentType === "scheduled" ? values.scheduledAt : undefined,
+       duration: values.duration || getDefaultRequestDuration(requestCategory),
+       notes: `عدد الوحدات المطلوبة: ${values.containerCount}`,
+       appointmentType: "immediate",
+       scheduledAt: undefined,
       tracking: getVisitorTracking(),
     }
 
@@ -188,14 +172,11 @@ export function ServiceRequestForm() {
            serviceType: values.serviceType,
            containerSize: values.containerSize,
            location: values.location,
-           duration: values.duration,
-           notes: values.notes,
-           appointmentType,
-           scheduledAt: payload.scheduledAt,
+            duration: values.duration || getDefaultRequestDuration(requestCategory),
+            containerCount: values.containerCount,
          })
         setIsSuccess(true)
         form.reset()
-         setAppointmentType("immediate")
         toast({
           title: "تم استلام طلبك بنجاح",
           description: companyName ? `سيتواصل معك فريق ${companyName} لتأكيد التفاصيل وموعد التوصيل.` : "سيتواصل معك فريق العمل لتأكيد التفاصيل وموعد التوصيل.",
@@ -405,18 +386,10 @@ export function ServiceRequestForm() {
                    <p><span className="font-bold">الاسم:</span> {submittedSummary.clientName}</p>
                    <p><span className="font-bold">الجوال:</span> {submittedSummary.phone}</p>
                    <p><span className="font-bold">الموقع:</span> {submittedSummary.location}</p>
-                   <p>
-                     <span className="font-bold">الموعد:</span>{" "}
-                     {submittedSummary.appointmentType === "scheduled"
-                       ? formatScheduledAppointment(submittedSummary.scheduledAt)
-                       : "فوري خلال ساعتين"}
-                   </p>
                    {submittedSummary.duration && (
                      <p><span className="font-bold">المدة:</span> {submittedSummary.duration}</p>
                    )}
-                   {submittedSummary.notes && (
-                     <p><span className="font-bold">الملاحظات:</span> {submittedSummary.notes}</p>
-                   )}
+                    <p><span className="font-bold">العدد:</span> {submittedSummary.containerCount}</p>
                  </div>
                )}
                <Button
@@ -434,55 +407,31 @@ export function ServiceRequestForm() {
             <Form {...form}>
               <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
 
-                {/* Appointment Type Toggle */}
-                <div className="grid grid-cols-2 gap-3 p-1.5 bg-gray-100/80 rounded-2xl">
-                  <button
-                    type="button"
-                    onClick={() => setAppointmentType("immediate")}
-                    className={`flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-bold transition-all duration-200 ${
-                      appointmentType === "immediate"
-                        ? "bg-white text-primary shadow-sm"
-                        : "text-gray-500 hover:text-gray-800"
-                    }`}
-                  >
-                    <Zap size={16} className={appointmentType === "immediate" ? "text-secondary" : ""} />
-                    طلب فوري (خلال ساعتين)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setAppointmentType("scheduled")}
-                    className={`flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-bold transition-all duration-200 ${
-                      appointmentType === "scheduled"
-                        ? "bg-white text-primary shadow-sm"
-                        : "text-gray-500 hover:text-gray-800"
-                    }`}
-                  >
-                    <CalendarClock size={16} className={appointmentType === "scheduled" ? "text-secondary" : ""} />
-                    حجز موعد مسبق
-                  </button>
+                {/* Request category */}
+                <div className="space-y-2">
+                  <p className="text-sm font-bold text-gray-700">نوع الطلب *</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    {REQUEST_CATEGORY_OPTIONS.map((option) => (
+                      <button
+                        key={option.id}
+                        type="button"
+                        onClick={() => {
+                          setRequestCategory(option.id)
+                          form.setValue("serviceType", "")
+                          form.setValue("containerSize", "")
+                          form.setValue("duration", getDefaultRequestDuration(option.id))
+                        }}
+                        className={`rounded-xl border px-3 py-3 text-xs font-bold transition-colors ${
+                          requestCategory === option.id
+                            ? "border-primary bg-primary text-white"
+                            : "border-gray-200 bg-white text-gray-700 hover:border-primary/40"
+                        }`}
+                      >
+                        {option.label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-
-                {/* Scheduled DateTime */}
-                {appointmentType === "scheduled" && (
-                  <FormField
-                    control={form.control}
-                    name="scheduledAt"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="text-sm font-bold text-gray-700">تاريخ ووقت الموعد المطلوب</FormLabel>
-                        <FormControl>
-                          <Input
-                            type="datetime-local"
-                            min={minDateStr}
-                            className="rounded-xl border-gray-200 focus:border-primary focus:ring-primary h-12"
-                            {...field}
-                          />
-                        </FormControl>
-                        <FormMessage className="text-xs" />
-                      </FormItem>
-                    )}
-                  />
-                )}
 
                 {/* Service Type */}
                 <FormField
@@ -490,11 +439,11 @@ export function ServiceRequestForm() {
                   name="serviceType"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="text-sm font-bold text-gray-700">نوع الخدمة المطلوب *</FormLabel>
-                        <Select onValueChange={field.onChange} defaultValue={field.value} disabled={containersLoading || availablePackages.length === 0}>
+                      <FormLabel className="text-sm font-bold text-gray-700">الباقة المطلوبة *</FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value} disabled={containersLoading || availablePackages.length === 0}>
                         <FormControl>
                           <SelectTrigger className="rounded-xl border-gray-200 focus:border-primary focus:ring-primary h-12">
-                              <SelectValue placeholder={containersLoading ? "جاري تحميل الباقات..." : "اختر الباقة المتاحة"} />
+                              <SelectValue placeholder={containersLoading ? "جاري تحميل الباقات..." : `اختر من ${REQUEST_CATEGORY_LABELS[requestCategory]}`} />
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent className="rounded-xl">
@@ -519,17 +468,45 @@ export function ServiceRequestForm() {
                   name="duration"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="text-sm font-bold text-gray-700">مدة الإيجار المتوقعة</FormLabel>
-                         <Select onValueChange={field.onChange} defaultValue={field.value || CONTAINER_RENTAL_DURATION}>
+                      <FormLabel className="text-sm font-bold text-gray-700">
+                        {requestCategory === "contract" ? "مدة العقد" : "مدة الإيجار"}
+                      </FormLabel>
+                         <Select onValueChange={field.onChange} value={field.value || getDefaultRequestDuration(requestCategory)}>
                         <FormControl>
                           <SelectTrigger className="rounded-xl border-gray-200 focus:border-primary focus:ring-primary h-12">
                             <SelectValue placeholder="اختر مدة الإيجار" />
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent className="rounded-xl">
-                           <SelectItem value={CONTAINER_RENTAL_DURATION}>{CONTAINER_RENTAL_DURATION}</SelectItem>
+                          {getRequestDurationOptions(requestCategory).map((option) => (
+                            <SelectItem key={option} value={option}>{option}</SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
+                      <FormMessage className="text-xs" />
+                    </FormItem>
+                  )}
+                />
+
+                {/* Quantity */}
+                <FormField
+                  control={form.control}
+                  name="containerCount"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-sm font-bold text-gray-700">
+                        {requestCategory === "contract" ? "عدد العقود المطلوبة" : "عدد الحاويات المطلوبة"}
+                      </FormLabel>
+                      <FormControl>
+                        <Input
+                          type="number"
+                          min={1}
+                          step={1}
+                          className="rounded-xl border-gray-200 focus:border-primary focus:ring-primary h-12"
+                          {...field}
+                          onChange={(event) => field.onChange(event.target.valueAsNumber || 1)}
+                        />
+                      </FormControl>
                       <FormMessage className="text-xs" />
                     </FormItem>
                   )}
@@ -591,25 +568,6 @@ export function ServiceRequestForm() {
                           />
                         </div>
                       )}
-                      <FormMessage className="text-xs" />
-                    </FormItem>
-                  )}
-                />
-
-                {/* Notes */}
-                <FormField
-                  control={form.control}
-                  name="notes"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="text-sm font-bold text-gray-700">ملاحظات إضافية (اختياري)</FormLabel>
-                      <FormControl>
-                        <Textarea
-                          placeholder="أي تفاصيل تخص نوع الأنقاض، طريقة الوصول، أو وقت التوصيل المفضل..."
-                          className="rounded-xl border-gray-200 focus:border-primary focus:ring-primary min-h-[100px]"
-                          {...field}
-                        />
-                      </FormControl>
                       <FormMessage className="text-xs" />
                     </FormItem>
                   )}
