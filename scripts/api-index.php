@@ -3150,12 +3150,11 @@ try {
         } catch (\Exception $e) {}
 
         echo json_encode([
-            'reply' => "أهلاً وسهلاً بك! 👋 أنا المساعد الذكي لـ **{$siteName}** — متخصصون في تأجير حاويات الأنقاض والنفايات والمكابس وعقود بلدي بالرياض.\n\nكيف أقدر أساعدك اليوم؟",
+            'reply' => "أهلاً وسهلاً! 👋 أنا المساعد الذكي لـ **{$siteName}** — متخصصون في تأجير حاويات الأنقاض والنفايات ونقل المخلفات بالرياض.\n\nكيف أقدر أساعدك اليوم؟",
             'messageType' => 'options',
             'options' => [
-                ['label' => 'اطلب حاوية الآن', 'value' => 'order', 'emoji' => '📦'],
-                ['label' => 'طلب عرض سعر فوري', 'value' => 'quote', 'emoji' => '📋'],
-                ['label' => 'عقود نظافة بلدي', 'value' => 'contract', 'emoji' => '📜']
+                ['label' => 'اطلب حاوية الآن', 'value' => 'order', 'emoji' => '🚛'],
+                ['label' => 'طلب عرض سعر أو عقد', 'value' => 'quote', 'emoji' => '📋']
             ],
             'flowState' => ['step' => 'main_menu', 'data' => new stdClass()]
         ], JSON_UNESCAPED_UNICODE);
@@ -3177,9 +3176,9 @@ try {
             } catch (\Exception $e) {}
 
             $categoryMeta = [
-                'debris' => ['title' => 'حاويات الأنقاض ومخلفات البناء', 'description' => 'حاويات 12 و15 و20 و30 ياردة لمخلفات الهدم والترميم والإنشاءات بالرياض', 'emoji' => '🏗️'],
-                'waste' => ['title' => 'حاويات النفايات والمكابس', 'description' => 'حاويات 6 و10 ياردة ومكابس نفايات كهربائية وهيدروليكية للمنشآت والمجمعات', 'emoji' => '🚛'],
-                'contract' => ['title' => 'عقود النظافة ورخص بلدي', 'description' => 'عقود نظافة إلكترونية موثقة ومعتمدة من منصة بلدي وأمانة الرياض لتجديد الرخص', 'emoji' => '📋'],
+                'debris' => ['title' => 'حاويات الأنقاض والهدم', 'description' => 'حاويات 12 و15 و20 و30 ياردة لمخلفات الهدم والترميم', 'emoji' => '🏗️'],
+                'waste' => ['title' => 'حاويات النفايات والمكابس', 'description' => 'حاويات 6 و10 ياردة ومكابس نفايات كهربائية للمنشآت', 'emoji' => '🚛'],
+                'contract' => ['title' => 'عقود النظافة ورخص بلدي', 'description' => 'عقود نظافة إلكترونية معتمدة من أمانة الرياض', 'emoji' => '📋'],
             ];
 
             // Helper to get containers
@@ -3242,9 +3241,9 @@ try {
                     [
                         'id' => 'all',
                         'category' => 'all',
-                        'title' => 'جميع مقاسات وأنواع الحاويات',
-                        'description' => 'استعرض كافة حاويات الأنقاض والنفايات والمكابس المتاحة',
-                        'image' => '/images/container-small.webp',
+                        'title' => 'جميع الباقات والخدمات',
+                        'description' => 'استعرض كل الباقات المتاحة واختر الخدمة المناسبة لك',
+                        'image' => $containers[0]['image'] ?? '/images/container-small.webp',
                         'emoji' => '📦'
                     ]
                 ];
@@ -3266,15 +3265,42 @@ try {
                 return $cards;
             };
 
+            // The order flow starts with the three service categories. The
+            // all-catalog card belongs to quote/browse flows only.
+            $getOrderServices = function() use ($getContainers, $categoryMeta) {
+                $containers = $getContainers();
+                $cards = [];
+                foreach (['debris', 'waste', 'contract'] as $cat) {
+                    $meta = $categoryMeta[$cat];
+                    $first = null;
+                    foreach ($containers as $container) {
+                        if ($container['category'] === $cat) {
+                            $first = $container;
+                            break;
+                        }
+                    }
+                    $cards[] = [
+                        'id' => $cat,
+                        'category' => $cat,
+                        'title' => $cat === 'debris'
+                            ? 'طلب حاوية أنقاض'
+                            : ($cat === 'waste' ? 'طلب حاوية نفايات' : 'طلب عقد نظافة'),
+                        'description' => $meta['description'],
+                        'image' => $first['image'] ?? '/images/container-small.webp',
+                        'emoji' => $meta['emoji']
+                    ];
+                }
+                return $cards;
+            };
+
             // 1. Reset / Menu
             if ($msg === 'menu' || $msg === 'القائمة الرئيسية' || $msg === 'البداية') {
                 echo json_encode([
-                    'reply' => "أهلاً بك في **{$siteName}**! يسعدنا خدمتك، اختر من الخيارات التالية:",
+                    'reply' => "أهلاً وسهلاً! 👋 أنا المساعد الذكي لـ **{$siteName}** — متخصصون في تأجير حاويات الأنقاض والنفايات ونقل المخلفات بالرياض.\n\nكيف أقدر أساعدك اليوم؟",
                     'messageType' => 'options',
                     'options' => [
-                        ['label' => 'اطلب حاوية الآن', 'value' => 'order', 'emoji' => '📦'],
-                        ['label' => 'طلب عرض سعر فوري', 'value' => 'quote', 'emoji' => '📋'],
-                        ['label' => 'عقود نظافة بلدي', 'value' => 'contract', 'emoji' => '📜']
+                        ['label' => 'اطلب حاوية الآن', 'value' => 'order', 'emoji' => '🚛'],
+                        ['label' => 'طلب عرض سعر أو عقد', 'value' => 'quote', 'emoji' => '📋']
                     ],
                     'flowState' => ['step' => 'main_menu', 'data' => []]
                 ], JSON_UNESCAPED_UNICODE);
@@ -3381,7 +3407,7 @@ try {
                     $data['serviceType'] = 'عقود النظافة ورخص بلدي';
                     $data['containerCategory'] = 'contract';
                 }
-                $services = $getServices();
+                $services = $isQuote ? $getServices() : $getOrderServices();
                 echo json_encode([
                     'reply' => $isQuote ? "📋 ممتاز! اختر نوع الخدمة أو الحاوية المطلوبة لطلب عرض السعر:" : "ممتاز! 💪 اختر نوع الحاويات أو الخدمة المطلوبة:",
                     'messageType' => 'service_cards',
