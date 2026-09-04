@@ -732,7 +732,7 @@ try {
 
     function sessionSecret(): string {
         $secret = trim((string)getenv('SESSION_SECRET'));
-        $embeddedSecret = '04adadc017286586a12abd5737b190bfadb4f892457792036ace72fde8bf47d0';
+        $embeddedSecret = '80add57f7ebf53059374197846bf5b3667e2fcf4843d4e0faeb8013520e6425a';
         if ($secret === '' && strlen($embeddedSecret) === 64) {
             $secret = $embeddedSecret;
         }
@@ -3310,19 +3310,35 @@ try {
             // 2. Package Details Payload (if message contains __package_details__)
             if (str_contains($msg, '__package_details__') || $step === 'package_details') {
                 $summary = '';
+                $details = [];
                 if (str_contains($msg, '__package_details__')) {
                     $parts = explode('__package_details__', $msg);
                     $jsonStr = end($parts);
                     $payload = json_decode($jsonStr, true);
                     if (is_array($payload)) {
-                        $data['propertyDetails'] = $payload['details'] ?? [];
+                        $details = is_array($payload['details'] ?? null) ? $payload['details'] : [];
+                        $data['propertyDetails'] = $details;
                         $summary = $payload['summary'] ?? '';
                     }
                 }
-                $data['packageDetailsText'] = $summary ?: $msg;
+                // Keep the selected category authoritative. In particular,
+                // waste must never fall back to the debris duration.
+                $category = (string)($data['containerCategory'] ?? 'debris');
+                $allowedDurations = $category === 'debris'
+                    ? ['حتى امتلاء الحاوية أو 10 أيام، أيهما أقرب']
+                    : ['شهري', 'سنوي'];
+                $requestedDuration = trim((string)($details['مدة الإيجار المطلوبة'] ?? ''));
+                $duration = in_array($requestedDuration, $allowedDurations, true)
+                    ? $requestedDuration
+                    : $allowedDurations[0];
+                $rawCount = (int)($details['العدد'] ?? 1);
+                $data['containerCount'] = max(1, $rawCount);
+                $data['duration'] = $duration;
+                $data['packageDetailsText'] = "العدد: {$data['containerCount']}\n"
+                    . ($category === 'contract' ? "مدة العقد" : "مدة الإيجار") . ": {$duration}";
 
                 echo json_encode([
-                    'reply' => "تم حفظ مواصفات الحاوية بنجاح ✅\n\nأين موقع المشروع أو العقار بالرياض؟ (حدد الحي أو أرسل اسم الموقع):",
+                    'reply' => "تم حفظ العدد والمدة ✅\n\nأين تحتاج تنفيذ الخدمة بالرياض؟",
                     'messageType' => 'text',
                     'flowState' => ['step' => 'collect_location', 'data' => $data]
                 ], JSON_UNESCAPED_UNICODE);
@@ -3468,7 +3484,7 @@ try {
                     $data['containerCategory'] = $selected['category'];
 
                     echo json_encode([
-                        'reply' => "✅ اخترت **{$selected['name']}**\n\nيرجى تحديد مواصفات الاستخدام وسرعة التوصيل المطلوبة:",
+                        'reply' => "✅ اخترت **{$selected['name']}**\n\nحدد تفاصيل العقار والخدمات الإضافية كما في نموذج الطلب، ثم تابع لاختيار الموقع والموعد:",
                         'messageType' => 'package_form',
                         'packageData' => $selected,
                         'packageForm' => [

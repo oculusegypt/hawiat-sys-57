@@ -32,9 +32,10 @@ export const REQUEST_CATEGORY_LABELS: Record<RequestCategory, string> = {
 }
 
 export function getRequestCategory(value?: string | null): RequestCategory {
-  const text = String(value || "").toLowerCase()
-  if (/عقد|عقود|نظافة|رخص/.test(text)) return "contract"
-  if (/نفايات|مكبس|مطاعم|منشآت|تجاري/.test(text)) return "waste"
+  const text = String(value || "").trim().toLowerCase()
+  if (text === "contract" || /عقد|عقود|نظافة|رخص/.test(text)) return "contract"
+  if (text === "waste" || /نفايات|مكبس|مطاعم|منشآت|تجاري/.test(text)) return "waste"
+  if (text === "debris" || /أنقاض|هدم|بناء|ترميم/.test(text)) return "debris"
   return "debris"
 }
 
