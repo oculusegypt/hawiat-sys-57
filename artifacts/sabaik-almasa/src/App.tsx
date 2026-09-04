@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useLayoutEffect, useState } from 'react';
 import { Route, Switch, Router as WouterRouter, useLocation } from 'wouter';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from '@/components/ui/toaster';
@@ -59,21 +59,19 @@ function DeferredServiceRequestModal() {
 function SettingsBootstrap() {
   const [location] = useLocation()
   const { isLoaded } = useSiteSettings()
-  const isLoginRoute = location === "/admin/login"
+  const isHomeRoute = location === "/"
 
-  // Keep the prerendered, data-backed page visible while settings load. The
-  // old loading shell replaced it immediately and made the shell itself the
-  // largest contentful paint on slower mobile connections.
-  useEffect(() => {
-    if (isLoaded && !isLoginRoute) {
+  // The prerendered snapshot belongs to the homepage only. The server can use
+  // the same SPA fallback for /admin and other client routes, so leaving this
+  // handoff active there briefly shows homepage data and images before React
+  // replaces it with the actual route.
+  useLayoutEffect(() => {
+    if (!isHomeRoute || isLoaded) {
       document.documentElement.classList.remove("seo-static-pending")
       document.getElementById("seo-static-page-content")?.remove()
     }
-  }, [isLoaded, isLoginRoute])
+  }, [isHomeRoute, isLoaded])
 
-  // The login screen does not need public site settings. Keeping it outside the
-  // settings gate prevents a slow public-settings request from flashing a
-  // bootstrap screen before the credentials form.
   return (
     <>
       <AnonymousAnalyticsTracker />

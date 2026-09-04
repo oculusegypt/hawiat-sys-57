@@ -1083,6 +1083,13 @@ function updateIndexSeo(html) {
     document.documentElement.classList.remove("no-js");
     document.documentElement.classList.add("js");
     document.documentElement.classList.add("seo-static-pending");
+    // The root HTML is also the SPA fallback for admin and client-side
+    // routes. Only the homepage may use the static snapshot while settings
+    // load; every other route must expose its own app immediately.
+    const staticHandoffPath = window.location.pathname.replace(/\\/+$/, "") || "/";
+    if (staticHandoffPath !== "/") {
+      document.documentElement.classList.remove("seo-static-pending");
+    }
   </script>
   <link rel="stylesheet" href="/seo-static.css" />`;
   if (googleInitMatch?.index !== undefined) {
