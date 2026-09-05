@@ -145,6 +145,13 @@ function operationalRecordAsWorkOrder(record: typeof containerSystemRecordsTable
   } as typeof serviceRequestsTable.$inferSelect;
 }
 
+function isAssetlessContractWorkOrder(order: unknown) {
+  const operationType = order && typeof order === "object"
+    ? (order as { operationType?: unknown }).operationType
+    : undefined;
+  return String(operationType ?? "").trim() === "CLEANING_CONTRACT";
+}
+
 async function prepareContainerCompletion(request: typeof serviceRequestsTable.$inferSelect) {
   if (!isContainerWork(request)) return null;
   const contract = await db.select().from(containerSystemRecordsTable)
@@ -831,6 +838,9 @@ router.patch("/service-requests/:id/assignment", requireAdmin, requireSectionPer
     .where(eq(containerSystemRecordsTable.id, id)).get();
   if (operationalRow?.kind === "work_order") {
     const current = operationalRecordAsWorkOrder(operationalRow);
+    if (isAssetlessContractWorkOrder(current)) {
+      return res.status(404).json({ error: "عقد النظافة لا يحتاج إلى إسناد أو أمر تشغيل" });
+    }
     const currentPayload = parseContainerPayload(operationalRow.payload);
     if (["completed", "rejected"].includes(current.driverStatus)) {
       return res.status(409).json({ error: "لا يمكن إعادة إسناد أمر عمل مغلق" });
@@ -933,7 +943,8 @@ router.get("/driver/work-orders", requireAdmin, requireDriver, async (req, res) 
   const operational = operationalRows
     .filter(row => row.kind === "work_order" && row.status !== "archived")
     .map(operationalRecordAsWorkOrder)
-    .filter(order => order.assignedDriverId === adminRequest.adminId &&
+    .filter(order => !isAssetlessContractWorkOrder(order) &&
+      order.assignedDriverId === adminRequest.adminId &&
       (!requestedStatus || order.driverStatus === requestedStatus));
   const supersededLegacyIds = new Set(operational
     .map(order => Number((order as typeof order & { legacyRequestId?: number | null }).legacyRequestId ?? 0))
@@ -956,7 +967,8 @@ router.get("/admin/work-orders", requireAdmin, requireSectionPermission("work_or
   const operational = operationalRows
     .filter(row => row.kind === "work_order" && row.status !== "archived")
     .map(operationalRecordAsWorkOrder)
-    .filter(order => ["unassigned", "assigned", "accepted", "started", "en_route", "arrived"].includes(order.driverStatus));
+    .filter(order => !isAssetlessContractWorkOrder(order) &&
+      ["unassigned", "assigned", "accepted", "started", "en_route", "arrived"].includes(order.driverStatus));
   const supersededLegacyIds = new Set(operational
     .map(order => Number((order as typeof order & { legacyRequestId?: number | null }).legacyRequestId ?? 0))
     .filter(id => id > 0));
@@ -1008,6 +1020,9 @@ router.patch("/driver/work-orders/:id", requireAdmin, requireDriver, async (req,
     .where(eq(containerSystemRecordsTable.id, id)).get();
   if (operationalRow?.kind === "work_order") {
     const current = operationalRecordAsWorkOrder(operationalRow);
+    if (isAssetlessContractWorkOrder(current)) {
+      return res.status(404).json({ error: "عقد النظافة لا يحتاج إلى إسناد أو أمر تشغيل" });
+    }
     if (current.assignedDriverId !== adminRequest.adminId) return res.status(404).json({ error: "أمر العمل غير موجود" });
     if (current.driverStatus === nextStatus) return res.json(current);
     if (["completed", "rejected"].includes(current.driverStatus) || !transitions[current.driverStatus]?.includes(nextStatus)) {
