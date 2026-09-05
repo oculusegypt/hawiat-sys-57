@@ -10,3 +10,4 @@
 - [Production live cache and routing](production-live-cache-and-routing.md) — authenticated responses and Arabic route redirects need final-body and cache-aware live probes.
 - [Hostinger FTP TLS validation](hostinger-ftp-tls-validation.md) — never bypass certificate validation or fall back to plaintext FTP when the configured alias has a TLS hostname mismatch.
 - [SEO noindex error policy](seo-noindex-error-policy.md) — only confirmed missing pages should become noindex; transient API failures must preserve indexability.
+- [Public chat attachments](public-chat-attachments.md) — anonymous image uploads are allowed only through validation and a strict per-IP rate limit.

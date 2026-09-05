@@ -16,6 +16,8 @@ export interface ServiceRequestInput {
   serviceType: string;
   /** @nullable */
   containerSize?: string | null;
+  /** @minimum 1 */
+  containerCount?: number;
   location: string;
   /** @nullable */
   duration?: string | null;

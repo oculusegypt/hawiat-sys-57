@@ -52,6 +52,7 @@ const serviceRequestMigrations = [
   "ALTER TABLE service_requests ADD COLUMN customer_record_id INTEGER",
   "ALTER TABLE service_requests ADD COLUMN container_record_id INTEGER",
   "ALTER TABLE service_requests ADD COLUMN contract_record_id INTEGER",
+  "ALTER TABLE service_requests ADD COLUMN container_count INTEGER NOT NULL DEFAULT 1",
   "ALTER TABLE service_requests ADD COLUMN driver_location_lat TEXT",
   "ALTER TABLE service_requests ADD COLUMN driver_location_lng TEXT",
   "ALTER TABLE service_requests ADD COLUMN driver_proof_photo_url TEXT",

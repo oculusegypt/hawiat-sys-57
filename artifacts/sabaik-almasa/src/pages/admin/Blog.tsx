@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react"
 import { useToast } from "@/hooks/use-toast"
+import { useConfirm } from "@/components/admin/ConfirmDialog"
 import { normalizeCompanyText, useSiteSettings } from "@/context/SiteSettingsContext"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -107,6 +108,7 @@ function extractReportedTotal(data: unknown): number | null {
 }
 
 export default function AdminBlog() {
+  const { confirm } = useConfirm()
   const { toast } = useToast()
   const { companyName } = useSiteSettings()
   const [posts, setPosts]     = useState<Post[]>([])
@@ -461,7 +463,11 @@ export default function AdminBlog() {
   }
 
   async function deletePost(id: number) {
-    if (!confirm("هل أنت متأكد من حذف هذه المقالة؟")) return
+    if (!(await confirm({
+      title: "حذف المقالة",
+      description: "ستُحذف المقالة من المدونة والصفحات العامة المرتبطة بها.",
+      confirmLabel: "حذف المقالة",
+    }))) return
     try {
       await fetch(`${API_BASE}/api/admin/posts/${id}`, {
         method: "DELETE",

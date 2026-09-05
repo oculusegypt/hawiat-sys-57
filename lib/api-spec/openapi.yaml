@@ -508,6 +508,8 @@ paths:
           in: path
           required: true
           schema: { type: integer }
+      security:
+        - trackingToken: []
       responses:
         "200":
           description: Service request detail
@@ -1238,7 +1240,11 @@ components:
     bearerAuth:
       type: http
       scheme: bearer
-      bearerFormat: admin-token
+    trackingToken:
+      type: apiKey
+      in: query
+      name: token
+      description: Private token returned when a public service request is created
 
   schemas:
     ContainerSystemRecord:
@@ -1731,7 +1737,9 @@ components:
         scheduledAt: { type: ["string", "null"] }
         status:
           type: string
-          enum: [pending, in_progress, completed, cancelled]
+          enum: [pending, in_progress, completed, cancelled, rejected]
+        trackingToken: { type: string }
+        containerCount: { type: integer, minimum: 1 }
         adminNotes: { type: ["string", "null"] }
         assignedDriverId: { type: ["integer", "null"] }
         assignedDriverName: { type: ["string", "null"] }
@@ -1773,6 +1781,7 @@ components:
         email: { type: ["string", "null"] }
         serviceType: { type: string }
         containerSize: { type: ["string", "null"] }
+        containerCount: { type: integer, minimum: 1, default: 1 }
         location: { type: string }
         duration: { type: ["string", "null"] }
         notes: { type: ["string", "null"] }
@@ -1793,6 +1802,7 @@ components:
         email: { type: ["string", "null"] }
         serviceType: { type: string }
         containerSize: { type: ["string", "null"] }
+        containerCount: { type: integer, minimum: 1 }
         location: { type: string }
         duration: { type: ["string", "null"] }
         notes: { type: ["string", "null"] }
@@ -1804,6 +1814,9 @@ components:
           type: string
           enum: [pending, in_progress, completed, cancelled]
         adminNotes: { type: ["string", "null"] }
+        customerRecordId: { type: ["integer", "null"] }
+        containerRecordId: { type: ["integer", "null"] }
+        contractRecordId: { type: ["integer", "null"] }
 
     AttributionInput:
       type: object

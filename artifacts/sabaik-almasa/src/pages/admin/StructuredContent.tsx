@@ -3,6 +3,7 @@ import { Code2, Eye, FileJson, Loader2, Plus, Save, Trash2, X } from "lucide-rea
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { useToast } from "@/hooks/use-toast"
+import { useConfirm } from "@/components/admin/ConfirmDialog"
 
 const API_BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") || ""
 const token = () => localStorage.getItem("admin_token") || ""
@@ -40,6 +41,7 @@ function parseJson(value: string) {
 
 export default function StructuredContent() {
   const { toast } = useToast()
+  const { confirm } = useConfirm()
   const [records, setRecords] = useState<RecordItem[]>([])
   const [editing, setEditing] = useState<RecordItem | "new" | null>(null)
   const [form, setForm] = useState({ ...EMPTY })
@@ -108,13 +110,17 @@ export default function StructuredContent() {
       })
       const data = await response.json().catch(() => null)
       if (!response.ok) throw new Error(message(data, "تعذر حفظ العنصر"))
-      toast({ title: "تم حفظ Structured Content" }); setEditing(null); await load()
+      toast({ title: "تم حفظ المحتوى المنظم" }); setEditing(null); await load()
     } catch (error) {
       toast({ title: error instanceof Error ? error.message : "تعذر الحفظ", variant: "destructive" })
     } finally { setSaving(false) }
   }
   async function remove(item: RecordItem) {
-    if (!window.confirm(`حذف ${item.schemaType} من ${item.scopePath}؟`)) return
+    if (!(await confirm({
+      title: "حذف المحتوى المنظم",
+      description: `سيتم حذف ${item.schemaType} من المسار ${item.scopePath} نهائياً.`,
+      confirmLabel: "حذف المحتوى",
+    }))) return
     await fetch(`${API_BASE}/api/admin/structured-content/${item.id}`, { method: "DELETE", headers: { Authorization: `Bearer ${token()}` } })
     await load()
   }
@@ -129,7 +135,7 @@ export default function StructuredContent() {
       <div className="flex flex-col gap-4 rounded-3xl bg-gradient-to-l from-primary to-slate-900 p-6 text-white md:flex-row md:items-center md:justify-between">
         <div>
           <p className="mb-2 text-xs font-bold uppercase tracking-[0.2em] text-white/60">SEO control center</p>
-          <h1 className="text-2xl font-black">Structured Content</h1>
+          <h1 className="text-2xl font-black">المحتوى المنظم</h1>
           <p className="mt-2 max-w-2xl text-sm leading-7 text-white/75">مصدر مركزي للـFAQ والـSchema، مع منع التكرار والتحقق قبل النشر.</p>
         </div>
         <Button onClick={openNew} className="gap-2 bg-white text-primary hover:bg-white/90"><Plus size={17} /> إضافة Schema</Button>
@@ -156,7 +162,7 @@ export default function StructuredContent() {
         {loading ? <div className="flex justify-center p-12"><Loader2 className="animate-spin text-primary" /></div> : records.length === 0 ? <div className="p-12 text-center text-slate-500"><FileJson className="mx-auto mb-3 text-slate-300" size={38} /><p className="font-bold">لا توجد عناصر مُدارة بعد</p><p className="mt-1 text-sm">ابدأ بإضافة FAQ مرتبطة بمسار الصفحة.</p></div> : <div className="divide-y divide-slate-100">{records.map((item) => <div key={item.id} className="flex flex-wrap items-center justify-between gap-4 p-5"><div className="flex items-center gap-3"><div className={`rounded-xl p-3 ${item.isActive ? "bg-primary/10 text-primary" : "bg-slate-100 text-slate-400"}`}><Code2 size={18} /></div><div><div className="flex flex-wrap items-center gap-2"><b className="text-slate-900">{item.schemaType}</b><span className="rounded-full bg-slate-100 px-2 py-1 text-[11px] text-slate-600">{item.scopePath}</span>{!item.isActive && <span className="text-xs text-amber-600">معطّل</span>}</div><p className="mt-1 text-sm text-slate-500">{item.title || "بدون عنوان"} · ترتيب {item.sortOrder}</p></div></div><div className="flex gap-2"><Button variant="outline" size="sm" onClick={() => openEdit(item)}>تعديل</Button><Button variant="ghost" size="icon" onClick={() => void remove(item)} className="text-red-500"><Trash2 size={16} /></Button></div></div>)}</div>}
       </div>
 
-      {editing && <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-950/60 p-4 md:p-10"><div className="w-full max-w-3xl rounded-3xl bg-white shadow-2xl" dir="rtl"><div className="flex items-center justify-between border-b p-6"><div><h2 className="text-xl font-black">تحرير Structured Content</h2><p className="mt-1 text-xs text-slate-500">لا يُسمح بحقن @context أو تغيير هوية العقدة.</p></div><Button variant="ghost" size="icon" onClick={close}><X /></Button></div><div className="space-y-5 p-6">
+      {editing && <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-950/60 p-4 md:p-10"><div className="w-full max-w-3xl rounded-3xl bg-white shadow-2xl" dir="rtl"><div className="flex items-center justify-between border-b p-6"><div><h2 className="text-xl font-black">تحرير المحتوى المنظم</h2><p className="mt-1 text-xs text-slate-500">لا يُسمح بحقن @context أو تغيير هوية العقدة.</p></div><Button variant="ghost" size="icon" onClick={close}><X /></Button></div><div className="space-y-5 p-6">
         <div className="grid gap-4 md:grid-cols-2"><label className="space-y-2 text-sm font-bold">مسار الصفحة<Input value={form.scopePath} onChange={(e) => setForm({ ...form, scopePath: e.target.value })} placeholder="/ أو /services/slug أو *" /></label><label className="space-y-2 text-sm font-bold">نوع Schema<select className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm" value={form.schemaType} onChange={(e) => { const schemaType = e.target.value as SchemaType; setForm({ ...form, schemaType }); setJsonPayload("{}") }}>{SCHEMA_TYPES.map((type) => <option key={type}>{type}</option>)}</select></label></div>
         <div className="grid gap-4 md:grid-cols-[1fr_140px]"><label className="space-y-2 text-sm font-bold">العنوان<Input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} /></label><label className="space-y-2 text-sm font-bold">الترتيب<Input type="number" value={form.sortOrder} onChange={(e) => setForm({ ...form, sortOrder: Number(e.target.value) || 0 })} /></label></div>
         <label className="space-y-2 text-sm font-bold">الوصف (اختياري)<Input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></label>

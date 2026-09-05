@@ -4,6 +4,7 @@ import type { Testimonial } from "@workspace/api-client-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { useConfirm } from "@/components/admin/ConfirmDialog"
 import { Plus, Pencil, Trash2, Star, Eye, EyeOff, X, Check } from "lucide-react"
 
 type TestimonialForm = {
@@ -25,6 +26,7 @@ const emptyForm = (): TestimonialForm => ({
 })
 
 export default function AdminTestimonials() {
+  const { confirm } = useConfirm()
   const { data: testimonials = [], refetch } = useGetTestimonials()
   const { mutate: createTestimonial, isPending: creating } = useCreateTestimonial()
   const { mutate: updateTestimonial, isPending: updating } = useUpdateTestimonial()
@@ -59,10 +61,13 @@ export default function AdminTestimonials() {
     }
   }
 
-  const handleDelete = (id: number) => {
-    if (confirm("هل أنت متأكد من حذف هذه الشهادة؟")) {
-      deleteTestimonial({ id }, { onSuccess: () => refetch() })
-    }
+  const handleDelete = async (id: number) => {
+    if (!(await confirm({
+      title: "حذف شهادة العميل",
+      description: "ستختفي الشهادة من الصفحة العامة ولن يمكن استعادتها من هذه الشاشة.",
+      confirmLabel: "حذف الشهادة",
+    }))) return
+    deleteTestimonial({ id }, { onSuccess: () => refetch() })
   }
 
   const toggleActive = (t: Testimonial) => {

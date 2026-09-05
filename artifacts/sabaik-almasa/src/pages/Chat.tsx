@@ -11,6 +11,7 @@ import { Link } from "wouter"
 import { useSiteSettings } from "@/context/SiteSettingsContext"
 import { PackageFormMessage } from "@/components/chat/PackageFormMessage"
 import { getVisitorTracking } from "@/lib/visitorAttribution"
+import { useToast } from "@/hooks/use-toast"
 
 function visitorRequest(): RequestInit {
   return { headers: { "X-Visitor-Session": getVisitorTracking().sessionId } }
@@ -38,6 +39,7 @@ function whatsappHref(phone: string) {
 
 export default function Chat() {
   const { logoUrl, companyName, isLoaded, phones, phoneCall, phoneWhatsapp, supportHours } = useSiteSettings()
+  const { toast } = useToast()
   const contactPhones = Array.from(new Set([...phones, phoneWhatsapp].filter(Boolean)))
   const callNumber = phoneCall || phones.find(number => !isWhatsappNumber(number, phoneWhatsapp)) || phones[0] || ""
   const [conversationId, setConversationId] = useState<number | null>(
@@ -124,14 +126,21 @@ export default function Chat() {
       const form = new FormData()
       form.append("file", file)
       const uploadResponse = await fetch(`${import.meta.env.BASE_URL?.replace(/\/$/, "") || ""}/api/uploads`, { method: "POST", body: form })
-      const uploaded = await uploadResponse.json()
-      if (!uploadResponse.ok || !uploaded.url) throw new Error()
+      const uploaded = await uploadResponse.json().catch(() => ({}))
+      if (!uploadResponse.ok || !uploaded.url) {
+        throw new Error(uploaded.error || "تعذر رفع الصورة")
+      }
       sendMsg({ id: conversationId, data: {
         content: "أرسل صورة",
         senderType: MessageInputSenderType.client,
         attachmentUrl: uploaded.url,
          attachmentType: uploaded.contentType || "image/webp",
       } }, { onSuccess: () => refetch() })
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: error instanceof Error ? error.message : "تعذر رفع الصورة",
+      })
     } finally {
       setUploading(false)
     }

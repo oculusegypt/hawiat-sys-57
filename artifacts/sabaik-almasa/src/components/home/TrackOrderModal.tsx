@@ -94,12 +94,10 @@ interface OrderData {
   phone: string
   serviceType: string
   containerSize: string | null
-  location: string
+  containerCount: number
   status: string
   appointmentType: string
   scheduledAt: string | null
-  notes: string | null
-  adminNotes: string | null
   createdAt: string
   updatedAt: string
 }
@@ -327,8 +325,10 @@ export function TrackOrderModal({ isOpen, onClose, initialId }: TrackOrderModalP
                         <DetailRow icon={<Truck size={14} className="text-primary" />}
                           label="الباقة / نوع العقار" value={order.containerSize.split(" - ")[0]} />
                       )}
-                      <DetailRow icon={<MapPin size={14} className="text-primary" />}
-                        label="الموقع" value={order.location} />
+                      {order.containerCount > 0 && (
+                        <DetailRow icon={<Package size={14} className="text-primary" />}
+                          label="عدد الحاويات" value={String(order.containerCount)} />
+                      )}
                       <DetailRow
                         icon={order.appointmentType === "immediate"
                           ? <Zap size={14} className="text-primary" />
@@ -347,19 +347,6 @@ export function TrackOrderModal({ isOpen, onClose, initialId }: TrackOrderModalP
                       <DetailRow icon={<Clock size={14} className="text-gray-400" />}
                         label="تاريخ الطلب" value={formatDate(order.createdAt)} />
                     </div>
-
-                    {/* Admin notes (if any) */}
-                    {order.adminNotes && (
-                      <motion.div
-                        initial={{ opacity: 0 }} animate={{ opacity: 1 }}
-                        className="bg-blue-50 border border-blue-200 rounded-2xl p-4"
-                      >
-                        <p className="text-xs font-bold text-blue-700 mb-1 flex items-center gap-1.5">
-                          <FileText size={12} /> ملاحظة من الفريق
-                        </p>
-                        <p className="text-sm text-blue-800 leading-relaxed">{order.adminNotes}</p>
-                      </motion.div>
-                    )}
 
                     {/* Re-search button */}
                     <button

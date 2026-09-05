@@ -9,6 +9,7 @@ import { FaWhatsapp } from "react-icons/fa"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { useSiteSettings } from "@/context/SiteSettingsContext"
+import { useToast } from "@/hooks/use-toast"
 import { useGetContainers, useGetConversation } from "@workspace/api-client-react"
 import type { Container } from "@workspace/api-client-react"
 import { PackageFormMessage } from "@/components/chat/PackageFormMessage"
@@ -267,6 +268,7 @@ function ChatInterface({ conversationId, clientName, phone, packageName, isSound
   packageName?: string
   isSoundMuted?: boolean
 }) {
+  const { toast } = useToast()
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState("")
   const [sending, setSending] = useState(false)
@@ -404,14 +406,25 @@ function ChatInterface({ conversationId, clientName, phone, packageName, isSound
       const form = new FormData()
       form.append("file", file)
       const uploadResponse = await fetch(`${API_BASE}/api/uploads`, { method: "POST", body: form })
-      const uploaded = await uploadResponse.json()
-      if (!uploadResponse.ok || !uploaded.url) throw new Error()
-      await fetch(`${API_BASE}/api/conversations/${conversationId}/messages`, {
+      const uploaded = await uploadResponse.json().catch(() => ({}))
+      if (!uploadResponse.ok || !uploaded.url) {
+        throw new Error(uploaded.error || "تعذر رفع الصورة")
+      }
+      const messageResponse = await fetch(`${API_BASE}/api/conversations/${conversationId}/messages`, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...visitorHeaders() },
         body: JSON.stringify({ content: "أرسل صورة", senderType: "client", attachmentUrl: uploaded.url, attachmentType: uploaded.contentType || "image/webp" }),
       })
+      if (!messageResponse.ok) {
+        const payload = await messageResponse.json().catch(() => ({}))
+        throw new Error(payload.error || "تعذر إرسال الصورة")
+      }
       await loadMessages()
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: error instanceof Error ? error.message : "تعذر رفع الصورة",
+      })
     } finally {
       setUploading(false)
     }

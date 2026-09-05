@@ -411,6 +411,7 @@ export const ServiceRequestStatus = {
   in_progress: 'in_progress',
   completed: 'completed',
   cancelled: 'cancelled',
+  rejected: 'rejected',
 } as const;
 
 export type ServiceRequestDriverStatus = typeof ServiceRequestDriverStatus[keyof typeof ServiceRequestDriverStatus];
@@ -445,6 +446,9 @@ export interface ServiceRequest {
   /** @nullable */
   scheduledAt?: string | null;
   status: ServiceRequestStatus;
+  trackingToken?: string;
+  /** @minimum 1 */
+  containerCount?: number;
   /** @nullable */
   adminNotes?: string | null;
   /** @nullable */
@@ -526,6 +530,8 @@ export interface ServiceRequestInput {
   serviceType: string;
   /** @nullable */
   containerSize?: string | null;
+  /** @minimum 1 */
+  containerCount?: number;
   location: string;
   /** @nullable */
   duration?: string | null;
@@ -566,6 +572,8 @@ export interface ServiceRequestUpdate {
   serviceType?: string;
   /** @nullable */
   containerSize?: string | null;
+  /** @minimum 1 */
+  containerCount?: number;
   location?: string;
   /** @nullable */
   duration?: string | null;
@@ -577,6 +585,12 @@ export interface ServiceRequestUpdate {
   status?: ServiceRequestUpdateStatus;
   /** @nullable */
   adminNotes?: string | null;
+  /** @nullable */
+  customerRecordId?: number | null;
+  /** @nullable */
+  containerRecordId?: number | null;
+  /** @nullable */
+  contractRecordId?: number | null;
 }
 
 export interface ServiceRequestAssignment {

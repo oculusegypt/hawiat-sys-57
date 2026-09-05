@@ -90,14 +90,14 @@ const ALL_NAV = [
   {
     href: "/admin/packages",
     icon: Box,
-    label: "أنواع الحاويات",
+    label: "الباقات والحاويات",
     group: "operations",
     section: "packages",
   },
   {
     href: "/admin/ads",
     icon: Megaphone,
-    label: "الاعلانات",
+    label: "الإعلانات",
     group: "operations",
     section: "ads",
   },
@@ -153,7 +153,7 @@ const ALL_NAV = [
   {
     href: "/admin/structured-content",
     icon: Code2,
-    label: "Structured Content",
+    label: "المحتوى المنظم",
     group: "analytics",
     section: "structured_content",
   },

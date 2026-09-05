@@ -17,6 +17,7 @@ import {
 import { Switch } from "@/components/ui/switch"
 import { THEME_PRESETS, applyThemePreset, type ThemePreset } from "@/lib/themePresets"
 import { getSafeMapEmbedUrl } from "@/context/SiteSettingsContext"
+import { useConfirm } from "@/components/admin/ConfirmDialog"
 import { PUBLIC_SITE_URL } from "@/lib/siteUrl"
 import { motion } from "framer-motion"
 import {
@@ -906,6 +907,7 @@ function GeneralTab() {
 // ── Tab 2: Slides ─────────────────────────────────────────────────────────────
 // ══════════════════════════════════════════════════════════════════════════════
 function SlidesTab() {
+  const { confirm } = useConfirm()
   const { toast } = useToast()
   const { data: slides = [], refetch } = useGetSlides()
   const { mutate: createSlide, isPending: creating } = useCreateSlide()
@@ -995,7 +997,10 @@ function SlidesTab() {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     else if (typeof editing === "number") updateSlide({ id: editing, data: form as any }, { onSuccess: () => { refetch(); setEditing(null) } })
   }
-  const handleDelete = (id: number) => { if (confirm("هل أنت متأكد من حذف هذه الشريحة؟")) deleteSlide({ id }, { onSuccess: () => refetch() }) }
+  const handleDelete = async (id: number) => {
+    if (!(await confirm({ title: "حذف الشريحة", description: "ستتوقف الشريحة عن الظهور في الصفحة الرئيسية.", confirmLabel: "حذف الشريحة" }))) return
+    deleteSlide({ id }, { onSuccess: () => refetch() })
+  }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const toggleActive = (s: HeroSlide) => updateSlide({ id: s.id, data: { isActive: !s.isActive } as any }, { onSuccess: () => refetch() })
 
@@ -1194,6 +1199,7 @@ function HeroPositionPicker({
 // ── Tab 3: Testimonials ───────────────────────────────────────────────────────
 // ══════════════════════════════════════════════════════════════════════════════
 function TestimonialsTab() {
+  const { confirm } = useConfirm()
   const { data: testimonials = [], refetch } = useGetTestimonials()
   const { mutate: createTestimonial, isPending: creating } = useCreateTestimonial()
   const { mutate: updateTestimonial, isPending: updating } = useUpdateTestimonial()
@@ -1208,7 +1214,10 @@ function TestimonialsTab() {
     if (editing === "new") createTestimonial({ data }, { onSuccess: () => { refetch(); setEditing(null) } })
     else if (typeof editing === "number") updateTestimonial({ id: editing, data }, { onSuccess: () => { refetch(); setEditing(null) } })
   }
-  const handleDelete = (id: number) => { if (confirm("هل أنت متأكد من حذف هذه الشهادة؟")) deleteTestimonial({ id }, { onSuccess: () => refetch() }) }
+  const handleDelete = async (id: number) => {
+    if (!(await confirm({ title: "حذف شهادة العميل", description: "ستختفي الشهادة من الموقع العام.", confirmLabel: "حذف الشهادة" }))) return
+    deleteTestimonial({ id }, { onSuccess: () => refetch() })
+  }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const toggleActive = (t: Testimonial) => updateTestimonial({ id: t.id, data: { isActive: !t.isActive } as any }, { onSuccess: () => refetch() })
 
@@ -1275,6 +1284,7 @@ function TestimonialsTab() {
 // ── Tab 4: Partners ───────────────────────────────────────────────────────────
 // ══════════════════════════════════════════════════════════════════════════════
 function PartnersTab() {
+  const { confirm } = useConfirm()
   const { data: partners = [], refetch } = useGetPartners()
   const { mutate: createPartner, isPending: creating } = useCreatePartner()
   const { mutate: updatePartner, isPending: updating } = useUpdatePartner()
@@ -1289,7 +1299,10 @@ function PartnersTab() {
     if (editing === "new") createPartner({ data }, { onSuccess: () => { refetch(); setEditing(null) } })
     else if (typeof editing === "number") updatePartner({ id: editing, data }, { onSuccess: () => { refetch(); setEditing(null) } })
   }
-  const handleDelete = (id: number) => { if (confirm("هل أنت متأكد من حذف هذا الشريك؟")) deletePartner({ id }, { onSuccess: () => refetch() }) }
+  const handleDelete = async (id: number) => {
+    if (!(await confirm({ title: "حذف الشريك", description: "سيتم إزالة الشريك من صفحة الموقع.", confirmLabel: "حذف الشريك" }))) return
+    deletePartner({ id }, { onSuccess: () => refetch() })
+  }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const toggleActive = (p: Partner) => updatePartner({ id: p.id, data: { isActive: !p.isActive } as any }, { onSuccess: () => refetch() })
 

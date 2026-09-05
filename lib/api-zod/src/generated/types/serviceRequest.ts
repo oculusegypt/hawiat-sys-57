@@ -26,6 +26,9 @@ export interface ServiceRequest {
   /** @nullable */
   scheduledAt?: string | null;
   status: ServiceRequestStatus;
+  trackingToken?: string;
+  /** @minimum 1 */
+  containerCount?: number;
   /** @nullable */
   adminNotes?: string | null;
   /** @nullable */

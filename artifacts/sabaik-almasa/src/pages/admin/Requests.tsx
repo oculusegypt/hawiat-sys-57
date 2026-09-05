@@ -58,6 +58,12 @@ const STATUS_CONFIG = {
     row:    "bg-red-50/30 hover:bg-red-50/60",
     left:   "border-r-4 border-red-300",
   },
+  [ServiceRequestStatus.rejected]: {
+    label: "مرفوض",
+    badge:  "bg-slate-100 text-slate-700 border-slate-200",
+    row:    "bg-slate-50/40 hover:bg-slate-50/70",
+    left:   "border-r-4 border-slate-400",
+  },
 } as const
 
 const fallbackStatus = {

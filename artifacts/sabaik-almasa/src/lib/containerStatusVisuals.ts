@@ -55,6 +55,41 @@ export function getContainerVisualStatus(
   return "other";
 }
 
+export function getContainerOperationalStatus(
+  recordStatus: unknown,
+  payload: Record<string, unknown> | undefined,
+) {
+  const payloadStatus = String(payload?.status ?? "").trim();
+  const recordValue = String(recordStatus ?? "").trim();
+  const normalizedRecordStatus = recordValue.toLowerCase();
+  const payloadIsAvailable = [
+    "available",
+    "متاح",
+    "متاحة",
+    "ready",
+    "جاهز",
+    "جاهزة",
+  ].includes(payloadStatus.toLowerCase());
+  const recordHasStrongerLifecycle = [
+    "reserved",
+    "rented",
+    "with_customer",
+    "awaiting_return",
+    "in_transit",
+    "maintenance",
+    "inspection",
+    "damaged",
+    "lost",
+    "out_of_service",
+  ].includes(normalizedRecordStatus);
+
+  // Older records may retain payload.status=available after an assignment.
+  // The record status is authoritative whenever it contains a stronger
+  // lifecycle state; otherwise keep supporting legacy payload-only statuses.
+  if (payloadIsAvailable && recordHasStrongerLifecycle) return recordValue;
+  return payloadStatus || recordValue;
+}
+
 export function getContainerStatusImage(status: unknown): string {
   return statusImages[getContainerVisualStatus(status)].webp;
 }

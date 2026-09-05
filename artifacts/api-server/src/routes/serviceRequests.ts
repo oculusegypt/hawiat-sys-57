@@ -6,6 +6,7 @@ import { createNotification } from "../lib/pushNotifications";
 import { requireAdmin, requireAdminOnly, requireDriver, requireRequestAssignment, requireManagerOrAdmin, requireAnySectionPermission, requireSectionPermission, type AdminRequest } from "../middleware/adminAuth";
 import { sourceForRow } from "../lib/attribution";
 import { syncCustomerFromRequest } from "../lib/customerSync";
+import { refreshPrivateUploadUrl } from "../lib/privateUploadUrl";
 import crypto from "node:crypto";
 
 const router = Router();
@@ -98,6 +99,7 @@ function operationalRecordAsWorkOrder(record: typeof containerSystemRecordsTable
     email: String(payload.email ?? ""),
     serviceType: String(payload.serviceType ?? payload.operationType ?? "عملية تشغيلية"),
     containerSize: String(payload.containerCode ?? ""),
+    containerCount: Number(payload.containerCount ?? 1) || 1,
     propertyType: null,
     areaSize: null,
     location: String(payload.location ?? "يحدد لاحقًا"),
@@ -113,6 +115,12 @@ function operationalRecordAsWorkOrder(record: typeof containerSystemRecordsTable
     assignedDriverId: Number(payload.assignedDriverId ?? 0) || null,
     assignedVehicleId: Number(payload.assignedVehicleId ?? 0) || null,
     assignedVehiclePlate: payload.assignedVehiclePlate ? String(payload.assignedVehiclePlate) : null,
+    operationKey: payload.operationKey ? String(payload.operationKey) : null,
+    movementKey: payload.movementKey ? String(payload.movementKey) : null,
+    movementType: payload.movementType ? String(payload.movementType) : null,
+    operationType: payload.operationType ? String(payload.operationType) : null,
+    appointmentRecordId: Number(payload.appointmentRecordId ?? 0) || null,
+    legacyRequestId: Number(payload.legacyRequestId ?? 0) || null,
     driverStatus: String(payload.driverStatus ?? "unassigned"),
     driverResponseAt: payload.driverResponseAt ? String(payload.driverResponseAt) : null,
     driverStartedAt: payload.driverStartedAt ? String(payload.driverStartedAt) : null,
@@ -120,7 +128,7 @@ function operationalRecordAsWorkOrder(record: typeof containerSystemRecordsTable
     driverNotes: payload.driverNotes ? String(payload.driverNotes) : null,
     driverLocationLat: payload.driverLocationLat ? String(payload.driverLocationLat) : null,
     driverLocationLng: payload.driverLocationLng ? String(payload.driverLocationLng) : null,
-    driverProofPhotoUrl: payload.driverProofPhotoUrl ? String(payload.driverProofPhotoUrl) : null,
+    driverProofPhotoUrl: refreshPrivateUploadUrl(payload.driverProofPhotoUrl),
     driverSignatureData: payload.driverSignatureData ? String(payload.driverSignatureData) : null,
     driverReceiverName: payload.driverReceiverName ? String(payload.driverReceiverName) : null,
     assignedAt: payload.assignedAt ? String(payload.assignedAt) : null,
@@ -154,10 +162,21 @@ async function prepareContainerCompletion(request: typeof serviceRequestsTable.$
     containerCodeFrom(parseContainerPayload(record.payload)) === containerCode,
   );
   if (!asset) throw new Error("أصل الحاوية المرتبط بأمر العمل غير موجود");
+  const requestFields = request as typeof request & { appointmentRecordId?: number | null };
+  const requestedAppointmentId = Number(requestFields.appointmentRecordId ?? 0);
+  const appointment = assets.find(record => {
+    if (record.kind !== "appointment" || record.status === "archived") return false;
+    if (requestedAppointmentId > 0 && record.id === requestedAppointmentId) return true;
+    const payload = parseContainerPayload(record.payload);
+    return Number(payload.contractRecordId ?? 0) === contract.id &&
+      Number(payload.containerRecordId ?? 0) === asset.id &&
+      (!request.scheduledAt || String(payload.scheduledAt ?? "") === request.scheduledAt);
+  }) ?? null;
   return {
     contract,
     contractPayload,
     asset,
+    appointment,
     containerCode,
     returning: isReturnWork(request),
     emptying: isEmptyingWork(request),
@@ -177,6 +196,14 @@ function syncContainerCompletion(
   const action = prepared.returning ? "استرجاع" : prepared.emptying ? "تفريغ" : "تسليم";
   const contractStatus = prepared.returning ? "returned" : "delivered";
   const assetStatus = prepared.returning ? "available" : "rented";
+  const operationalFields = request as typeof request & {
+    operationKey?: string | null;
+    movementKey?: string | null;
+    movementType?: string | null;
+    appointmentRecordId?: number | null;
+  };
+  const operationKey = String(operationalFields.operationKey ?? "").trim() || `service-request-${request.id}`;
+  const movementType = String(operationalFields.movementType ?? action);
   const nextContractPayload = {
     ...prepared.contractPayload,
     [`${prepared.returning ? "return" : "deliver"}At`]: now,
@@ -214,20 +241,47 @@ function syncContainerCompletion(
   const movement = writer.insert(containerSystemRecordsTable).values({
     kind: "container_movement",
     status: "posted",
-    reference: `MOV-${request.id}`,
-      payload: JSON.stringify({
+    reference: `MOV-WO-${request.id}`,
+    payload: JSON.stringify({
+      operationKey,
+      movementKey: String(operationalFields.movementKey ?? operationKey),
       contractNumber: prepared.contractPayload.contractNumber ?? prepared.contract.reference,
+      contractRecordId: prepared.contract.id,
+      customerRecordId: request.customerRecordId ?? prepared.contractPayload.customerRecordId ?? null,
+      containerRecordId: prepared.asset.id,
       containerCode: prepared.containerCode,
-      movementType: action,
+      movementType,
       movementDate: now,
       location: request.location,
-      driverName: request.assignedDriverId,
+      appointmentRecordId: operationalFields.appointmentRecordId ?? null,
       workOrderId: request.id,
-        source: "driver_work_order",
-        operationalOnly: prepared.emptying,
+      source: "driver_work_order",
+      operationalOnly: prepared.emptying,
+      driverId: request.assignedDriverId,
+      proofPhotoUrl: request.driverProofPhotoUrl,
+      receiverName: request.driverReceiverName,
+      signatureData: request.driverSignatureData,
+      locationLat: request.driverLocationLat,
+      locationLng: request.driverLocationLng,
     }),
     createdBy: actorId,
   }).returning().get();
+  if (prepared.appointment) {
+    const appointmentPayload = parseContainerPayload(prepared.appointment.payload);
+    writer.update(containerSystemRecordsTable).set({
+      status: "completed",
+      payload: JSON.stringify({
+        ...appointmentPayload,
+        operationStatus: "completed",
+        completedAt: now,
+        movementRecordId: movement.id,
+        workOrderId: request.id,
+        proofPhotoUrl: request.driverProofPhotoUrl,
+        receiverName: request.driverReceiverName,
+      }),
+      updatedAt: now,
+    }).where(eq(containerSystemRecordsTable.id, prepared.appointment.id)).run();
+  }
   writer.insert(containerSystemAuditTable).values([
     {
       recordId: prepared.asset.id,
@@ -298,6 +352,7 @@ async function addPresenceToRequests<T extends typeof serviceRequestsTable.$infe
 
     return {
       ...request,
+      driverProofPhotoUrl: refreshPrivateUploadUrl(request.driverProofPhotoUrl),
       conversationId: visitor?.conversationId ?? null,
       isOnline: Boolean(visitor && isRecent(visitor.lastSeen, ONLINE_WINDOW_MS)),
       activePage: visitor?.page ?? null,
@@ -328,11 +383,13 @@ router.post("/admin/service-requests/from-contract", requireAdmin, requireAnySec
     email,
     serviceType,
     containerSize,
+    containerCount: rawContainerCount,
     location,
     duration,
     notes,
     appointmentType,
     scheduledAt,
+    operationKey: requestedOperationKey,
     customerRecordId,
     containerRecordId,
     contractRecordId,
@@ -376,11 +433,17 @@ router.post("/admin/service-requests/from-contract", requireAdmin, requireAnySec
     !["container", "container_asset"].includes(containerRecord.kind) || !customerMatches || !containerMatches) {
     return res.status(409).json({ error: "علاقات أمر العمل لا تطابق العميل أو أصل الحاوية في العقد" });
   }
-  const operationKey = `contract-operation-${contractId}-${String(scheduledAt).replace(/[^0-9]/g, "").slice(0, 24)}-${requestedServiceType.slice(0, 20)}`;
+  const operation = String(requestedServiceType).match(/تفريغ|empty/i) ? "EMPTY_CONTAINER" :
+    String(requestedServiceType).match(/استرجاع|سحب|pickup|return/i) ? "PICKUP_CONTAINER" : "DELIVER_CONTAINER";
+  const scheduledDay = String(scheduledAt).slice(0, 10).replace(/[^0-9-]/g, "");
+  const suppliedOperationKey = String(requestedOperationKey ?? "").trim();
+  const operationKey = suppliedOperationKey.length >= 8 && suppliedOperationKey.length <= 160
+    ? suppliedOperationKey
+    : `contract-operation-${contractId}-${containerId}-${operation}-${operation === "EMPTY_CONTAINER" ? scheduledDay : "active"}`;
   const existingWorkOrder = (await db.select().from(containerSystemRecordsTable))
     .find(row => row.kind === "work_order" && row.status !== "archived" &&
       parseContainerPayload(row.payload).operationKey === operationKey);
-  if (existingWorkOrder) return res.status(200).json(operationalRecordAsWorkOrder(existingWorkOrder));
+  if (existingWorkOrder) return res.status(200).json({ ...operationalRecordAsWorkOrder(existingWorkOrder), idempotent: true });
 
   const [existingRequest] = await db.select().from(serviceRequestsTable)
     .where(and(
@@ -389,14 +452,14 @@ router.post("/admin/service-requests/from-contract", requireAdmin, requireAnySec
       eq(serviceRequestsTable.scheduledAt, String(scheduledAt)),
       eq(serviceRequestsTable.serviceType, requestedServiceType),
     ));
-  const operation = String(requestedServiceType).match(/تفريغ|empty/i) ? "EMPTY_CONTAINER" :
-    String(requestedServiceType).match(/استرجاع|سحب|pickup|return/i) ? "PICKUP_CONTAINER" : "DELIVER_CONTAINER";
   const [appointment] = await db.insert(containerSystemRecordsTable).values({
     kind: "appointment",
     status: "scheduled",
     reference: `APT-${contractId}-${Date.now()}`,
     payload: JSON.stringify({
       operationKey: `${operationKey}:appointment`,
+      movementKey: operationKey,
+      movementType: operation === "EMPTY_CONTAINER" ? "تفريغ" : operation === "PICKUP_CONTAINER" ? "سحب" : "تسليم",
       contractRecordId: contractId,
       customerRecordId: customerId,
       containerRecordId: containerId,
@@ -414,6 +477,8 @@ router.post("/admin/service-requests/from-contract", requireAdmin, requireAnySec
     clientName: String(clientName).trim(), customerName: String(clientName).trim(),
     phone: String(phone).trim(), email: email ? String(email).trim() : "",
     serviceType: requestedServiceType, operationType: operation,
+    movementKey: operationKey,
+    movementType: operation === "EMPTY_CONTAINER" ? "تفريغ" : operation === "PICKUP_CONTAINER" ? "سحب" : "تسليم",
     containerSize: String(containerSize ?? ""), location: String(location ?? "يحدد لاحقًا"),
     duration: duration ? String(duration) : "", notes: notes ? String(notes) : "",
     appointmentType: String(appointmentType ?? "scheduled"), scheduledAt: String(scheduledAt),
@@ -456,6 +521,7 @@ router.post("/service-requests", async (req, res) => {
     notes,
     appointmentType,
     scheduledAt,
+    containerCount: rawContainerCount,
     conversationId: rawConversationId,
     tracking: rawTracking,
   } = req.body;
@@ -492,6 +558,12 @@ router.post("/service-requests", async (req, res) => {
       .where(eq(conversationsTable.id, conversationId));
     if (!conversation) return res.status(404).json({ error: "المحادثة غير موجودة" });
   }
+  const containerCount = rawContainerCount == null || rawContainerCount === ""
+    ? 1
+    : Number(rawContainerCount);
+  if (!Number.isInteger(containerCount) || containerCount < 1 || containerCount > 1000) {
+    return res.status(422).json({ error: "عدد الحاويات يجب أن يكون بين 1 و1000" });
+  }
 
   // Check if requests are locked (quote requests bypass the lock)
   if (!isQuoteRequest) {
@@ -517,6 +589,7 @@ router.post("/service-requests", async (req, res) => {
     // SQLite schema requires a non-NULL value; match the PHP endpoint's
     // empty-string fallback when the client submits no container size.
     containerSize: containerSize || "",
+    containerCount,
     location: location || "غير محدد",
     duration: normalizedDuration,
     notes: finalNotes,
@@ -608,10 +681,10 @@ router.get("/service-requests/:id", async (req, res) => {
   // operational evidence, private notes, or live driver location.
   const {
     id: requestId, clientName, phone, serviceType, containerSize, status,
-    appointmentType, scheduledAt, createdAt, updatedAt,
+    appointmentType, scheduledAt, createdAt, updatedAt, containerCount,
   } = decoratedRequest;
   return res.json({
-    id: requestId, trackingToken: createTrackingToken(requestId), clientName, phone, serviceType, containerSize, status,
+    id: requestId, trackingToken: createTrackingToken(requestId), clientName, phone, serviceType, containerSize, containerCount, status,
     appointmentType, scheduledAt, createdAt, updatedAt,
   });
 });
@@ -624,6 +697,7 @@ router.patch("/service-requests/:id", requireAdmin, requireSectionPermission("re
   const id = parseInt(String(req.params.id), 10);
   const {
     clientName, phone, email, serviceType, containerSize, location,
+    containerCount,
     duration, notes, appointmentType, scheduledAt, status, adminNotes,
     customerRecordId, containerRecordId, contractRecordId,
   } = req.body;
@@ -635,6 +709,13 @@ router.patch("/service-requests/:id", requireAdmin, requireSectionPermission("re
   if (email !== undefined)           updateData.email           = email;
   if (serviceType !== undefined)     updateData.serviceType     = serviceType;
   if (containerSize !== undefined)   updateData.containerSize   = containerSize || "";
+  if (containerCount !== undefined) {
+    const parsedContainerCount = Number(containerCount);
+    if (!Number.isInteger(parsedContainerCount) || parsedContainerCount < 1 || parsedContainerCount > 1000) {
+      return res.status(422).json({ error: "عدد الحاويات يجب أن يكون بين 1 و1000" });
+    }
+    updateData.containerCount = parsedContainerCount;
+  }
   if (location !== undefined)        updateData.location        = location;
   if (duration !== undefined)        updateData.duration        = duration;
   if (notes !== undefined)           updateData.notes           = notes;
@@ -804,7 +885,7 @@ router.patch("/service-requests/:id/assignment", requireAdmin, requireSectionPer
       recipientAdminId: driverId,
     });
   }
-  return res.json(updated);
+  return res.json({ ...updated, driverProofPhotoUrl: refreshPrivateUploadUrl(updated.driverProofPhotoUrl) });
 });
 
 router.get("/driver/work-orders", requireAdmin, requireDriver, async (req, res) => {
@@ -828,7 +909,15 @@ router.get("/driver/work-orders", requireAdmin, requireDriver, async (req, res) 
     .map(operationalRecordAsWorkOrder)
     .filter(order => order.assignedDriverId === adminRequest.adminId &&
       (!requestedStatus || order.driverStatus === requestedStatus));
-  return res.json([...requests, ...operational]);
+  const supersededLegacyIds = new Set(operational
+    .map(order => Number((order as typeof order & { legacyRequestId?: number | null }).legacyRequestId ?? 0))
+    .filter(id => id > 0));
+  return res.json([
+    ...requests
+      .filter(request => !supersededLegacyIds.has(request.id))
+      .map(request => ({ ...request, driverProofPhotoUrl: refreshPrivateUploadUrl(request.driverProofPhotoUrl) })),
+    ...operational,
+  ]);
 });
 
 router.get("/admin/work-orders", requireAdmin, requireSectionPermission("work_orders"), requireManagerOrAdmin, async (_req, res) => {
@@ -842,7 +931,15 @@ router.get("/admin/work-orders", requireAdmin, requireSectionPermission("work_or
     .filter(row => row.kind === "work_order" && row.status !== "archived")
     .map(operationalRecordAsWorkOrder)
     .filter(order => ["unassigned", "assigned", "accepted", "started", "en_route", "arrived"].includes(order.driverStatus));
-  const allOrders = [...requests, ...operational];
+  const supersededLegacyIds = new Set(operational
+    .map(order => Number((order as typeof order & { legacyRequestId?: number | null }).legacyRequestId ?? 0))
+    .filter(id => id > 0));
+  const allOrders = [
+    ...requests
+      .filter(request => !supersededLegacyIds.has(request.id))
+      .map(request => ({ ...request, driverProofPhotoUrl: refreshPrivateUploadUrl(request.driverProofPhotoUrl) })),
+    ...operational,
+  ];
   const driverIds = [...new Set(allOrders.map(request => request.assignedDriverId).filter((id): id is number => id !== null))];
   const drivers = driverIds.length > 0
     ? await db.select({ id: adminsTable.id, name: adminsTable.name })

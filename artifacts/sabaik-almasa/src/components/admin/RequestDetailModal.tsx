@@ -5,7 +5,7 @@ import {
 import { Button } from "@/components/ui/button"
 import {
   User, Phone, Mail, MapPin, Package, Calendar, Clock,
-  FileText, Printer, MessageCircle, ExternalLink, Navigation, FilePlus2, Link2,
+  FileText, Printer, MessageCircle, ExternalLink, Navigation, FilePlus2, Link2, Image as ImageIcon,
   Hash, CheckCircle2, AlertCircle, Loader2, XCircle, Sparkles, MousePointer2, Copy, ShieldCheck,
 } from "lucide-react"
 import { format } from "date-fns"
@@ -37,6 +37,12 @@ interface ServiceRequest {
   updatedAt?: string
   assignedDriverId?: number | null
   driverStatus?: string | null
+  driverProofPhotoUrl?: string | null
+  driverReceiverName?: string | null
+  driverSignatureData?: string | null
+  driverCompletedAt?: string | null
+  driverLocationLat?: string | null
+  driverLocationLng?: string | null
 }
 
 interface Props {
@@ -435,6 +441,45 @@ export default function RequestDetailModal({
                 </div>
               )}
             </SectionCard>
+
+            {(request.driverProofPhotoUrl || request.driverReceiverName || request.driverSignatureData) && (
+              <SectionCard
+                title="إثبات تنفيذ الطلب المكتمل"
+                icon={<ImageIcon className="w-4 h-4" />}
+                color="text-emerald-600"
+                bg="bg-emerald-50"
+              >
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {request.driverReceiverName && (
+                    <InfoCell icon={<User className="w-4 h-4 text-emerald-500" />} label="اسم المستلم">
+                      {request.driverReceiverName}
+                    </InfoCell>
+                  )}
+                  {request.driverCompletedAt && (
+                    <InfoCell icon={<Clock className="w-4 h-4 text-emerald-500" />} label="وقت التنفيذ">
+                      {format(new Date(request.driverCompletedAt), "dd MMMM yyyy – HH:mm", { locale: arSA })}
+                    </InfoCell>
+                  )}
+                  {request.driverLocationLat && request.driverLocationLng && (
+                    <InfoCell icon={<MapPin className="w-4 h-4 text-emerald-500" />} label="إحداثيات التنفيذ">
+                      <span dir="ltr">{request.driverLocationLat}, {request.driverLocationLng}</span>
+                    </InfoCell>
+                  )}
+                </div>
+                {request.driverProofPhotoUrl && (
+                  <div className="mt-4 overflow-hidden rounded-2xl border border-emerald-200 bg-white">
+                    <div className="flex items-center justify-between gap-3 border-b border-emerald-100 bg-emerald-50 px-3 py-2">
+                      <span className="flex items-center gap-1.5 text-xs font-black text-emerald-900"><ImageIcon className="h-4 w-4" /> صورة إثبات التنفيذ</span>
+                      <a href={request.driverProofPhotoUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs font-bold text-emerald-700 hover:underline">
+                        فتح الصورة <ExternalLink className="h-3.5 w-3.5" />
+                      </a>
+                    </div>
+                    <img src={request.driverProofPhotoUrl} alt={`صورة إثبات تنفيذ الطلب رقم ${request.id}`} className="max-h-96 w-full bg-white object-contain" loading="lazy" />
+                  </div>
+                )}
+                {request.driverSignatureData && <p className="mt-3 text-xs font-bold text-emerald-800">تم حفظ توقيع العميل.</p>}
+              </SectionCard>
+            )}
 
             {/* ── Location Card ── */}
             <SectionCard

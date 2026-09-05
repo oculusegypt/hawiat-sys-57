@@ -16,6 +16,8 @@ export interface ServiceRequestUpdate {
   serviceType?: string;
   /** @nullable */
   containerSize?: string | null;
+  /** @minimum 1 */
+  containerCount?: number;
   location?: string;
   /** @nullable */
   duration?: string | null;
@@ -27,4 +29,10 @@ export interface ServiceRequestUpdate {
   status?: ServiceRequestUpdateStatus;
   /** @nullable */
   adminNotes?: string | null;
+  /** @nullable */
+  customerRecordId?: number | null;
+  /** @nullable */
+  containerRecordId?: number | null;
+  /** @nullable */
+  contractRecordId?: number | null;
 }

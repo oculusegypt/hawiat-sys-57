@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react"
 import { useToast } from "@/hooks/use-toast"
+import { useConfirm } from "@/components/admin/ConfirmDialog"
 import { useSiteSettings } from "@/context/SiteSettingsContext"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -153,6 +154,7 @@ function StatCard({
 }
 
 export default function SeoPages() {
+  const { confirm } = useConfirm()
   const { toast } = useToast()
   const { companyName } = useSiteSettings()
   const [pages, setPages] = useState<SeoPage[]>([])
@@ -407,7 +409,11 @@ export default function SeoPages() {
   }
 
   async function deletePage(page: SeoPage) {
-    if (!window.confirm(`هل أنت متأكد من حذف صفحة «${page.title}»؟`)) return
+    if (!(await confirm({
+      title: "حذف صفحة SEO",
+      description: `سيتم حذف صفحة «${page.title}» من مسارات الموقع العامة.`,
+      confirmLabel: "حذف الصفحة",
+    }))) return
     setActionId(page.id)
     try {
       const response = await fetch(`${API_BASE}/api/admin/seo-pages/${page.id}`, {

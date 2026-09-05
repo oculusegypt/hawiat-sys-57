@@ -4,6 +4,8 @@ import type { HeroSlide } from "@workspace/api-client-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { useConfirm } from "@/components/admin/ConfirmDialog"
+import { useToast } from "@/hooks/use-toast"
 import { Plus, Pencil, Trash2, Image, GripVertical, Eye, EyeOff, X, Check } from "lucide-react"
 
 type SlideForm = {
@@ -27,6 +29,8 @@ const emptyForm = (): SlideForm => ({
 })
 
 export default function AdminSlides() {
+  const { confirm } = useConfirm()
+  const { toast } = useToast()
   const { data: slides = [], refetch } = useGetSlides()
   const { mutate: createSlide, isPending: creating } = useCreateSlide()
   const { mutate: updateSlide, isPending: updating } = useUpdateSlide()
@@ -69,7 +73,8 @@ export default function AdminSlides() {
       const token = localStorage.getItem("admin_token") ?? ""
       const body = new FormData()
       body.append("file", file)
-      const response = await fetch("/api/admin/slides/upload", {
+      const API_BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") || ""
+      const response = await fetch(`${API_BASE}/api/admin/slides/upload`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` },
         body,
@@ -78,16 +83,22 @@ export default function AdminSlides() {
       if (!response.ok) throw new Error(result.error || "فشل رفع الصورة")
       setForm(current => ({ ...current, imageUrl: result.url }))
     } catch (error) {
-      window.alert(error instanceof Error ? error.message : "فشل رفع الصورة")
+      toast({
+        variant: "destructive",
+        title: error instanceof Error ? error.message : "فشل رفع الصورة",
+      })
     } finally {
       setUploading(false)
     }
   }
 
-  const handleDelete = (id: number) => {
-    if (confirm("هل أنت متأكد من حذف هذه الشريحة؟")) {
-      deleteSlide({ id }, { onSuccess: () => refetch() })
-    }
+  const handleDelete = async (id: number) => {
+    if (!(await confirm({
+      title: "حذف الشريحة",
+      description: "ستتوقف هذه الشريحة عن الظهور في الصفحة الرئيسية نهائياً.",
+      confirmLabel: "حذف الشريحة",
+    }))) return
+    deleteSlide({ id }, { onSuccess: () => refetch() })
   }
 
   const toggleActive = (slide: HeroSlide) => {

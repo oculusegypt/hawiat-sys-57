@@ -165,6 +165,8 @@ export function ServiceRequestForm() {
 
     submitRequest({ data: payload as any }, {
        onSuccess: (response) => {
+          const trackingToken = (response as { trackingToken?: string } | undefined)?.trackingToken
+          if (trackingToken) sessionStorage.setItem("last_order_tracking_token", trackingToken)
          setSubmittedSummary({
            orderId: response?.id ?? null,
            clientName: values.clientName,

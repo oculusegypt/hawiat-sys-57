@@ -3,6 +3,7 @@ import { useToast } from "@/hooks/use-toast"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { useConfirm } from "@/components/admin/ConfirmDialog"
 import { Plus, Pencil, Trash2, Eye, EyeOff, X, Check, Megaphone, ExternalLink, Upload, Loader2, Link2 } from "lucide-react"
 
 const API_BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") || ""
@@ -37,13 +38,14 @@ const POSITIONS = [
 ]
 const TYPES = [
   { value: "banner", label: "صورة كاملة", desc: "تظهر الصورة كاملة بدون عنوان أو أزرار" },
-  { value: "card",   label: "صورة كاملة", desc: "تظهر الصورة كاملة بدون عنوان أو أزرار" },
+  { value: "card",   label: "بطاقة محتوى", desc: "تظهر داخل بطاقة مع النص وزر الإجراء" },
 ]
 
 const token = () => (typeof window !== "undefined" ? localStorage.getItem("admin_token") : "") || ""
 
 export default function AdminAds() {
   const { toast } = useToast()
+  const { confirm } = useConfirm()
   const [ads, setAds] = useState<Ad[]>([])
   const [loading, setLoading] = useState(true)
   const [editing, setEditing] = useState<number | "new" | null>(null)
@@ -127,7 +129,11 @@ export default function AdminAds() {
   }
 
   const handleDelete = async (id: number) => {
-    if (!confirm("هل أنت متأكد من حذف هذا الإعلان؟")) return
+    if (!(await confirm({
+      title: "حذف الإعلان",
+      description: "سيختفي الإعلان من الموقع، ولا يمكن التراجع عن الحذف.",
+      confirmLabel: "حذف الإعلان",
+    }))) return
     await fetch(`${API_BASE}/api/admin/ads/${id}`, { method: "DELETE", headers: { Authorization: `Bearer ${token()}` } })
     toast({ title: "تم الحذف" }); load()
   }

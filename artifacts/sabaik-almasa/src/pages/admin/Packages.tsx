@@ -6,6 +6,7 @@ import type { Container } from "@workspace/api-client-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { useConfirm } from "@/components/admin/ConfirmDialog"
 import {
   Plus, Pencil, Trash2, Box, Eye, EyeOff, X, Check, Phone,
   Search, AlertTriangle, CheckCircle2, XCircle, Image, Link2,
@@ -365,6 +366,7 @@ function uniqueImageUrls(images: unknown[]): string[] {
 type FormTab = "basic" | "images" | "seo"
 
 export default function AdminPackages() {
+  const { confirm } = useConfirm()
   const { companyName } = useSiteSettings()
   const { data: containers = [], refetch } = useGetContainers()
   const { mutate: createContainer, isPending: creating } = useCreateContainer()
@@ -455,10 +457,13 @@ export default function AdminPackages() {
     }
   }
 
-  const handleDelete = (id: number) => {
-    if (confirm("هل أنت متأكد من حذف هذه الباقة؟")) {
-      deleteContainer({ id }, { onSuccess: () => refetch() })
-    }
+  const handleDelete = async (id: number) => {
+    if (!(await confirm({
+      title: "حذف الباقة",
+      description: "سيتم حذف الباقة من الكتالوج العام مع الاحتفاظ بالبيانات التاريخية المرتبطة بها.",
+      confirmLabel: "حذف الباقة",
+    }))) return
+    deleteContainer({ id }, { onSuccess: () => refetch() })
   }
 
   const toggleActive = (c: Container) => {

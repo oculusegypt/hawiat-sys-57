@@ -396,6 +396,7 @@ function CompletionEvidenceDialog({
   }) => void;
   pending: boolean;
 }) {
+  const { toast } = useToast();
   const MAX_PROOF_SIZE = 8 * 1024 * 1024;
   const ACCEPTED_PROOF_TYPES = new Set([
     "image/jpeg",
@@ -472,9 +473,10 @@ function CompletionEvidenceDialog({
         signatureData,
       });
     } catch (error) {
-      window.alert(
-        error instanceof Error ? error.message : "تعذر رفع صورة الإثبات",
-      );
+      toast({
+        variant: "destructive",
+        title: error instanceof Error ? error.message : "تعذر رفع صورة الإثبات",
+      });
     } finally {
       setUploadingProof(false);
     }

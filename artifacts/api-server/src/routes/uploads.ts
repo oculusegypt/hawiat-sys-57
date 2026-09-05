@@ -4,6 +4,7 @@ import path from "path";
 import fs from "fs";
 import crypto from "crypto";
 import { execFileSync } from "child_process";
+import rateLimit from "express-rate-limit";
 import { requireAdmin, requireDriver, requireSectionPermission } from "../middleware/adminAuth";
 
 const router = Router();
@@ -120,6 +121,13 @@ function safeUploadWith(middleware: ReturnType<typeof createUpload>) {
 }
 const safeUpload = safeUploadWith(upload);
 const safePrivateUpload = safeUploadWith(privateUpload);
+const publicUploadLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  limit: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "تم تجاوز حد رفع المرفقات. حاول بعد قليل." },
+});
 
 function rejectUnsafeFileName(req: Request, res: Response, next: NextFunction): void {
   const originalName = req.file?.originalname ?? "";
@@ -160,9 +168,13 @@ router.post("/driver/uploads", requireAdmin, requireDriver, safePrivateUpload, r
   res.json({ url, filename: req.file.filename, size: req.file.size, contentType: req.file.mimetype });
 });
 
-// Anonymous persistent uploads are disabled to prevent storage abuse.
-router.post("/uploads", (_req: Request, res: Response): void => {
-  res.status(401).json({ error: "رفع المرفقات يتطلب جلسة مصرحاً بها" });
+// Public chat attachments are intentionally limited and validated as images.
+// The message endpoint still controls whether the returned URL can be used
+// inside a real conversation.
+router.post("/uploads", publicUploadLimiter, safeUpload, rejectUnsafeFileName, (req: Request, res: Response): void => {
+  if (!req.file) { res.status(400).json({ error: "لم يُرفَق ملف" }); return; }
+  const url = `/uploads/${req.file.filename}`;
+  res.json({ url, filename: req.file.filename, size: req.file.size, contentType: req.file.mimetype });
 });
 
 router.get("/private-uploads/:filename", (req: Request, res: Response): void => {

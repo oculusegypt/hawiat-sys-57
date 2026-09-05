@@ -14,4 +14,5 @@ export const ServiceRequestStatus = {
   in_progress: 'in_progress',
   completed: 'completed',
   cancelled: 'cancelled',
+  rejected: 'rejected',
 } as const;

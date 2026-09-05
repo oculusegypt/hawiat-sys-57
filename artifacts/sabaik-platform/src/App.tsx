@@ -267,6 +267,11 @@ function DemoModal({ onClose }: { onClose: () => void }) {
         const payload = await response.json().catch(() => null);
         throw new Error(payload?.message || payload?.error || "تعذر إرسال الطلب");
       }
+      const payload = await response.json().catch(() => null) as { id?: number; trackingToken?: string } | null;
+      if (payload?.trackingToken) {
+        sessionStorage.setItem("cleanflow_platform_tracking_token", payload.trackingToken);
+        if (payload.id) sessionStorage.setItem("cleanflow_platform_tracking_id", String(payload.id));
+      }
       setSent(true);
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : "تعذر إرسال الطلب، حاول مرة أخرى");
@@ -516,9 +521,14 @@ function InsightsSection() {
 
 function TrackingSection() {
   const [trackingNumber, setTrackingNumber] = useState("");
+  const [trackingToken, setTrackingToken] = useState("");
   const [tracking, setTracking] = useState<Record<string, string> | null>(null);
   const [trackingError, setTrackingError] = useState("");
   const [loading, setLoading] = useState(false);
+  useEffect(() => {
+    setTrackingToken(sessionStorage.getItem("cleanflow_platform_tracking_token") || "");
+    setTrackingNumber(sessionStorage.getItem("cleanflow_platform_tracking_id") || "");
+  }, []);
   const track = async () => {
     const id = trackingNumber.trim().replace(/^#?CF-/i, "");
     if (!/^\d+$/.test(id)) {
@@ -526,10 +536,19 @@ function TrackingSection() {
       setTrackingError("أدخل رقم طلب صحيح مثل CF-2084");
       return;
     }
+    const token = trackingToken.trim();
+    if (!token) {
+      setTracking(null);
+      setTrackingError("أدخل رمز التحقق الذي ظهر بعد إرسال الطلب");
+      return;
+    }
     setLoading(true);
     setTrackingError("");
     try {
-      const response = await fetch(`${API_BASE}/api/service-requests/${id}`);
+      const response = await fetch(`${API_BASE}/api/service-requests/${id}?token=${encodeURIComponent(token)}`, {
+        credentials: "include",
+        cache: "no-store",
+      });
       const payload = await response.json().catch(() => null);
       if (!response.ok) throw new Error(response.status === 404 ? "لم نعثر على هذا الطلب" : "تعذر جلب حالة الطلب");
       setTracking(payload);
@@ -552,6 +571,7 @@ function TrackingSection() {
         <div className="tracking-card" data-testid="card-order-tracking">
           <div className="tracking-card-head"><span className="mini-logo"><Workflow size={15} /></span><b>تتبع طلبك</b><span className="secure-label"><ShieldCheck size={12} /> آمن</span></div>
            <label>رقم الطلب<input value={trackingNumber} onChange={(event) => setTrackingNumber(event.target.value)} placeholder="مثال: CF-2084" aria-label="رقم الطلب" data-testid="input-tracking-number" /></label>
+           <label>رمز التحقق<input value={trackingToken} onChange={(event) => setTrackingToken(event.target.value)} placeholder="الرمز الذي ظهر بعد الإرسال" aria-label="رمز التحقق" data-testid="input-tracking-token" /></label>
            <button onClick={track} disabled={loading} data-testid="button-track-order">{loading ? "جارٍ البحث..." : "عرض حالة الطلب"} <ArrowLeft size={16} /></button>
            {trackingError && <small className="form-note" role="alert" style={{ display: "block", color: "#b84d3d", marginTop: 10 }}>{trackingError}</small>}
            {tracking && <div className="tracking-result"><div className="result-top"><StatusPill>{tracking.status === "completed" ? "مكتمل" : tracking.status === "in_progress" ? "قيد التنفيذ" : tracking.status === "pending" ? "تم التأكيد" : tracking.status}</StatusPill><b>#{tracking.id}</b></div><p>{tracking.serviceType}{tracking.location ? ` · ${tracking.location}` : ""}</p><div className="progress-track"><span style={{ width: tracking.status === "completed" ? "100%" : tracking.status === "in_progress" ? "66%" : "33%" }} /></div><div className="progress-labels"><span>تم التأكيد</span><span>في الطريق</span><span>قيد التنفيذ</span><span>مكتمل</span></div></div>}

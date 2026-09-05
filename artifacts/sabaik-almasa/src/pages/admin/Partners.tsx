@@ -4,6 +4,7 @@ import type { Partner } from "@workspace/api-client-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { useConfirm } from "@/components/admin/ConfirmDialog"
 import { Plus, Pencil, Trash2, Users, Eye, EyeOff, X, Check, ExternalLink } from "lucide-react"
 
 type PartnerForm = {
@@ -23,6 +24,7 @@ const emptyForm = (): PartnerForm => ({
 })
 
 export default function AdminPartners() {
+  const { confirm } = useConfirm()
   const { data: partners = [], refetch } = useGetPartners()
   const { mutate: createPartner, isPending: creating } = useCreatePartner()
   const { mutate: updatePartner, isPending: updating } = useUpdatePartner()
@@ -56,10 +58,13 @@ export default function AdminPartners() {
     }
   }
 
-  const handleDelete = (id: number) => {
-    if (confirm("هل أنت متأكد من حذف هذا الشريك؟")) {
-      deletePartner({ id }, { onSuccess: () => refetch() })
-    }
+  const handleDelete = async (id: number) => {
+    if (!(await confirm({
+      title: "حذف الشريك",
+      description: "سيتم إزالة الشريك من صفحة الموقع والشعارات المرتبطة به.",
+      confirmLabel: "حذف الشريك",
+    }))) return
+    deletePartner({ id }, { onSuccess: () => refetch() })
   }
 
   const toggleActive = (p: Partner) => {

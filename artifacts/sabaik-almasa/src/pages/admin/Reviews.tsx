@@ -13,6 +13,9 @@ import {
   ThumbsUp,
   AlertTriangle,
 } from "lucide-react"
+import { useConfirm } from "@/components/admin/ConfirmDialog"
+
+const API_BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") || ""
 
 interface Review {
   id: number
@@ -32,6 +35,7 @@ interface Service {
 }
 
 export default function AdminReviews() {
+  const { confirm } = useConfirm()
   const [reviews, setReviews] = useState<Review[]>([])
   const [services, setServices] = useState<Service[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -51,8 +55,8 @@ export default function AdminReviews() {
     try {
       setIsLoading(true)
       const [revRes, svcRes] = await Promise.all([
-        fetch("/api/admin/reviews", { headers: getAuthHeaders() }),
-        fetch("/api/services"),
+        fetch(`${API_BASE}/api/admin/reviews`, { headers: getAuthHeaders() }),
+        fetch(`${API_BASE}/api/services`),
       ])
       if (revRes.ok) {
         const revData = await revRes.json()
@@ -76,7 +80,7 @@ export default function AdminReviews() {
   const handleStatusChange = async (id: number, status: "approved" | "rejected") => {
     try {
       setActionLoading(id)
-      const res = await fetch(`/api/admin/reviews/${id}`, {
+      const res = await fetch(`${API_BASE}/api/admin/reviews/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json", ...getAuthHeaders() },
         body: JSON.stringify({ status }),
@@ -94,10 +98,14 @@ export default function AdminReviews() {
   }
 
   const handleDelete = async (id: number) => {
-    if (!confirm("هل أنت متأكد من حذف هذا التقييم نهائياً؟")) return
+    if (!(await confirm({
+      title: "حذف التقييم",
+      description: "سيُحذف التقييم نهائياً من قائمة المراجعة ومن الصفحة العامة.",
+      confirmLabel: "حذف التقييم",
+    }))) return
     try {
       setActionLoading(id)
-      const res = await fetch(`/api/admin/reviews/${id}`, {
+      const res = await fetch(`${API_BASE}/api/admin/reviews/${id}`, {
         method: "DELETE",
         headers: getAuthHeaders(),
       })
@@ -116,7 +124,7 @@ export default function AdminReviews() {
     if (!editingReview) return
     try {
       setActionLoading(editingReview.id)
-      const res = await fetch(`/api/admin/reviews/${editingReview.id}`, {
+      const res = await fetch(`${API_BASE}/api/admin/reviews/${editingReview.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json", ...getAuthHeaders() },
         body: JSON.stringify({

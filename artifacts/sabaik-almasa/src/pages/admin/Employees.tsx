@@ -26,13 +26,13 @@ const ALL_SECTIONS: { key: string; label: string; group: string }[] = [
   { key: "ads",          label: "الإعلانات",       group: "محتوى" },
   { key: "blog",         label: "المدونة",         group: "محتوى" },
   { key: "services",     label: "الخدمات",         group: "محتوى" },
-  { key: "packages",     label: "حاويات الأنقاض والنفايات", group: "محتوى" },
+  { key: "packages",     label: "الباقات والحاويات", group: "محتوى" },
   { key: "slides",       label: "السلايدر",        group: "محتوى" },
   { key: "testimonials", label: "الشهادات",        group: "محتوى" },
   { key: "partners",     label: "الشركاء",         group: "محتوى" },
   { key: "settings",     label: "إعدادات الموقع",  group: "إعدادات" },
   { key: "seo",          label: "SEO",             group: "إعدادات" },
-  { key: "structured_content", label: "Structured Content", group: "إعدادات" },
+  { key: "structured_content", label: "المحتوى المنظم", group: "إعدادات" },
   { key: "whatsapp",     label: "واتساب",          group: "إعدادات" },
   { key: "employees",    label: "إدارة الموظفين",  group: "إعدادات" },
   { key: "work_orders",  label: "أوامر العمل",     group: "التشغيل" },
@@ -177,7 +177,9 @@ function PermissionGroups({ perms, onChange }: {
   return (
     <div className="space-y-2">
       {groups.map(group => {
-        const groupSections = ALL_SECTIONS.filter(s => s.group === group)
+      const groupSections = ALL_SECTIONS.filter(s => s.group === group)
+        .map(s => ({ ...s, group: s.group === "سيستم الحاويات" ? "تشغيل الحاويات" : s.group }))
+      const displayGroup = group === "سيستم الحاويات" ? "تشغيل الحاويات" : group
         const allOn = groupSections.every(s => perms.includes(s.key))
         const someOn = groupSections.some(s => perms.includes(s.key))
         const isOpen = openGroups[group]
@@ -193,7 +195,7 @@ function PermissionGroups({ perms, onChange }: {
                   }`}>
                   {allOn && <CheckCircle size={12} className="text-white" />}
                 </button>
-                <span className="text-sm font-bold text-gray-800">{group}</span>
+                <span className="text-sm font-bold text-gray-800">{displayGroup}</span>
                 <span className="text-xs text-gray-400">
                   ({groupSections.filter(s => perms.includes(s.key)).length}/{groupSections.length})
                 </span>

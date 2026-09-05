@@ -9,6 +9,7 @@ export const serviceRequestsTable = sqliteTable("service_requests", {
   email: text("email"),
   serviceType: text("service_type").notNull(),
   containerSize: text("container_size"),
+  containerCount: integer("container_count").notNull().default(1),
   propertyType: text("property_type"), // villa | apartment | office | building
   areaSize: text("area_size"), // size in sqm or rooms
   location: text("location").notNull(),

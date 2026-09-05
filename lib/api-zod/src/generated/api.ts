@@ -559,6 +559,9 @@ export const GetServiceRequestsQueryParams = zod.object({
   "status": zod.enum(['pending', 'in_progress', 'completed', 'cancelled']).optional()
 })
 
+
+
+
 export const GetServiceRequestsResponseItem = zod.object({
   "id": zod.number(),
   "clientName": zod.string(),
@@ -571,7 +574,9 @@ export const GetServiceRequestsResponseItem = zod.object({
   "notes": zod.string().nullish(),
   "appointmentType": zod.string().nullish(),
   "scheduledAt": zod.string().nullish(),
-  "status": zod.enum(['pending', 'in_progress', 'completed', 'cancelled']),
+  "status": zod.enum(['pending', 'in_progress', 'completed', 'cancelled', 'rejected']),
+  "trackingToken": zod.string().optional(),
+  "containerCount": zod.number().min(1).optional(),
   "adminNotes": zod.string().nullish(),
   "assignedDriverId": zod.number().nullish(),
   "assignedDriverName": zod.string().nullish(),
@@ -608,6 +613,8 @@ export const GetServiceRequestsResponse = zod.array(GetServiceRequestsResponseIt
 /**
  * @summary Submit a new service request (public)
  */
+export const submitServiceRequestBodyContainerCountDefault = 1;
+
 export const submitServiceRequestBodyTrackingSessionIdMax = 160;
 
 export const submitServiceRequestBodyTrackingReferrerMax = 1000;
@@ -630,6 +637,7 @@ export const SubmitServiceRequestBody = zod.object({
   "email": zod.string().nullish(),
   "serviceType": zod.string(),
   "containerSize": zod.string().nullish(),
+  "containerCount": zod.number().min(1).default(submitServiceRequestBodyContainerCountDefault),
   "location": zod.string(),
   "duration": zod.string().nullish(),
   "notes": zod.string().nullish(),
@@ -648,6 +656,9 @@ export const SubmitServiceRequestBody = zod.object({
 }).optional()
 })
 
+
+
+
 export const SubmitServiceRequestResponse = zod.object({
   "id": zod.number(),
   "clientName": zod.string(),
@@ -660,7 +671,9 @@ export const SubmitServiceRequestResponse = zod.object({
   "notes": zod.string().nullish(),
   "appointmentType": zod.string().nullish(),
   "scheduledAt": zod.string().nullish(),
-  "status": zod.enum(['pending', 'in_progress', 'completed', 'cancelled']),
+  "status": zod.enum(['pending', 'in_progress', 'completed', 'cancelled', 'rejected']),
+  "trackingToken": zod.string().optional(),
+  "containerCount": zod.number().min(1).optional(),
   "adminNotes": zod.string().nullish(),
   "assignedDriverId": zod.number().nullish(),
   "assignedDriverName": zod.string().nullish(),
@@ -697,6 +710,9 @@ export const GetServiceRequestParams = zod.object({
   "id": zod.coerce.number()
 })
 
+
+
+
 export const GetServiceRequestResponse = zod.object({
   "id": zod.number(),
   "clientName": zod.string(),
@@ -709,7 +725,9 @@ export const GetServiceRequestResponse = zod.object({
   "notes": zod.string().nullish(),
   "appointmentType": zod.string().nullish(),
   "scheduledAt": zod.string().nullish(),
-  "status": zod.enum(['pending', 'in_progress', 'completed', 'cancelled']),
+  "status": zod.enum(['pending', 'in_progress', 'completed', 'cancelled', 'rejected']),
+  "trackingToken": zod.string().optional(),
+  "containerCount": zod.number().min(1).optional(),
   "adminNotes": zod.string().nullish(),
   "assignedDriverId": zod.number().nullish(),
   "assignedDriverName": zod.string().nullish(),
@@ -746,20 +764,30 @@ export const UpdateServiceRequestParams = zod.object({
   "id": zod.coerce.number()
 })
 
+
+
+
 export const UpdateServiceRequestBody = zod.object({
   "clientName": zod.string().optional(),
   "phone": zod.string().optional(),
   "email": zod.string().nullish(),
   "serviceType": zod.string().optional(),
   "containerSize": zod.string().nullish(),
+  "containerCount": zod.number().min(1).optional(),
   "location": zod.string().optional(),
   "duration": zod.string().nullish(),
   "notes": zod.string().nullish(),
   "appointmentType": zod.enum(['immediate', 'scheduled']).optional(),
   "scheduledAt": zod.string().nullish(),
   "status": zod.enum(['pending', 'in_progress', 'completed', 'cancelled']).optional(),
-  "adminNotes": zod.string().nullish()
+  "adminNotes": zod.string().nullish(),
+  "customerRecordId": zod.number().nullish(),
+  "containerRecordId": zod.number().nullish(),
+  "contractRecordId": zod.number().nullish()
 })
+
+
+
 
 export const UpdateServiceRequestResponse = zod.object({
   "id": zod.number(),
@@ -773,7 +801,9 @@ export const UpdateServiceRequestResponse = zod.object({
   "notes": zod.string().nullish(),
   "appointmentType": zod.string().nullish(),
   "scheduledAt": zod.string().nullish(),
-  "status": zod.enum(['pending', 'in_progress', 'completed', 'cancelled']),
+  "status": zod.enum(['pending', 'in_progress', 'completed', 'cancelled', 'rejected']),
+  "trackingToken": zod.string().optional(),
+  "containerCount": zod.number().min(1).optional(),
   "adminNotes": zod.string().nullish(),
   "assignedDriverId": zod.number().nullish(),
   "assignedDriverName": zod.string().nullish(),
@@ -826,6 +856,9 @@ export const AssignServiceRequestBody = zod.object({
   "adminNotes": zod.string().nullish()
 })
 
+
+
+
 export const AssignServiceRequestResponse = zod.object({
   "id": zod.number(),
   "clientName": zod.string(),
@@ -838,7 +871,9 @@ export const AssignServiceRequestResponse = zod.object({
   "notes": zod.string().nullish(),
   "appointmentType": zod.string().nullish(),
   "scheduledAt": zod.string().nullish(),
-  "status": zod.enum(['pending', 'in_progress', 'completed', 'cancelled']),
+  "status": zod.enum(['pending', 'in_progress', 'completed', 'cancelled', 'rejected']),
+  "trackingToken": zod.string().optional(),
+  "containerCount": zod.number().min(1).optional(),
   "adminNotes": zod.string().nullish(),
   "assignedDriverId": zod.number().nullish(),
   "assignedDriverName": zod.string().nullish(),
@@ -878,6 +913,9 @@ export const GetDriverWorkOrdersQueryParams = zod.object({
   "status": zod.enum(['assigned', 'accepted', 'rejected', 'started', 'en_route', 'arrived', 'completed']).optional()
 })
 
+
+
+
 export const GetDriverWorkOrdersResponseItem = zod.object({
   "id": zod.number(),
   "clientName": zod.string(),
@@ -890,7 +928,9 @@ export const GetDriverWorkOrdersResponseItem = zod.object({
   "notes": zod.string().nullish(),
   "appointmentType": zod.string().nullish(),
   "scheduledAt": zod.string().nullish(),
-  "status": zod.enum(['pending', 'in_progress', 'completed', 'cancelled']),
+  "status": zod.enum(['pending', 'in_progress', 'completed', 'cancelled', 'rejected']),
+  "trackingToken": zod.string().optional(),
+  "containerCount": zod.number().min(1).optional(),
   "adminNotes": zod.string().nullish(),
   "assignedDriverId": zod.number().nullish(),
   "assignedDriverName": zod.string().nullish(),
@@ -947,6 +987,9 @@ export const UpdateDriverWorkOrderBody = zod.object({
   "receiverName": zod.string().nullish()
 })
 
+
+
+
 export const UpdateDriverWorkOrderResponse = zod.object({
   "id": zod.number(),
   "clientName": zod.string(),
@@ -959,7 +1002,9 @@ export const UpdateDriverWorkOrderResponse = zod.object({
   "notes": zod.string().nullish(),
   "appointmentType": zod.string().nullish(),
   "scheduledAt": zod.string().nullish(),
-  "status": zod.enum(['pending', 'in_progress', 'completed', 'cancelled']),
+  "status": zod.enum(['pending', 'in_progress', 'completed', 'cancelled', 'rejected']),
+  "trackingToken": zod.string().optional(),
+  "containerCount": zod.number().min(1).optional(),
   "adminNotes": zod.string().nullish(),
   "assignedDriverId": zod.number().nullish(),
   "assignedDriverName": zod.string().nullish(),
@@ -995,6 +1040,9 @@ export const UpdateDriverWorkOrderResponse = zod.object({
 /**
  * @summary List current work orders for managers
  */
+
+
+
 export const GetAdminWorkOrdersResponseItem = zod.object({
   "id": zod.number(),
   "clientName": zod.string(),
@@ -1007,7 +1055,9 @@ export const GetAdminWorkOrdersResponseItem = zod.object({
   "notes": zod.string().nullish(),
   "appointmentType": zod.string().nullish(),
   "scheduledAt": zod.string().nullish(),
-  "status": zod.enum(['pending', 'in_progress', 'completed', 'cancelled']),
+  "status": zod.enum(['pending', 'in_progress', 'completed', 'cancelled', 'rejected']),
+  "trackingToken": zod.string().optional(),
+  "containerCount": zod.number().min(1).optional(),
   "adminNotes": zod.string().nullish(),
   "assignedDriverId": zod.number().nullish(),
   "assignedDriverName": zod.string().nullish(),
@@ -1044,6 +1094,9 @@ export const GetAdminWorkOrdersResponse = zod.array(GetAdminWorkOrdersResponseIt
 /**
  * @summary Dashboard summary statistics
  */
+
+
+
 export const GetAdminStatsResponse = zod.object({
   "totalRequests": zod.number(),
   "pendingRequests": zod.number(),
@@ -1085,7 +1138,9 @@ export const GetAdminStatsResponse = zod.object({
   "notes": zod.string().nullish(),
   "appointmentType": zod.string().nullish(),
   "scheduledAt": zod.string().nullish(),
-  "status": zod.enum(['pending', 'in_progress', 'completed', 'cancelled']),
+  "status": zod.enum(['pending', 'in_progress', 'completed', 'cancelled', 'rejected']),
+  "trackingToken": zod.string().optional(),
+  "containerCount": zod.number().min(1).optional(),
   "adminNotes": zod.string().nullish(),
   "assignedDriverId": zod.number().nullish(),
   "assignedDriverName": zod.string().nullish(),

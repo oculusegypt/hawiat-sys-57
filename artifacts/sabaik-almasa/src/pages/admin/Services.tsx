@@ -6,6 +6,7 @@ import type { Service } from "@workspace/api-client-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { useConfirm } from "@/components/admin/ConfirmDialog"
 import {
   Plus, Pencil, Trash2, Settings, Eye, EyeOff, X, Check,
   Search, AlertTriangle, CheckCircle2, XCircle, Image, Link2,
@@ -364,6 +365,7 @@ function parseImages(raw: any, fallback?: string | null): string[] {
 type FormTab = "basic" | "images" | "seo"
 
 export default function AdminServices() {
+  const { confirm } = useConfirm()
   const { companyName } = useSiteSettings()
   const { data: services = [], refetch } = useGetServices()
   const { mutate: createService, isPending: creating } = useCreateService()
@@ -435,9 +437,13 @@ export default function AdminServices() {
     }
   }
 
-  const handleDelete = (id: number) => {
-    if (confirm("هل أنت متأكد من حذف هذه الخدمة؟"))
-      deleteService({ id }, { onSuccess: () => refetch() })
+  const handleDelete = async (id: number) => {
+    if (!(await confirm({
+      title: "حذف الخدمة",
+      description: "سيتم إزالة الخدمة من قائمة الخدمات والروابط العامة.",
+      confirmLabel: "حذف الخدمة",
+    }))) return
+    deleteService({ id }, { onSuccess: () => refetch() })
   }
 
   const toggleActive = (svc: Service) =>

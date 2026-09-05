@@ -25,6 +25,8 @@ interface ServiceReviewsSectionProps {
   serviceTitle: string
 }
 
+const API_BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") || ""
+
 export function ServiceReviewsSection({ serviceId, serviceTitle }: ServiceReviewsSectionProps) {
   const [data, setData] = useState<ReviewsData | null>(null)
   const [isLoading, setIsLoading] = useState(true)
@@ -41,7 +43,7 @@ export function ServiceReviewsSection({ serviceId, serviceTitle }: ServiceReview
   const fetchReviews = async () => {
     try {
       setIsLoading(true)
-      const res = await fetch(`/api/services/${serviceId}/reviews`)
+      const res = await fetch(`${API_BASE}/api/services/${serviceId}/reviews`)
       if (res.ok) {
         const json = await res.json()
         setData(json)
@@ -73,7 +75,7 @@ export function ServiceReviewsSection({ serviceId, serviceTitle }: ServiceReview
     try {
       setIsSubmitting(true)
       setSubmitMessage(null)
-      const res = await fetch(`/api/services/${serviceId}/reviews`, {
+      const res = await fetch(`${API_BASE}/api/services/${serviceId}/reviews`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

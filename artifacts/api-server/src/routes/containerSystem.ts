@@ -3,6 +3,7 @@ import { and, desc, eq, like, ne, or } from "drizzle-orm";
 import { db, sqlite, containerSystemAuditTable, containerSystemRecordsTable, serviceRequestsTable, financialTruth, financialPeriods, closeFinancialPeriod, postToFinancialCore, reverseInFinancialCore } from "@workspace/db";
 import type { AdminRequest } from "../middleware/adminAuth";
 import { getSetting } from "./settings";
+import { refreshPrivateUploadUrl } from "../lib/privateUploadUrl";
 
 const router = Router();
 const supportedKinds = [
@@ -103,7 +104,10 @@ async function findByOperationKey(kind: string, operationKey: string) {
 }
 
 function formatRecord(row: typeof containerSystemRecordsTable.$inferSelect) {
-  return { ...row, payload: parsePayload(row.payload) };
+  const payload = parsePayload(row.payload);
+  if (payload.driverProofPhotoUrl) payload.driverProofPhotoUrl = refreshPrivateUploadUrl(payload.driverProofPhotoUrl);
+  if (payload.proofPhotoUrl) payload.proofPhotoUrl = refreshPrivateUploadUrl(payload.proofPhotoUrl);
+  return { ...row, payload };
 }
 
 function canManage(req: AdminRequest, kind: string): boolean {
@@ -1589,6 +1593,8 @@ router.post("/admin/container-system/contracts/:id/lifecycle", requireContainerP
         status: "posted",
         reference: `MOV-C${contractId}-${action.toUpperCase()}`,
         payload: JSON.stringify({
+          operationKey: `contract-lifecycle-${contractId}-${action}`,
+          movementKey: `contract-lifecycle-${contractId}-${action}`,
           contractRecordId: contractId,
           contractNumber: contractPayload.contractNumber ?? contract.reference,
           containerRecordId: asset.id,
@@ -1597,6 +1603,7 @@ router.post("/admin/container-system/contracts/:id/lifecycle", requireContainerP
           movementDate: now,
           location,
           source: "contract_lifecycle",
+          operationalOnly: false,
         }),
         createdBy: adminReq.adminId,
       }).returning().get();

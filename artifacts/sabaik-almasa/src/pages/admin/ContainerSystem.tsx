@@ -29,7 +29,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { useToast } from "@/hooks/use-toast"
-import { getContainerVisualStatus } from "@/lib/containerStatusVisuals"
+import { useConfirm } from "@/components/admin/ConfirmDialog"
+import { getContainerOperationalStatus, getContainerVisualStatus } from "@/lib/containerStatusVisuals"
 import { ContainerStatusImage } from "@/components/admin/ContainerStatusImage"
 import {
   FIELD_CONFIG, KIND_ICONS, KIND_LABELS, RecordDialog, RecordKind, RecordStatus, amountOf, formatAuditAction, formatRecordDate, formatStatus,
@@ -299,7 +300,7 @@ function ContainerAvailabilityBoard({
     ["container", "container_asset"].includes(record.kind) && record.status !== "archived",
   )
   const classify = (record: ContainerSystemRecord) => {
-    return getContainerVisualStatus(record.payload.status ?? record.status)
+    return getContainerVisualStatus(getContainerOperationalStatus(record.status, record.payload))
   }
   const labels = {
     available: { label: "متاحة", tone: "border-emerald-200 bg-emerald-50 text-emerald-800", dot: "bg-emerald-500" },
@@ -352,7 +353,7 @@ function ContainerAvailabilityBoard({
                   <div className={`rounded-2xl border p-3 transition group-hover:-translate-y-0.5 group-hover:shadow-md ${state.tone}`}>
                     <div className="relative flex min-h-40 items-center justify-center rounded-xl bg-white/35 px-1">
                       <ContainerStatusImage
-                        status={record.payload.status ?? record.status}
+                        status={getContainerOperationalStatus(record.status, record.payload)}
                         code={code}
                         className="aspect-[2/1] w-full"
                       />
@@ -445,7 +446,7 @@ function RecordRow({ record, kind, records, serviceRequests = [], onDetails, onE
          {["container", "container_asset"].includes(record.kind) ? (
            <div className="flex items-center gap-3">
              <ContainerStatusImage
-               status={record.payload.status ?? record.status}
+                status={getContainerOperationalStatus(record.status, record.payload)}
                code={primary}
                className="h-12 w-24 shrink-0"
              />
@@ -648,7 +649,7 @@ function ContainerPOS({ records, onDetails, onEdit, onDelete, onAdd }: { records
             const nextEmptying = String(payload.emptyingDate ?? payload.nextEmptyingDate ?? payload.endDate ?? "")
             return <div key={record.id} className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md" data-testid={`pos-container-${record.id}`}>
               <div className="relative flex aspect-[2/1] items-center justify-center overflow-hidden bg-slate-950/5">
-                <ContainerStatusImage status={record.payload.status ?? record.status} code={code} className="h-full w-full object-contain" numberClassName="top-[45.5%]" />
+               <ContainerStatusImage status={getContainerOperationalStatus(record.status, record.payload)} code={code} className="h-full w-full object-contain" numberClassName="top-[45.5%]" />
                 <div className="absolute right-3 top-3"><RecordStatus status={record.status} /></div>
               </div>
               <div className="space-y-3 p-4"><div><p className="font-black text-slate-900">{String(payload.typeName ?? payload.containerType ?? "حاوية تشغيلية")}</p><p className="mt-1 text-xs text-slate-500">{String(payload.size ?? payload.capacity ?? "الحجم غير محدد")}</p></div><div className="grid grid-cols-2 gap-2 text-xs"><div className="rounded-xl bg-slate-50 p-2"><span className="block text-[10px] text-slate-400">الموقع</span><span className="mt-1 block truncate font-bold text-slate-700">{location}</span></div><div className="rounded-xl bg-slate-50 p-2"><span className="block text-[10px] text-slate-400">العميل / التفريغ</span><span className="mt-1 block truncate font-bold text-slate-700">{nextEmptying || customer}</span></div></div><div className="flex gap-2"><Button variant="outline" size="sm" onClick={() => onDetails(record)} className="flex-1 gap-1 text-xs text-cyan-800"><FileText size={14} /> التفاصيل</Button><Button variant="outline" size="sm" onClick={() => onEdit(record)} className="gap-1 text-xs"><FilePenLine size={14} /> تعديل</Button><Button variant="ghost" size="icon" onClick={() => onDelete(record)} className="h-9 w-9 shrink-0 text-rose-500 hover:bg-rose-50 hover:text-rose-700" title="حذف الحاوية" aria-label="حذف الحاوية" data-testid={`button-delete-container-${record.id}`}><Trash2 size={15} /></Button></div></div>
@@ -887,7 +888,7 @@ function RecordDetails({ record, allRecords, serviceRequests = [], open, onOpenC
   const entries = Object.entries(detailPayload).filter(([key]) => key !== "status" || !isContainer).filter(([, value]) => value !== "" && value !== null && value !== undefined)
   const containerPayload = record.payload as Record<string, unknown>
   const containerCode = String(containerPayload.assetCode ?? containerPayload.code ?? record.reference ?? `#${record.id}`)
-  const containerStatus = String(containerPayload.status ?? record.status)
+  const containerStatus = getContainerOperationalStatus(record.status, containerPayload)
   const relatedContainerRecords = isContainer
     ? allRecords.filter(item => {
         const payload = item.payload as Record<string, unknown>
@@ -1168,7 +1169,7 @@ function ContainerSearchPanel({ records, loading, onDetails, onEdit, onDelete }:
                   <span className="truncate text-slate-500" dir="ltr">{String(payload.customerPhone ?? payload.phone ?? "—")}</span>
                   <span className="text-slate-500">{String(payload.startDate ?? payload.rentalStartDate ?? "—")}</span>
                   <span className="text-slate-500">{String(payload.endDate ?? payload.rentalEndDate ?? "—")}</span>
-                  <div className="flex items-center gap-1.5"><RecordStatus status={String(payload.status ?? record.status)} />{record.kind !== "container_movement" && <Button type="button" variant="ghost" size="icon" onClick={() => onEdit(record)} className="h-8 w-8 text-slate-400 hover:bg-cyan-50 hover:text-cyan-800" title="تعديل السجل"><FilePenLine size={14} /></Button>}{["container", "container_asset"].includes(record.kind) && <Button type="button" variant="ghost" size="icon" onClick={() => onDelete(record)} className="h-8 w-8 text-rose-400 hover:bg-rose-50 hover:text-rose-700" title="حذف الحاوية" aria-label="حذف الحاوية" data-testid={`button-delete-search-container-${record.id}`}><Trash2 size={14} /></Button>}</div>
+                  <div className="flex items-center gap-1.5"><RecordStatus status={["container", "container_asset"].includes(record.kind) ? getContainerOperationalStatus(record.status, record.payload) : String(payload.status ?? record.status)} />{record.kind !== "container_movement" && <Button type="button" variant="ghost" size="icon" onClick={() => onEdit(record)} className="h-8 w-8 text-slate-400 hover:bg-cyan-50 hover:text-cyan-800" title="تعديل السجل"><FilePenLine size={14} /></Button>}{["container", "container_asset"].includes(record.kind) && <Button type="button" variant="ghost" size="icon" onClick={() => onDelete(record)} className="h-8 w-8 text-rose-400 hover:bg-rose-50 hover:text-rose-700" title="حذف الحاوية" aria-label="حذف الحاوية" data-testid={`button-delete-search-container-${record.id}`}><Trash2 size={14} /></Button>}</div>
                 </div>
               })}
             </div>
@@ -1180,6 +1181,7 @@ function ContainerSearchPanel({ records, loading, onDetails, onEdit, onDelete }:
 }
 
 export default function ContainerSystem() {
+  const { confirm } = useConfirm()
   const queryClient = useQueryClient()
   const { toast } = useToast()
   const [location, navigate] = useLocation()
@@ -1268,15 +1270,24 @@ export default function ContainerSystem() {
     setDialog({ open: true, kind, record: null })
   }
   const openEdit = (record: ContainerSystemRecord) => setDialog({ open: true, kind: (record.kind as RecordKind) || "customer", record })
-  const archiveRecord = (record: ContainerSystemRecord) => {
-    if (!window.confirm(`هل تريد أرشفة السجل ${record.reference || `#${record.id}`}؟`)) return
+  const archiveRecord = async (record: ContainerSystemRecord) => {
+    if (!(await confirm({
+      title: "أرشفة السجل",
+      description: `سيتم إخفاء السجل ${record.reference || `#${record.id}`} من القوائم النشطة مع الاحتفاظ بتاريخه.`,
+      confirmLabel: "أرشفة السجل",
+      destructive: false,
+    }))) return
     archiveMutation.mutate({ id: record.id }, { onSuccess: () => { invalidate(); showSuccess("تمت أرشفة السجل") }, onError: () => toast({ title: "تعذر أرشفة السجل", variant: "destructive" }) })
   }
-  const deleteContainerRecord = (record: ContainerSystemRecord) => {
+  const deleteContainerRecord = async (record: ContainerSystemRecord) => {
     if (!["container", "container_asset"].includes(record.kind)) return
     const payload = record.payload as Record<string, unknown>
     const code = String(payload.assetCode ?? payload.containerCode ?? payload.code ?? record.reference ?? `#${record.id}`)
-    if (!window.confirm(`هل تريد حذف الحاوية ${code}؟ سيتم إخفاؤها من الأصول ونتائج البحث مع الاحتفاظ بالعقود والحركات المرتبطة بها.`)) return
+    if (!(await confirm({
+      title: `حذف الحاوية ${code}`,
+      description: "سيتم إخفاؤها من الأصول ونتائج البحث مع الاحتفاظ بالعقود والحركات المرتبطة بها.",
+      confirmLabel: "حذف الحاوية",
+    }))) return
     archiveMutation.mutate({ id: record.id }, {
       onSuccess: () => {
         invalidate()

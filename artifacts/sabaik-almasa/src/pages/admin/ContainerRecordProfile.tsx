@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { amountOf, FIELD_CONFIG, formatRecordDate, formatStatus, KIND_LABELS, RecordDialog, RecordStatus, RecordKind } from "./ContainerSystemComponents"
 import { ContainerStatusImage } from "@/components/admin/ContainerStatusImage"
+import { getContainerOperationalStatus } from "@/lib/containerStatusVisuals"
 import { ContractWizard } from "./ContractWizard"
 import { useToast } from "@/hooks/use-toast"
 
@@ -84,13 +85,20 @@ const siteAddress = (site: ContainerSystemRecord) => {
 }
 
 async function createProfileWorkOrder(input: Record<string, unknown>) {
+  const operationKey = String(input.operationKey ?? "").trim()
   const response = await fetch(`${API_BASE}/api/admin/service-requests/from-contract`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("admin_token") ?? ""}` },
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${localStorage.getItem("admin_token") ?? ""}`,
+      ...(operationKey ? { "Idempotency-Key": operationKey } : {}),
+    },
+    credentials: "include",
     body: JSON.stringify({ ...input, appointmentType: "scheduled", scheduledAt: `${new Date().toISOString().slice(0, 10)}T09:00:00` }),
   })
   const body = await response.json().catch(() => ({}))
   if (!response.ok) throw new Error(String(body.error ?? "تعذر إنشاء أمر العمل"))
+  return body as { idempotent?: boolean }
 }
 
 function OperationalQuickActions({ customerId, customerName, phone, email, location, contracts, containers, onRefresh }: {
@@ -111,14 +119,16 @@ function OperationalQuickActions({ customerId, customerName, phone, email, locat
     if (!contract || !container || !customerId) return
     setBusy(kind)
     try {
-      await createProfileWorkOrder({
+      const operationKey = `container-operation-${contract.id}-${container.id}-${kind}-${kind === "empty" ? new Date().toISOString().slice(0, 10) : "active"}`
+      const result = await createProfileWorkOrder({
         customerRecordId: customerId, containerRecordId: container.id, contractRecordId: contract.id,
         clientName: customerName, phone, email,
         serviceType: kind === "pickup" ? "استرجاع وسحب حاوية" : "أمر تفريغ حاوية",
         containerSize: text(ap.assetCode ?? ap.containerCode ?? container.reference),
         location, notes: kind === "pickup" ? "طلب استرجاع الحاوية من ملف العميل" : "طلب تفريغ الحاوية من ملف العميل",
+        operationKey,
       })
-      toast({ title: "تم إنشاء أمر العمل وربطه بالعقد" })
+       toast({ title: result.idempotent ? "الحركة موجودة مسبقًا ولم يتم تكرارها" : "تم إنشاء أمر العمل وربطه بالعقد" })
       onRefresh()
     } catch (error) {
       toast({
@@ -146,6 +156,31 @@ function FieldGrid({ record }: { record: ContainerSystemRecord }) {
 function RelatedRows({ title, records, empty = "لا توجد سجلات مرتبطة", headerAction }: { title: string; records: ContainerSystemRecord[]; empty?: string; headerAction?: ReactNode }) {
   const embeddedAction = (records as ContainerSystemRecord[] & { headerAction?: ReactNode }).headerAction
   return <Card className="border-slate-200/80 shadow-sm"><CardHeader className="border-b border-slate-100 px-5 py-4"><div className="flex flex-wrap items-center justify-between gap-3"><CardTitle className="text-base">{title}</CardTitle>{headerAction ?? embeddedAction}</div></CardHeader><CardContent className="p-0">{records.length === 0 ? <p className="p-8 text-center text-sm text-slate-500">{empty}</p> : records.map(record => <div key={record.id} className="flex items-center gap-3 border-b border-slate-100 px-5 py-3.5 last:border-0"><div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-cyan-50 text-cyan-800"><FileText size={16} /></div><div className="min-w-0 flex-1"><p className="truncate text-sm font-black text-slate-800">{text(record.payload.name ?? record.payload.customerName ?? record.payload.contractNumber ?? record.payload.assetCode ?? record.reference, `سجل ${record.id}`)}</p><p className="mt-1 text-[11px] text-slate-400">{KIND_LABELS[record.kind as RecordKind] ?? record.kind} · {formatRecordDate(record.createdAt)}</p></div><RecordStatus status={record.status} /><span className="text-xs font-black text-slate-700">{amountOf(record) ? money(amountOf(record)) : ""}</span></div>)}</CardContent></Card>
+}
+
+function CompletionEvidence({ items }: {
+  items: Array<{ id: string | number; label: string; url?: string | null; receiver?: string | null; date?: string | null }>
+}) {
+  const evidence = items.filter(item => Boolean(item.url))
+  if (evidence.length === 0) return null
+  return <Card className="border-emerald-200 bg-emerald-50/40 shadow-sm">
+    <CardHeader className="border-b border-emerald-100 px-5 py-4">
+      <CardTitle className="flex items-center gap-2 text-base text-emerald-950"><CheckCircle2 size={17} className="text-emerald-600" /> إثباتات التنفيذ المحفوظة</CardTitle>
+    </CardHeader>
+    <CardContent className="grid gap-4 p-5 md:grid-cols-2">
+      {evidence.map(item => <div key={item.id} className="overflow-hidden rounded-2xl border border-emerald-200 bg-white">
+        <div className="flex items-start justify-between gap-3 border-b border-emerald-100 bg-emerald-50/70 px-3 py-2.5">
+          <div className="min-w-0">
+            <p className="truncate text-xs font-black text-emerald-950">{item.label}</p>
+            {item.receiver && <p className="mt-1 text-[11px] text-emerald-800">المستلم: {item.receiver}</p>}
+            {item.date && <p className="mt-1 text-[10px] text-emerald-700/70">{formatRecordDate(item.date)}</p>}
+          </div>
+          <a href={item.url ?? "#"} target="_blank" rel="noopener noreferrer" className="shrink-0 text-xs font-black text-emerald-700 hover:underline">فتح الصورة</a>
+        </div>
+        <img src={item.url ?? ""} alt={`صورة إثبات ${item.label}`} className="h-48 w-full bg-white object-contain" loading="lazy" />
+      </div>)}
+    </CardContent>
+  </Card>
 }
 
 function InvoiceRows({ invoices, payments }: { invoices: ContainerSystemRecord[]; payments: ContainerSystemRecord[] }) {
@@ -228,6 +263,51 @@ function CustomerProfile({ record, records }: { record: ContainerSystemRecord; r
     const linked = item as typeof item & { customerRecordId?: number | null; contractRecordId?: number | null }
     return linked.customerRecordId === record.id || (linked.contractRecordId != null && contractIds.has(linked.contractRecordId))
   })
+  const operationalWorkOrders = related.filter(item => item.kind === "work_order")
+  const completionEvidence = [
+    ...workOrders.map(item => ({
+      id: `request-${item.id}`,
+      label: `الطلب #${item.id} · ${item.serviceType}`,
+      url: item.driverProofPhotoUrl,
+      receiver: item.driverReceiverName,
+      date: item.driverCompletedAt ?? item.updatedAt,
+    })),
+    ...operationalWorkOrders.map(item => {
+      const payload = payloadOf(item)
+      return {
+        id: `work-order-${item.id}`,
+        label: `${text(payload.workOrderNumber ?? item.reference, `أمر العمل #${item.id}`)} · ${text(payload.serviceType ?? payload.operationType, "حركة تشغيلية")}`,
+        url: text(payload.driverProofPhotoUrl, ""),
+        receiver: text(payload.driverReceiverName, ""),
+        date: text(payload.driverCompletedAt ?? item.updatedAt, ""),
+      }
+    }),
+    ...related.filter(item => item.kind === "container_movement").map(item => {
+      const payload = payloadOf(item)
+      return {
+        id: `movement-${item.id}`,
+        label: `${text(payload.movementType, "حركة حاوية")} · ${text(payload.workOrderId, `سجل الحركة #${item.id}`)}`,
+        url: text(payload.proofPhotoUrl ?? payload.driverProofPhotoUrl, ""),
+        receiver: text(payload.receiverName ?? payload.driverReceiverName, ""),
+        date: text(payload.movementDate ?? item.updatedAt, ""),
+      }
+    }),
+  ]
+  const workOrderViewRecords: ContainerSystemRecord[] = [
+    ...workOrders.map(item => ({
+      id: item.id,
+      kind: "appointment",
+      status: item.driverStatus ?? "pending",
+      reference: `WO-${item.id}`,
+      payload: { name: item.serviceType, customerName: item.clientName, scheduledAt: item.scheduledAt ?? "", driverStatus: item.driverStatus ?? "unassigned", driverProofPhotoUrl: item.driverProofPhotoUrl ?? "" },
+      createdAt: item.createdAt,
+      updatedAt: item.updatedAt ?? item.createdAt,
+    })),
+    ...operationalWorkOrders.map(item => ({
+      ...item,
+      kind: "work_order",
+    })),
+  ]
   const upcomingAppointments = appointments.filter(item => String(payloadOf(item).appointmentDate ?? "") >= new Date().toISOString().slice(0, 10))
   const refreshProfile = () => {
     void queryClient.invalidateQueries({ queryKey: getGetContainerSystemQueryKey() })
@@ -408,6 +488,7 @@ function CustomerProfile({ record, records }: { record: ContainerSystemRecord; r
       containers={containers}
       onRefresh={refreshProfile}
     />
+    <CompletionEvidence items={completionEvidence} />
     <RecordDialog
       open={action === "site" || action === "payment"}
       kind={action === "payment" ? "payment" : "customer_site"}
@@ -433,7 +514,7 @@ function CustomerProfile({ record, records }: { record: ContainerSystemRecord; r
     <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4"><Stat label="إجمالي المطالبات" value={money(charges)} /><Stat label="المدفوع" value={money(paid)} tone="text-emerald-700" /><Stat label="الرصيد المستحق" value={money(Math.max(charges - paid, 0))} tone="text-rose-700" /><Stat label="أوامر العمل" value={workOrders.length} tone="text-amber-700" /></div>
     <InvoiceRows invoices={related.filter(item => item.kind === "invoice" && item.status !== "archived")} payments={related.filter(item => item.kind === "payment" && item.status === "posted")} />
     <div className="grid gap-5 xl:grid-cols-2"><RelatedRows title="مواقع العميل" records={sites} empty="لم تتم إضافة موقع لهذا العميل بعد" /><RelatedRows title="الحاويات المخصصة" records={containers} empty="لا توجد حاويات مخصصة حاليًا" /></div>
-    <div className="grid gap-5 xl:grid-cols-2"><RelatedRows title="العقود والإيجارات" records={related.filter(item => ["contract", "contract_line"].includes(item.kind))} /><RelatedRows title="المواعيد وأوامر العمل" records={[...appointments, ...workOrders.map(item => ({ id: item.id, kind: "appointment", status: item.driverStatus ?? "pending", reference: `WO-${item.id}`, payload: { name: item.serviceType, customerName: item.clientName, scheduledAt: item.scheduledAt ?? "" }, createdAt: item.createdAt, updatedAt: item.updatedAt ?? item.createdAt }))]} empty="لا توجد مواعيد أو أوامر عمل" /></div>
+     <div className="grid gap-5 xl:grid-cols-2"><RelatedRows title="العقود والإيجارات" records={related.filter(item => ["contract", "contract_line"].includes(item.kind))} /><RelatedRows title="المواعيد وأوامر العمل" records={[...appointments, ...workOrderViewRecords]} empty="لا توجد مواعيد أو أوامر عمل" /></div>
     <RelatedRows title="التحصيلات والحركات المالية" records={payments} />
   </div>
 }
@@ -453,7 +534,7 @@ function EmployeeProfile({ record, records }: { record: ContainerSystemRecord; r
 function ContainerProfile({ record, records }: { record: ContainerSystemRecord; records: ContainerSystemRecord[] }) {
   const p = payloadOf(record)
   const code = text(p.assetCode ?? p.containerCode ?? p.code ?? record.reference)
-  const currentStatus = p.status ?? record.status
+  const currentStatus = getContainerOperationalStatus(record.status, p)
   const related = records.filter(item => {
     const payload = payloadOf(item)
     return text(payload.containerCode ?? payload.assetCode, "") === code || text(payload.containerRecordId, "") === String(record.id)
@@ -477,6 +558,41 @@ function ContainerProfile({ record, records }: { record: ContainerSystemRecord; 
     const linked = item as typeof item & { containerRecordId?: number | null; contractRecordId?: number | null }
     return linked.containerRecordId === record.id || (linked.contractRecordId != null && contracts.some(contract => contract.id === linked.contractRecordId))
   })
+  const operationalWorkOrders = records.filter(item => {
+    if (item.kind !== "work_order" || item.status === "archived") return false
+    const payload = payloadOf(item)
+    return Number(payload.containerRecordId ?? 0) === record.id ||
+      contracts.some(contract => Number(payload.contractRecordId ?? 0) === contract.id)
+  })
+  const completionEvidence = [
+    ...workOrders.map(item => ({
+      id: `request-${item.id}`,
+      label: `الطلب #${item.id} · ${item.serviceType}`,
+      url: item.driverProofPhotoUrl,
+      receiver: item.driverReceiverName,
+      date: item.driverCompletedAt ?? item.updatedAt,
+    })),
+    ...operationalWorkOrders.map(item => {
+      const payload = payloadOf(item)
+      return {
+        id: `work-order-${item.id}`,
+        label: `${text(payload.workOrderNumber ?? item.reference, `أمر العمل #${item.id}`)} · ${text(payload.serviceType ?? payload.operationType, "حركة تشغيلية")}`,
+        url: text(payload.driverProofPhotoUrl, ""),
+        receiver: text(payload.driverReceiverName, ""),
+        date: text(payload.driverCompletedAt ?? item.updatedAt, ""),
+      }
+    }),
+    ...movements.map(item => {
+      const payload = payloadOf(item)
+      return {
+        id: `movement-${item.id}`,
+        label: `${text(payload.movementType, "حركة حاوية")} · ${text(payload.workOrderId, `سجل الحركة #${item.id}`)}`,
+        url: text(payload.proofPhotoUrl ?? payload.driverProofPhotoUrl, ""),
+        receiver: text(payload.receiverName ?? payload.driverReceiverName, ""),
+        date: text(payload.movementDate ?? item.updatedAt, ""),
+      }
+    }),
+  ]
   const activeContract = contracts.find(item => item.status !== "archived")
   const activeContractPayload = payloadOf(activeContract)
   const customer = records.find(item => item.kind === "customer" && String(item.id) === String(activeContractPayload.customerRecordId))
@@ -485,17 +601,31 @@ function ContainerProfile({ record, records }: { record: ContainerSystemRecord; 
   const timeline = [
     ...movements.map(item => ({ id: `movement-${item.id}`, date: item.createdAt, title: text(payloadOf(item).movementType, "حركة حاوية"), detail: text(payloadOf(item).location, "الموقع غير محدد"), icon: ArrowRight, tone: "bg-cyan-50 text-cyan-800" })),
     ...workOrders.map(item => ({ id: `work-${item.id}`, date: item.scheduledAt ?? item.createdAt, title: item.serviceType, detail: `${item.clientName} · ${text(item.driverStatus, "غير مسند")}`, icon: CalendarDays, tone: "bg-amber-50 text-amber-800" })),
+    ...operationalWorkOrders.map(item => {
+      const payload = payloadOf(item)
+      return {
+        id: `operational-work-${item.id}`,
+        date: text(payload.scheduledAt ?? item.createdAt, item.createdAt),
+        title: text(payload.serviceType ?? payload.operationType, "حركة تشغيلية"),
+        detail: `${text(payload.customerName ?? payload.clientName, "العميل")} · ${text(payload.driverStatus, "غير مسند")}`,
+        icon: CalendarDays,
+        tone: "bg-amber-50 text-amber-800",
+      }
+    }),
     ...contracts.map(item => ({ id: `contract-${item.id}`, date: item.createdAt, title: `العقد ${text(payloadOf(item).contractNumber ?? item.reference)}`, detail: text(item.status), icon: FileText, tone: "bg-emerald-50 text-emerald-800" })),
   ].sort((a, b) => Date.parse(b.date) - Date.parse(a.date))
-  const workOrderRecords: ContainerSystemRecord[] = workOrders.map(item => ({
-    id: item.id,
-    kind: "appointment",
-    status: item.driverStatus ?? "pending",
-    reference: `WO-${item.id}`,
-    payload: { name: item.serviceType, customerName: item.clientName, scheduledAt: item.scheduledAt ?? "", driverStatus: item.driverStatus ?? "unassigned" },
-    createdAt: item.createdAt,
-    updatedAt: item.updatedAt ?? item.createdAt,
-  }))
+  const workOrderRecords: ContainerSystemRecord[] = [
+    ...workOrders.map(item => ({
+      id: item.id,
+      kind: "appointment",
+      status: item.driverStatus ?? "pending",
+      reference: `WO-${item.id}`,
+      payload: { name: item.serviceType, customerName: item.clientName, scheduledAt: item.scheduledAt ?? "", driverStatus: item.driverStatus ?? "unassigned", driverProofPhotoUrl: item.driverProofPhotoUrl ?? "" },
+      createdAt: item.createdAt,
+      updatedAt: item.updatedAt ?? item.createdAt,
+    })),
+    ...operationalWorkOrders,
+  ]
   const quickActions = <OperationalQuickActions
     customerId={customer?.id ?? Number(activeContractPayload.customerRecordId ?? 0)}
     customerName={text(customerPayload.name ?? customerPayload.customerName ?? activeContractPayload.customerName, "العميل")}
@@ -507,7 +637,7 @@ function ContainerProfile({ record, records }: { record: ContainerSystemRecord; 
     onRefresh={() => void workOrdersQuery.refetch()}
   />
   ;(workOrderRecords as ContainerSystemRecord[] & { headerAction?: ReactNode }).headerAction = quickActions
-  return <><div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5"><Stat label="الحالة الحالية" value={formatStatus(String(currentStatus))} tone="text-cyan-800" /><Stat label="الموقع الحالي" value={text(p.location, "غير محدد")} /><Stat label="عدد الحركات" value={movements.length} /><Stat label="العقود المرتبطة" value={contracts.length} /><Stat label="أوامر العمل" value={workOrders.length} /></div><div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5"><Stat label="أيام التأجير المحسوبة" value={rentalDays} tone="text-indigo-700" /><Stat label="الاستفادة التقديرية" value={`${utilization}%`} tone="text-emerald-700" /><Stat label="الإيراد المرتبط" value={money(revenue)} tone="text-cyan-800" /><Stat label="التكلفة المرتبطة" value={money(costs)} tone="text-rose-700" /><Stat label="صافي القيمة" value={money(revenue - costs)} tone={revenue - costs >= 0 ? "text-emerald-700" : "text-rose-700"} /></div><div className="grid gap-5 xl:grid-cols-[1.15fr_.85fr]"><Card className="border-slate-200/80 shadow-sm"><CardHeader className="border-b border-slate-100 px-5 py-4"><CardTitle className="flex items-center gap-2 text-base"><CalendarDays size={17} className="text-cyan-800" /> القصة التشغيلية للأصل</CardTitle></CardHeader><CardContent className="p-5">{timeline.length === 0 ? <p className="py-8 text-center text-sm text-slate-500">لا توجد أحداث مرتبطة بعد.</p> : <div className="space-y-4">{timeline.map(event => { const Icon = event.icon; return <div key={event.id} className="flex gap-3"><div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${event.tone}`}><Icon size={16} /></div><div className="min-w-0 flex-1 border-b border-slate-100 pb-3"><div className="flex flex-wrap items-center justify-between gap-2"><p className="text-sm font-black text-slate-800">{event.title}</p><time className="text-[11px] text-slate-400">{formatRecordDate(event.date)}</time></div><p className="mt-1 text-xs text-slate-500">{event.detail}</p></div></div> })}</div>}</CardContent></Card><div className="space-y-5"><RelatedRows title="سجل الحركات" records={movements} /><RelatedRows title="العقود المرتبطة" records={contracts} /><RelatedRows title="أوامر العمل" records={workOrderRecords} empty="لا توجد أوامر عمل مرتبطة" /><RelatedRows title="الفحوصات والصيانة" records={maintenance} empty="لا توجد صيانة مسجلة لهذا الأصل" /></div></div></>
+   return <><div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5"><Stat label="الحالة الحالية" value={formatStatus(String(currentStatus))} tone="text-cyan-800" /><Stat label="الموقع الحالي" value={text(p.location, "غير محدد")} /><Stat label="عدد الحركات" value={movements.length} /><Stat label="العقود المرتبطة" value={contracts.length} /><Stat label="أوامر العمل" value={workOrders.length + operationalWorkOrders.length} /></div><div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5"><Stat label="أيام التأجير المحسوبة" value={rentalDays} tone="text-indigo-700" /><Stat label="الاستفادة التقديرية" value={`${utilization}%`} tone="text-emerald-700" /><Stat label="الإيراد المرتبط" value={money(revenue)} tone="text-cyan-800" /><Stat label="التكلفة المرتبطة" value={money(costs)} tone="text-rose-700" /><Stat label="صافي القيمة" value={money(revenue - costs)} tone={revenue - costs >= 0 ? "text-emerald-700" : "text-rose-700"} /></div><CompletionEvidence items={completionEvidence} /><div className="grid gap-5 xl:grid-cols-[1.15fr_.85fr]"><Card className="border-slate-200/80 shadow-sm"><CardHeader className="border-b border-slate-100 px-5 py-4"><CardTitle className="flex items-center gap-2 text-base"><CalendarDays size={17} className="text-cyan-800" /> القصة التشغيلية للأصل</CardTitle></CardHeader><CardContent className="p-5">{timeline.length === 0 ? <p className="py-8 text-center text-sm text-slate-500">لا توجد أحداث مرتبطة بعد.</p> : <div className="space-y-4">{timeline.map(event => { const Icon = event.icon; return <div key={event.id} className="flex gap-3"><div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${event.tone}`}><Icon size={16} /></div><div className="min-w-0 flex-1 border-b border-slate-100 pb-3"><div className="flex flex-wrap items-center justify-between gap-2"><p className="text-sm font-black text-slate-800">{event.title}</p><time className="text-[11px] text-slate-400">{formatRecordDate(event.date)}</time></div><p className="mt-1 text-xs text-slate-500">{event.detail}</p></div></div> })}</div>}</CardContent></Card><div className="space-y-5"><RelatedRows title="سجل الحركات" records={movements} /><RelatedRows title="العقود المرتبطة" records={contracts} /><RelatedRows title="أوامر العمل" records={workOrderRecords} empty="لا توجد أوامر عمل مرتبطة" /><RelatedRows title="الفحوصات والصيانة" records={maintenance} empty="لا توجد صيانة مسجلة لهذا الأصل" /></div></div></>
 }
 
 export function ContainerRecordProfile({ mode }: { mode: ProfileMode }) {
@@ -529,7 +659,7 @@ export function ContainerRecordProfile({ mode }: { mode: ProfileMode }) {
   const headerAddress = mode === "customer"
     ? text(p.address ?? p.location, "") || siteAddress(customerSites[0])
     : text(p.address ?? p.location ?? p.branchName, "")
-  return <div dir="rtl" className="container-system space-y-5"><div className="flex flex-wrap items-center justify-between gap-3"><Button variant="ghost" onClick={() => navigate("/admin/container-system")} className="gap-2 px-0 text-cyan-800"><ArrowRight size={16} /> العودة لنظام الحاويات</Button><div className="flex gap-2"><Button variant="outline" onClick={() => window.print()} className="gap-2"><Printer size={15} /> طباعة الملف</Button><Button onClick={() => navigate(`/admin/container-system/profile/${mode}/${record.id}`)} className="hidden">الملف</Button></div></div><Card className="overflow-hidden border-0 bg-[#123d4e] text-white shadow-[0_14px_40px_rgba(18,61,78,.18)]"><CardContent className="p-4 sm:p-6"><div className="flex flex-col gap-5 sm:flex-row sm:items-center">{mode === "container" ? <div className="order-2 flex h-28 w-full shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-white sm:order-1 sm:h-28 sm:w-56"><ContainerStatusImage status={p.status ?? record.status} code={title} className="h-full w-full" numberClassName="top-[45.5%]" /></div> : <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-amber-400 text-slate-900"><Icon size={30} /></div>}<div className="order-1 min-w-0 flex-1 sm:order-2"><p className="text-xs font-bold text-cyan-200">{mode === "customer" ? "ملف عميل" : mode === "employee" ? "ملف موظف" : "ملف أصل حاوية"}</p><h1 className="mt-1 text-2xl font-black" dir={mode === "container" ? "ltr" : undefined}>{title}</h1><div className="mt-3 flex flex-wrap gap-3 text-xs text-cyan-100/75">{mode !== "container" && <><span className="flex items-center gap-1"><Phone size={13} /> {text(p.phone ?? p.customerPhone, "لا يوجد هاتف")}</span><span className="flex items-center gap-1"><MapPin size={13} /> {text(headerAddress, "لا يوجد عنوان")}</span>{mode === "customer" && customerSites.length > 0 && <span className="flex items-center gap-1"><MapPin size={13} /> {customerSites.length} {customerSites.length === 1 ? "موقع مسجل" : "مواقع مسجلة"}</span>}</>} {mode === "container" && <span>{text(p.typeName ?? p.containerType, "نوع الحاوية غير محدد")} · {text(p.size ?? p.capacity, "الحجم غير محدد")}</span>}<span className="flex items-center gap-1"><CalendarDays size={13} /> آخر تحديث {formatRecordDate(record.updatedAt)}</span></div></div><RecordStatus status={String(p.status ?? record.status)} /></div></CardContent></Card>{mode !== "container" && <Card className="border-slate-200/80 shadow-sm"><CardHeader className="border-b border-slate-100 px-5 py-4"><CardTitle className="text-base">البيانات الأساسية</CardTitle></CardHeader><CardContent className="p-5"><FieldGrid record={record} /></CardContent></Card>}{mode === "customer" ? <CustomerProfile record={record} records={records} /> : mode === "employee" ? <EmployeeProfile record={record} records={records} /> : <ContainerProfile record={record} records={records} />}</div>
+  return <div dir="rtl" className="container-system space-y-5"><div className="flex flex-wrap items-center justify-between gap-3"><Button variant="ghost" onClick={() => navigate("/admin/container-system")} className="gap-2 px-0 text-cyan-800"><ArrowRight size={16} /> العودة لنظام الحاويات</Button><div className="flex gap-2"><Button variant="outline" onClick={() => window.print()} className="gap-2"><Printer size={15} /> طباعة الملف</Button><Button onClick={() => navigate(`/admin/container-system/profile/${mode}/${record.id}`)} className="hidden">الملف</Button></div></div><Card className="overflow-hidden border-0 bg-[#123d4e] text-white shadow-[0_14px_40px_rgba(18,61,78,.18)]"><CardContent className="p-4 sm:p-6"><div className="flex flex-col gap-5 sm:flex-row sm:items-center">{mode === "container" ? <div className="order-2 flex h-28 w-full shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-white sm:order-1 sm:h-28 sm:w-56"><ContainerStatusImage status={getContainerOperationalStatus(record.status, p)} code={title} className="h-full w-full" numberClassName="top-[45.5%]" /></div> : <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-amber-400 text-slate-900"><Icon size={30} /></div>}<div className="order-1 min-w-0 flex-1 sm:order-2"><p className="text-xs font-bold text-cyan-200">{mode === "customer" ? "ملف عميل" : mode === "employee" ? "ملف موظف" : "ملف أصل حاوية"}</p><h1 className="mt-1 text-2xl font-black" dir={mode === "container" ? "ltr" : undefined}>{title}</h1><div className="mt-3 flex flex-wrap gap-3 text-xs text-cyan-100/75">{mode !== "container" && <><span className="flex items-center gap-1"><Phone size={13} /> {text(p.phone ?? p.customerPhone, "لا يوجد هاتف")}</span><span className="flex items-center gap-1"><MapPin size={13} /> {text(headerAddress, "لا يوجد عنوان")}</span>{mode === "customer" && customerSites.length > 0 && <span className="flex items-center gap-1"><MapPin size={13} /> {customerSites.length} {customerSites.length === 1 ? "موقع مسجل" : "مواقع مسجلة"}</span>}</>} {mode === "container" && <span>{text(p.typeName ?? p.containerType, "نوع الحاوية غير محدد")} · {text(p.size ?? p.capacity, "الحجم غير محدد")}</span>}<span className="flex items-center gap-1"><CalendarDays size={13} /> آخر تحديث {formatRecordDate(record.updatedAt)}</span></div></div><RecordStatus status={mode === "container" ? getContainerOperationalStatus(record.status, p) : String(p.status ?? record.status)} /></div></CardContent></Card>{mode !== "container" && <Card className="border-slate-200/80 shadow-sm"><CardHeader className="border-b border-slate-100 px-5 py-4"><CardTitle className="text-base">البيانات الأساسية</CardTitle></CardHeader><CardContent className="p-5"><FieldGrid record={record} /></CardContent></Card>}{mode === "customer" ? <CustomerProfile record={record} records={records} /> : mode === "employee" ? <EmployeeProfile record={record} records={records} /> : <ContainerProfile record={record} records={records} />}</div>
 }
 
 export function ContractPrintPage() {
