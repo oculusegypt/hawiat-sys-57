@@ -132,13 +132,14 @@ const STATUS_FILTERS: Array<{ value: StatusFilter; label: string }> = [
 function parseCoordinates(location: string, request: ServiceRequest): Coordinates | null {
   const locationText = String(location ?? "")
   const gpsMatch = locationText.match(
-    /(?:إحداثيات\s*GPS|GPS|الإحداثيات)?\s*[:：]?\s*\(?\s*(-?\d+(?:\.\d+)?)\s*[,،]\s*(-?\d+(?:\.\d+)?)\s*\)?/i,
+    /(?:إحداثيات\s*GPS|GPS|الإحداثيات)\s*[:：]?\s*\(?\s*(-?\d+(?:\.\d+)?)\s*[,،]\s*(-?\d+(?:\.\d+)?)\s*\)?/i,
   )
 
   if (gpsMatch) {
     const lat = Number(gpsMatch[1])
     const lng = Number(gpsMatch[2])
-    if (Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180) {
+    const isSaudiCoordinate = lat >= 16 && lat <= 33 && lng >= 34 && lng <= 56
+    if (Number.isFinite(lat) && Number.isFinite(lng) && isSaudiCoordinate) {
       return { lat, lng, source: "location" }
     }
   }
@@ -148,8 +149,10 @@ function parseCoordinates(location: string, request: ServiceRequest): Coordinate
   if (
     Number.isFinite(driverLat) &&
     Number.isFinite(driverLng) &&
-    Math.abs(driverLat) <= 90 &&
-    Math.abs(driverLng) <= 180
+    driverLat >= 16 &&
+    driverLat <= 33 &&
+    driverLng >= 34 &&
+    driverLng <= 56
   ) {
     return { lat: driverLat, lng: driverLng, source: "driver" }
   }
