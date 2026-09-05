@@ -931,10 +931,18 @@ function RecordDetails({ record, allRecords, serviceRequests = [], open, onOpenC
     String(latestContractPayload.siteRecordId ?? "") === String(item.id) ||
     (latestContractPayload.customerName && String(item.payload.customerName ?? "") === String(latestContractPayload.customerName))
   ))
-  const linkedRequestId = Number(latestContractPayload.requestId ?? 0)
+  const requestIdsFromCustomerRecords = customerRecords
+    .map(item => Number((item.payload as Record<string, unknown>).requestId ?? 0))
+    .filter(id => Number.isInteger(id) && id > 0)
+  const linkedRequestId = [
+    Number(detailPayload.requestId ?? 0),
+    Number(latestContractPayload.requestId ?? 0),
+    ...requestIdsFromCustomerRecords,
+  ].find(id => Number.isInteger(id) && id > 0) ?? 0
   const linkedRequest = serviceRequests.find(item =>
     (linkedRequestId > 0 && item.id === linkedRequestId) ||
-    ((item as ServiceRequest & { containerRecordId?: number | null }).containerRecordId === record.id && (!latestContractPayload.customerName || item.clientName === latestContractPayload.customerName))
+    ((item as ServiceRequest & { containerRecordId?: number | null; customerRecordId?: number | null }).containerRecordId === record.id && (!latestContractPayload.customerName || item.clientName === latestContractPayload.customerName)) ||
+    ((item as ServiceRequest & { containerRecordId?: number | null; customerRecordId?: number | null }).customerRecordId === record.id && (!customerName || item.clientName === customerName))
   )
   const requestLocation = linkedRequest?.location ?? String(latestContractPayload.location ?? linkedSite?.payload.address ?? linkedSite?.payload.location ?? "")
   const requestCoordinates = coordinatesFromLocation(requestLocation)
