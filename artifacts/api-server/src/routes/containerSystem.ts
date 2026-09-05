@@ -450,7 +450,7 @@ function movementStatus(movementType: string) {
 }
 
 function assetCodeOf(payload: Record<string, unknown>) {
-  return String(payload.assetCode ?? payload.code ?? "").trim();
+  return String(payload.assetCode ?? payload.code ?? payload.reference ?? "").trim();
 }
 
 function canonicalAssetStatus(value: unknown, fallback: string) {
@@ -1117,11 +1117,21 @@ router.post("/admin/container-system/contracts/workflow", requireContainerPermis
   if (!Number.isInteger(customerId) || customerId <= 0 || (!isAssetlessContract && (!Number.isInteger(assetId) || assetId <= 0))) {
     return res.status(422).json({ error: isAssetlessContract ? "العميل مطلوب لإنشاء عقد النظافة" : "العميل وأصل الحاوية مطلوبان لإنشاء دورة العقد" });
   }
+  if (!isAssetlessContract && !String(contractPayload.containerCode ?? "").trim() && assetId > 0) {
+    const selectedAsset = await db.select().from(containerSystemRecordsTable)
+      .where(eq(containerSystemRecordsTable.id, assetId))
+      .get();
+    if (selectedAsset) {
+      const selectedAssetPayload = parsePayload(selectedAsset.payload);
+      const derivedContainerCode = assetCodeOf({ ...selectedAssetPayload, reference: selectedAsset.reference });
+      if (derivedContainerCode) contractPayload.containerCode = derivedContainerCode;
+    }
+  }
   try {
     await validateContractPayload(contractPayload, undefined, true, isAssetlessContract);
     if (await hasOverlappingContract(contractPayload)) return res.status(409).json({ error: "الحاوية مرتبطة بعقد آخر خلال نفس الفترة" });
   } catch (error) {
-    return res.status(422).json({ error: "بيانات العقد غير صحيحة" });
+    return res.status(422).json({ error: error instanceof Error ? error.message : "بيانات العقد غير صحيحة" });
   }
   try {
     const result = db.transaction((tx) => {

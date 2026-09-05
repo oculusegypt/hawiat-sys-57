@@ -614,7 +614,7 @@ export function ContractWizard({ open, records, initialCustomerId = null, initia
       containerRecordId: isAssetlessContract ? null : container?.id,
       containerTypeId: selectedContainerType?.id ?? Number(form.containerTypeId),
       rentalLineRecordId: selectedRentalLine?.id ?? (form.rentalLineId ? Number(form.rentalLineId) : null),
-      containerCode: String(containerPayload?.assetCode ?? containerPayload?.code ?? ""),
+       containerCode: String(containerPayload?.assetCode ?? containerPayload?.code ?? container?.reference ?? ""),
       contractNumber: form.contractNumber.trim(),
       startDate: form.startDate,
       endDate: form.endDate,
