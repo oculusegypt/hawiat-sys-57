@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react"
 import { useQueryClient } from "@tanstack/react-query"
 import { Link, useLocation } from "wouter"
+import AdminPackages from "./Packages"
 import {
   AlertCircle, Archive, ArrowDownLeft, ArrowLeftRight, ArrowUpRight, BellRing, BookOpenCheck, Box, CalendarDays, CarFront, CheckCircle2, CircleDollarSign,
   ChevronDown, ChevronLeft, ClipboardList, Coins, FileCheck2, FileDown, FilePenLine, FileText, FolderSearch, Gauge, HandCoins, Landmark, LayoutDashboard, ReceiptText, Trash2, Truck,
@@ -105,7 +106,7 @@ type ViewKey =
   | "overview" | "financial_center" | RecordKind | "reports" | "audit" | "container_search"
   | "rental" | "vouchers" | "operations" | "customer_payments" | "bookings"
   | "expenses" | "payroll" | "fleet" | "warehouses" | "system_settings" | "contracts_list"
-  | "settlements"
+  | "settlements" | "container_types"
   | "financial_cycle"
 type NavItem = { key?: ViewKey; href?: string; label: string; icon: typeof LayoutDashboard }
 
@@ -132,8 +133,8 @@ const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
     label: "الأصول والأسطول",
     items: [
       { key: "container" as ViewKey, label: "أصول الحاويات", icon: Box },
+      { key: "container_types" as ViewKey, label: "أنواع الحاويات", icon: SlidersHorizontal },
       { key: "container_assignment" as ViewKey, label: "تخصيص الحاويات", icon: Link2 },
-      { key: "container_type" as ViewKey, label: "أنواع الحاويات", icon: SlidersHorizontal },
       { key: "operations" as ViewKey, label: "الحركات التشغيلية", icon: ArrowLeftRight },
       { key: "vehicle" as ViewKey, label: "الشاحنات", icon: CarFront },
       { key: "maintenance" as ViewKey, label: "الصيانة", icon: Wrench },
@@ -221,6 +222,7 @@ const viewLabel = (view: ViewKey) =>
   view === "overview" ? "الرئيسية"
   : view === "financial_center" ? "المركز المالي"
   : view === "container_search" ? "البحث عن حاوية"
+  : view === "container_types" ? "أنواع الحاويات"
   : view === "reports" ? "التقارير الشاملة"
   : view === "audit" ? "سجل التدقيق"
   : view === "rental" ? "تسجيل إيجار حاوية"
@@ -441,7 +443,7 @@ function RecordRow({ record, kind, records, serviceRequests = [], onDetails, onE
     if (fieldKey === "containerRecordId") return String(payload.assetCode ?? payload.code ?? related.reference ?? `#${related.id}`)
     return String(record.payload[fieldKey] ?? "—")
   }
-  if (kind === "container_type") {
+  if (String(kind) === "container_type") {
     const category = String(record.payload.categoryName ?? "فئة غير محددة")
     const size = String(record.payload.size ?? "الحجم غير محدد")
     const name = String(record.payload.name ?? record.payload.typeName ?? "نوع حاوية")
@@ -708,7 +710,7 @@ function InvoiceWorkspace({ records, onAdd, onDetails, onEdit, onArchive }: { re
 }
 
 function RecordsPanel({ kind, records, allRecords = records, serviceRequests = [], loading, onAdd, onDetails, onEdit, onArchive }: { kind: RecordKind; records: ContainerSystemRecord[]; allRecords?: ContainerSystemRecord[]; serviceRequests?: ServiceRequest[]; loading: boolean; onAdd: () => void; onDetails: (record: ContainerSystemRecord) => void; onEdit: (record: ContainerSystemRecord) => void; onArchive: (record: ContainerSystemRecord) => void }) {
-  const registryCopy = kind === "container_type"
+  const registryCopy = String(kind) === "container_type"
     ? {
         eyebrow: "كتالوج الحاويات",
         title: "أنواع الحاويات",
@@ -730,7 +732,7 @@ function RecordsPanel({ kind, records, allRecords = records, serviceRequests = [
       <CardHeader className={`border-b border-slate-100 px-4 py-4 sm:px-5 ${registryCopy ? "bg-[linear-gradient(110deg,#f8fbfc_0%,#ffffff_55%,#eff9fa_100%)]" : ""}`}>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-start gap-3">
-            {registryCopy && <div className="hidden h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-cyan-100 text-cyan-800 sm:flex">{kind === "container_type" ? <Box size={21} /> : <Link2 size={21} />}</div>}
+            {registryCopy && <div className="hidden h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-cyan-100 text-cyan-800 sm:flex"><Link2 size={21} /></div>}
             <div>
               {registryCopy && <p className="text-[10px] font-black uppercase tracking-[0.18em] text-cyan-700">{registryCopy.eyebrow}</p>}
               <CardTitle className="mt-0.5 text-base text-slate-900">{registryCopy?.title ?? `سجلات ${KIND_LABELS[kind]}`}</CardTitle>
@@ -1215,7 +1217,7 @@ function RecordDetails({ record, allRecords, serviceRequests = [], open, onOpenC
          </div>}
          <div className="grid gap-3 sm:grid-cols-2">
             {!isContainer && <div className="rounded-xl bg-slate-50 p-3"><p className="text-[11px] text-slate-500">الحالة</p><div className="mt-1"><RecordStatus status={String(record.payload.status ?? record.status)} /></div></div>}
-           {!isPaymentRecord && displayEntries.map(([label, value]) => <div key={label} className="rounded-xl border border-slate-100 bg-white p-3"><p className="text-[11px] text-slate-500">{label}</p><p className="mt-1 break-words text-sm font-bold text-slate-800">{value}</p></div>)}
+            {!isPaymentRecord && displayEntries.map(([label, value], index) => <div key={`${label}-${index}`} className="rounded-xl border border-slate-100 bg-white p-3"><p className="text-[11px] text-slate-500">{label}</p><p className="mt-1 break-words text-sm font-bold text-slate-800">{value}</p></div>)}
         </div>
           {proofPhotoUrl && (
             <div className="mt-4 rounded-2xl border border-emerald-100 bg-emerald-50/50 p-4">
@@ -1351,6 +1353,10 @@ export default function ContainerSystem() {
   const [reportId, setReportId] = useState<ReportId | null>(null)
   useEffect(() => {
     if (!requestedView) return
+    if (String(requestedView) === "container_type") {
+      navigate("/admin/container-system?view=container_types")
+      return
+    }
     setView(requestedView)
     if (requestedView === "contract") setContractWizardOpen(true)
     if (requestedCreate && ["customer", "receipt", "payment", "container"].includes(requestedView)) {
@@ -1733,6 +1739,7 @@ export default function ContainerSystem() {
               : view === "system_settings" ? <SettingsPage records={snapshot?.records ?? records} organization={organization} onSave={saveSettings} />
              : view === "audit" ? <AuditLog audits={auditQuery.data ?? []} loading={auditQuery.isLoading} />
               : view === "container_search" ? <ContainerSearchPanel records={records} loading={loading} onDetails={openRecordDetails} onEdit={openEdit} onDelete={deleteContainerRecord} />
+               : view === "container_types" ? <AdminPackages />
               : view === "bookings" ? <DispatchCalendar records={snapshot?.records ?? records} onOpenAppointment={openRecordDetails} />
               : view === "invoice"
                 ? <InvoiceWorkspace records={records} onAdd={() => openCreate("invoice")} onDetails={record => navigate(`/admin/container-system/invoice/${record.id}/details`)} onEdit={openEdit} onArchive={archiveRecord} />

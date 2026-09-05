@@ -18,91 +18,129 @@ const parse = value => {
   }
 };
 
-const rows = db.prepare("SELECT * FROM container_system_records WHERE status <> 'archived'").all();
-const categories = rows.filter(row => row.kind === "category");
-const sizes = rows.filter(row => row.kind === "category_size");
-const categoryByName = new Map(categories.map(row => [normalize(parse(row.payload).name), row]));
-const sizeFor = (category, size) => sizes.find(row => {
-  const payload = parse(row.payload);
-  return Number(payload.categoryRecordId ?? 0) === Number(category.id) &&
-    normalize(payload.size ?? payload.name) === normalize(size);
-});
+const categoryFor = payload => {
+  const value = normalize(`${payload.category ?? ""} ${payload.categoryName ?? ""} ${payload.name ?? ""} ${payload.typeName ?? ""}`);
+  if (value.includes("عقد") || value.includes("contract")) return "contract";
+  return value.includes("نفا") || value.includes("waste") || value.includes("مكبس") ? "waste" : "debris";
+};
 
-const typeDefinitions = [
-  ["TYPE-CENTRAL-DEBRIS-12", "أنقاض", "12 ياردة", "حاوية أنقاض 12 ياردة", "6 طن", 180],
-  ["TYPE-CENTRAL-DEBRIS-20", "أنقاض", "20 ياردة", "حاوية أنقاض 20 ياردة", "15 طن", 260],
-  ["TYPE-CENTRAL-WASTE-6", "نفايات تجارية", "6 ياردة", "حاوية نفايات تجارية 6 ياردة", "6 طن", 220],
-  ["TYPE-CENTRAL-WASTE-2", "نفايات تجارية", "2 ياردة", "حاوية نفايات تجارية 2 ياردة", "2 طن", 140],
-];
+const categoryLabel = category => category === "waste"
+  ? "حاويات النفايات والمكابس"
+  : "حاويات الأنقاض ومخلفات البناء";
 
-const insert = db.prepare(`
-  INSERT INTO container_system_records (kind, status, reference, payload)
-  VALUES ('container_type', 'active', ?, ?)
-`);
-const update = db.prepare(`
-  UPDATE container_system_records SET status = ?, payload = ?, updated_at = ? WHERE id = ?
-`);
+const packageRows = db.prepare("SELECT * FROM packages ORDER BY id").all();
+const packageByCategorySize = new Map(
+  packageRows.map(row => [`${normalize(row.category)}|${normalize(row.size)}`, row]),
+);
+const packageById = new Map(packageRows.map(row => [row.id, row]));
+const legacyTypes = db.prepare(
+  "SELECT * FROM container_system_records WHERE kind = 'container_type'",
+).all();
+const legacyTypeToPackage = new Map();
 const now = new Date().toISOString();
-const centralTypes = [];
 
-for (const [reference, categoryName, sizeName, name, capacity, dailyRate] of typeDefinitions) {
-  const category = categoryByName.get(normalize(categoryName));
-  const size = category ? sizeFor(category, sizeName) : undefined;
-  if (!category || !size) {
-    throw new Error(`Missing central category/size for ${reference}`);
+const insertPackage = db.prepare(`
+  INSERT INTO packages
+    (name, category, size, capacity, description, features, suitable_for, price_text,
+     price_note, rental_period, contact_phone1, contact_phone2, price_per_day,
+     image_url, images, "order", is_active, seo_enabled, seo_title, seo_description,
+     seo_keywords, seo_slug)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+`);
+
+for (const row of legacyTypes) {
+  const payload = parse(row.payload);
+  const category = categoryFor(payload);
+  const size = String(payload.size ?? "").trim();
+  let packageRow = packageByCategorySize.get(`${category}|${normalize(size)}`);
+
+  if (!packageRow) {
+    const name = String(payload.name ?? payload.typeName ?? `نوع حاوية ${size}`).trim();
+    const description = String(payload.description ?? `نوع حاوية مركزي: ${name}`).trim();
+    const slug = `container-type-${row.id}`;
+    const result = insertPackage.run(
+      name,
+      category,
+      size,
+      String(payload.capacity ?? ""),
+      description,
+      JSON.stringify(Array.isArray(payload.features) ? payload.features : []),
+      String(payload.suitableFor ?? ""),
+      String(payload.priceText ?? ""),
+      String(payload.priceNote ?? ""),
+      String(payload.rentalPeriod ?? ""),
+      "",
+      "",
+      Number(payload.pricePerDay ?? payload.dailyRate ?? 0),
+      String(payload.imageUrl ?? ""),
+      String(payload.images ?? "[]"),
+      0,
+      1,
+      1,
+      name,
+      description,
+      name,
+      slug,
+    );
+    packageRow = db.prepare("SELECT * FROM packages WHERE id = ?").get(Number(result.lastInsertRowid));
+    packageRows.push(packageRow);
+    packageById.set(packageRow.id, packageRow);
+    packageByCategorySize.set(`${category}|${normalize(size)}`, packageRow);
   }
-  const payload = {
-    categoryRecordId: category.id,
-    categoryName,
-    categorySizeRecordId: size.id,
-    name,
-    typeName: name,
-    size: sizeName,
-    capacity,
-    dailyRate,
-    taxRate: 15,
-    notes: "نوع مركزي مرتبط بالفئة والحجم",
-  };
-  const existing = rows.find(row => row.kind === "container_type" && row.reference === reference);
-  if (existing) {
-    update.run("active", JSON.stringify(payload), now, existing.id);
-    centralTypes.push({ ...existing, payload: JSON.stringify(payload) });
-  } else {
-    const created = insert.run(reference, JSON.stringify(payload));
-    centralTypes.push({ id: Number(created.lastInsertRowid), kind: "container_type", reference, payload: JSON.stringify(payload) });
-  }
+
+  legacyTypeToPackage.set(row.id, packageRow.id);
 }
 
-const typeBySize = new Map(centralTypes.map(row => {
-  const payload = parse(row.payload);
-  return [`${payload.categoryRecordId}|${normalize(payload.size)}`, row];
-}));
-const assetUpdate = db.prepare("UPDATE container_system_records SET payload = ?, updated_at = ? WHERE id = ?");
-let linkedAssets = 0;
+const packageForPayload = payload => {
+  const legacyId = Number(payload.containerTypeRecordId ?? 0);
+  if (legacyId > 0 && legacyTypeToPackage.has(legacyId)) {
+    return packageById.get(legacyTypeToPackage.get(legacyId))
+      ?? db.prepare("SELECT * FROM packages WHERE id = ?").get(legacyTypeToPackage.get(legacyId));
+  }
+  const category = categoryFor(payload);
+  const size = normalize(payload.size);
+  return packageByCategorySize.get(`${category}|${size}`)
+    ?? packageRows.find(row => normalize(row.name) === normalize(payload.typeName ?? payload.containerType));
+};
 
-for (const row of rows.filter(item => ["container", "container_asset"].includes(item.kind))) {
+const updateRecord = db.prepare(
+  "UPDATE container_system_records SET payload = ?, updated_at = ? WHERE id = ?",
+);
+let updatedRecords = 0;
+const records = db.prepare(
+  "SELECT * FROM container_system_records WHERE kind <> 'container_type'",
+).all();
+
+for (const row of records) {
   const payload = parse(row.payload);
-  const rawSize = normalize(payload.size) || (normalize(payload.typeName).includes("20") ? "20 ياردة" : "12 ياردة");
-  // Existing demo assets are legacy debris assets. Preserve their identity while
-  // giving them the central references required by the new UI.
-  const category = categoryByName.get(normalize(payload.categoryName)) ?? categoryByName.get("أنقاض");
-  const size = category && sizeFor(category, rawSize);
-  const type = size && typeBySize.get(`${category.id}|${normalize(rawSize)}`);
-  if (!category || !size || !type) continue;
-  const typePayload = parse(type.payload);
+  const type = packageForPayload(payload);
+  if (!type) continue;
+
   const next = {
     ...payload,
-    categoryRecordId: category.id,
-    categoryName: String(parse(category.payload).name ?? category.reference),
-    categorySizeRecordId: size.id,
-    containerTypeRecordId: type.id,
-    size: String(parse(size.payload).size ?? rawSize),
-    typeName: String(typePayload.name ?? type.reference),
-    capacity: payload.capacity ?? typePayload.capacity,
+    containerTypeId: type.id,
+    containerType: type.name,
+    typeName: type.name,
+    category: type.category,
+    categoryName: categoryLabel(type.category),
+    size: type.size,
+    capacity: type.capacity,
+    pricePerDay: type.price_per_day,
+    dailyRate: type.price_per_day,
+    priceText: type.price_text,
   };
-  assetUpdate.run(JSON.stringify(next), now, row.id);
-  linkedAssets += 1;
+  delete next.containerTypeRecordId;
+  delete next.categoryRecordId;
+  delete next.categorySizeRecordId;
+  updateRecord.run(JSON.stringify(next), now, row.id);
+  updatedRecords += 1;
 }
 
+const deleted = db.prepare("DELETE FROM container_system_records WHERE kind = 'container_type'").run();
 db.close();
-console.log(JSON.stringify({ centralTypes: centralTypes.length, linkedAssets }, null, 2));
+
+console.log(JSON.stringify({
+  migratedTypes: legacyTypeToPackage.size,
+  updatedRecords,
+  deletedLegacyTypeRecords: deleted.changes,
+}, null, 2));

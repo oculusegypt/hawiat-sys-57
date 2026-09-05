@@ -1,5 +1,5 @@
 import React, { lazy, Suspense } from "react"
-import { Route, Switch } from "wouter"
+import { Redirect, Route, Switch } from "wouter"
 import AdminLayout from "@/pages/admin/AdminLayout"
 import { ConfirmProvider } from "@/components/admin/ConfirmDialog"
 
@@ -10,7 +10,6 @@ const AdminConversations = lazy(() => import("@/pages/admin/Conversations"))
 const AdminNotifications = lazy(() => import("@/pages/admin/Notifications"))
 const AdminSlides = lazy(() => import("@/pages/admin/Slides"))
 const AdminServices = lazy(() => import("@/pages/admin/Services"))
-const AdminPackages = lazy(() => import("@/pages/admin/Packages"))
 const AdminContainerMap = lazy(() => import("@/pages/admin/ContainerMap"))
 const AdminContainerSystem = lazy(() => import("@/pages/admin/ContainerSystem"))
 const ContainerRecordProfile = lazy(() => import("@/pages/admin/ContainerRecordProfile").then(module => ({ default: module.ContainerRecordProfile })))
@@ -48,9 +47,9 @@ export function AdminRoutes() {
             <Route path="/admin/reviews" component={AdminReviews} />
             <Route path="/admin/partners" component={AdminPartners} />
             <Route path="/admin/services" component={AdminServices} />
-            <Route path="/admin/cleaning-packages" component={AdminPackages} />
-            <Route path="/admin/packages" component={AdminPackages} />
-            <Route path="/admin/containers" component={AdminPackages} />
+            <Route path="/admin/cleaning-packages"><Redirect to="/admin/container-system?view=container_types" /></Route>
+            <Route path="/admin/packages"><Redirect to="/admin/container-system?view=container_types" /></Route>
+            <Route path="/admin/containers"><Redirect to="/admin/container-system?view=container_types" /></Route>
             <Route path="/admin/container-map" component={AdminContainerMap} />
             <Route path="/admin/container-system" component={AdminContainerSystem} />
             <Route path="/admin/container-system/profile/customer/:id" component={() => <ContainerRecordProfile mode="customer" />} />

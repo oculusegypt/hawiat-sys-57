@@ -52,13 +52,13 @@ function publicContainer(row: typeof containersTable.$inferSelect, companyName: 
   return { ...row, ...normalized };
 }
 
-router.get(["/containers", "/packages", "/cleaning-packages"], async (_req, res) => {
+router.get(["/container-types", "/containers", "/packages", "/cleaning-packages"], async (_req, res) => {
   const containers = await db.select().from(containersTable).orderBy(asc(containersTable.order));
   const companyName = (await getSetting("company_name")).trim();
   return res.json(containers.map((container) => publicContainer(container, companyName)));
 });
 
-router.get(["/containers/:slug", "/packages/:slug", "/cleaning-packages/:slug"], async (req, res) => {
+router.get(["/container-types/:slug", "/containers/:slug", "/packages/:slug", "/cleaning-packages/:slug"], async (req, res) => {
   const rawParam = req.params.slug;
   const requested = decodeURIComponent(Array.isArray(rawParam) ? rawParam[0] : rawParam).trim().toLowerCase();
   const rows = await db.select().from(containersTable)
@@ -74,7 +74,7 @@ router.get(["/containers/:slug", "/packages/:slug", "/cleaning-packages/:slug"],
   return res.json(publicContainer(container, companyName));
 });
 
-router.post("/containers", requireAdmin, requireSectionPermission("packages"), async (req, res) => {
+router.post(["/container-types", "/containers"], requireAdmin, requireSectionPermission("packages"), async (req, res) => {
   const {
     name, category, size, capacity, description, features,
     suitableFor, priceText, priceNote, rentalPeriod,
@@ -127,7 +127,7 @@ router.post("/containers", requireAdmin, requireSectionPermission("packages"), a
   return res.status(201).json(container);
 });
 
-router.patch("/containers/:id", requireAdmin, requireSectionPermission("packages"), async (req, res) => {
+router.patch(["/container-types/:id", "/containers/:id"], requireAdmin, requireSectionPermission("packages"), async (req, res) => {
   const id = parseInt(String(req.params.id), 10);
   const {
     name, category, size, capacity, description, features,
@@ -186,7 +186,7 @@ router.patch("/containers/:id", requireAdmin, requireSectionPermission("packages
   return res.json(container);
 });
 
-router.delete("/containers/:id", requireAdmin, requireSectionPermission("packages"), async (req, res) => {
+router.delete(["/container-types/:id", "/containers/:id"], requireAdmin, requireSectionPermission("packages"), async (req, res) => {
   const id = parseInt(String(req.params.id), 10);
   await db.delete(containersTable).where(eq(containersTable.id, id));
   return res.status(204).send();

@@ -106,7 +106,7 @@ function calcSeoChecks(form: ContainerForm): SeoCheck[] {
       status: kwList.length === 0 ? "error" : kwList.length < 3 ? "warn" : "ok",
     },
     {
-      label: "صور الباقة",
+      label: "صور نوع الحاوية",
       hint:
         imgCount === 0 ? "لا توجد صور — أضف صورة واحدة على الأقل" :
         imgCount === 1 ? "صورة واحدة — يُنصح بإضافة 2-3 صور" :
@@ -187,7 +187,7 @@ function ImagesTab({ images, onUpdate }: ImagesTabProps) {
   return (
     <div className="space-y-4">
       <p className="text-sm text-gray-500">
-        أضف صور الباقة — الصورة الأولى هي الصورة الرئيسية للبطاقة
+        أضف صور نوع الحاوية — الصورة الأولى هي الصورة الرئيسية للبطاقة
       </p>
       <div className="space-y-4">
         {images.map((url, i) => (
@@ -459,9 +459,9 @@ export default function AdminPackages() {
 
   const handleDelete = async (id: number) => {
     if (!(await confirm({
-      title: "حذف الباقة",
-      description: "سيتم حذف الباقة من الكتالوج العام مع الاحتفاظ بالبيانات التاريخية المرتبطة بها.",
-      confirmLabel: "حذف الباقة",
+      title: "حذف نوع الحاوية",
+      description: "سيتم حذف نوع الحاوية من الكتالوج العام مع الاحتفاظ بالبيانات التاريخية المرتبطة به.",
+      confirmLabel: "حذف النوع",
     }))) return
     deleteContainer({ id }, { onSuccess: () => refetch() })
   }
@@ -472,7 +472,7 @@ export default function AdminPackages() {
 
   async function generateSeoWithAI(descriptionOnly = false) {
     if (!form.name && !form.description) {
-      toast({ title: "يرجى إدخال اسم الباقة أو وصفها أولاً", variant: "destructive" })
+      toast({ title: "يرجى إدخال اسم نوع الحاوية أو وصفه أولاً", variant: "destructive" })
       return
     }
     setAiGenerating(true)
@@ -515,7 +515,7 @@ export default function AdminPackages() {
   const seoScore   = calcOverallScore(seoChecks)
 
   const TABS: { id: FormTab; label: string; icon: React.ElementType }[] = [
-    { id: "basic",  label: "معلومات الباقة", icon: Settings },
+    { id: "basic",  label: "تفاصيل نوع الحاوية", icon: Settings },
     { id: "images", label: `الصور (${form.images.filter(u => u.trim()).length})`, icon: Images },
     { id: "seo",    label: form.seoEnabled ? `السيو (${seoScore}/100)` : "السيو", icon: Search },
   ]
@@ -523,9 +523,9 @@ export default function AdminPackages() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold text-gray-800">إدارة حاويات الأنقاض والنفايات</h2>
+        <h2 className="text-2xl font-bold text-gray-800">مركز أنواع الحاويات</h2>
         <Button onClick={openNew} className="gap-2">
-          <Plus size={16} /> إضافة باقة جديدة
+          <Plus size={16} /> إضافة نوع حاوية
         </Button>
       </div>
 
@@ -535,7 +535,7 @@ export default function AdminPackages() {
           <CardHeader className="pb-3 border-b border-gray-100">
             <div className="flex items-center justify-between">
               <CardTitle className="text-lg text-gray-800">
-                {editing === "new" ? "إضافة باقة جديدة" : "تعديل الباقة"}
+                {editing === "new" ? "إضافة نوع حاوية" : "تعديل نوع الحاوية"}
               </CardTitle>
               <Button variant="ghost" size="icon" onClick={() => setEditing(null)}>
                 <X size={16} />
@@ -729,11 +729,11 @@ export default function AdminPackages() {
                   form.seoEnabled ? "border-primary bg-primary/5" : "border-gray-200 bg-gray-50"
                 }`}>
                   <div>
-                    <p className="font-bold text-gray-800">تفعيل السيو لهذه الباقة</p>
+                    <p className="font-bold text-gray-800">تفعيل السيو لهذا النوع</p>
                     <p className="text-xs text-gray-500 mt-0.5">
                       {form.seoEnabled
-                        ? "السيو مفعّل — ستُرفق بيانات الباقة في نتائج جوجل"
-                        : "السيو معطّل — لن تظهر البيانات الوصفية لهذه الباقة"}
+                        ? "السيو مفعّل — ستُرفق بيانات النوع في نتائج جوجل"
+                        : "السيو معطّل — لن تظهر البيانات الوصفية لهذا النوع"}
                     </p>
                   </div>
                   <button onClick={() => setForm(f => ({ ...f, seoEnabled: !f.seoEnabled }))}>
@@ -812,7 +812,7 @@ export default function AdminPackages() {
                         </div>
                         <textarea value={form.seoDescription}
                           onChange={e => setForm({ ...form, seoDescription: e.target.value })}
-                          placeholder="وصف مختصر للباقة يظهر أسفل العنوان في نتائج جوجل..."
+                          placeholder="وصف مختصر لنوع الحاوية يظهر أسفل العنوان في نتائج جوجل..."
                           rows={3} dir="rtl"
                           className="w-full border border-input rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring resize-none bg-white" />
                         <p className="text-[11px] text-gray-400 mt-1">الهدف: 120-160 حرف — يظهر كوصف النتيجة في جوجل</p>
@@ -837,7 +837,7 @@ export default function AdminPackages() {
                       <div>
                         <label className="text-sm font-medium text-gray-700 mb-1 flex items-center gap-1.5">
                           <Link2 size={13} className="text-gray-500" />
-                          رابط الباقة (Slug) *
+                          رابط نوع الحاوية (Slug) *
                         </label>
                         <div className="flex gap-2">
                           <div className="flex-1 relative">
@@ -886,7 +886,7 @@ export default function AdminPackages() {
             <div className="flex gap-3 pt-5 border-t border-gray-100 mt-5">
               <Button onClick={handleSave} disabled={creating || updating} className="gap-2 bg-primary">
                 <Check size={16} />
-                {creating || updating ? "جاري الحفظ..." : "حفظ الباقة"}
+                {creating || updating ? "جاري الحفظ..." : "حفظ نوع الحاوية"}
               </Button>
               <Button variant="outline" onClick={() => setEditing(null)} className="gap-2">
                 <X size={16} /> إلغاء
@@ -1004,7 +1004,7 @@ export default function AdminPackages() {
               <CardContent className="py-16 flex flex-col items-center gap-3 text-gray-400">
                 <Box size={48} strokeWidth={1} />
                 <p className="text-lg font-medium">لا توجد باقات بعد</p>
-                <Button onClick={openNew} variant="outline" className="gap-2 mt-2"><Plus size={16} /> أضف باقة جديدة</Button>
+                <Button onClick={openNew} variant="outline" className="gap-2 mt-2"><Plus size={16} /> أضف نوع حاوية</Button>
               </CardContent>
             </Card>
           </div>

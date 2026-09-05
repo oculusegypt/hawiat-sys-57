@@ -88,13 +88,6 @@ const ALL_NAV = [
     section: "services",
   },
   {
-    href: "/admin/packages",
-    icon: Box,
-    label: "الباقات والحاويات",
-    group: "operations",
-    section: "packages",
-  },
-  {
     href: "/admin/ads",
     icon: Megaphone,
     label: "الإعلانات",

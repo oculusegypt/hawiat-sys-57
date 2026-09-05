@@ -4,6 +4,7 @@ import {
   containerSystemAuditTable,
   containerSystemRecordsTable,
 } from "./schema/containerSystem.js";
+import { packagesTable } from "./schema/packages.js";
 import { siteSettingsTable } from "./schema/settings.js";
 
 const daysFromNow = (days: number) => {
@@ -48,42 +49,6 @@ const demo = [
       city: "الرياض",
       customerType: "فرد",
       balance: 850,
-    },
-  ],
-  [
-    "container_type",
-    "active",
-    {
-      reference: "TYPE-CENTRAL-DEBRIS-12",
-      name: "حاوية أنقاض 12 ياردة",
-      size: "12 ياردة",
-      capacity: "8 طن",
-      dailyRate: 180,
-      taxRate: 15,
-    },
-  ],
-  [
-    "container_type",
-    "active",
-    {
-      reference: "TYPE-CENTRAL-DEBRIS-20",
-      name: "حاوية أنقاض 20 ياردة",
-      size: "20 ياردة",
-      capacity: "15 طن",
-      dailyRate: 260,
-      taxRate: 15,
-    },
-  ],
-  [
-    "container_type",
-    "active",
-    {
-      reference: "TYPE-CENTRAL-WASTE-6",
-      name: "حاوية مغلقة للنفايات",
-      size: "6 ياردة",
-      capacity: "6 طن",
-      dailyRate: 220,
-      taxRate: 15,
     },
   ],
   [
@@ -973,7 +938,21 @@ const extendedDemo = [
 
   const seededCategoryIds = new Map<string, number>();
   const seededSizeIds = new Map<string, number>();
-  const seededTypeIds = new Map<string, number>();
+  const containerTypes = db.select().from(packagesTable).all();
+  const resolveContainerType = (payload: Record<string, unknown>) => {
+    const requestedName = String(payload.typeName ?? payload.containerType ?? "").trim();
+    const requestedSize = String(payload.size ?? "").trim();
+    const normalizedName = requestedName.toLowerCase();
+    const category = /نفا|مكبس|waste/i.test(requestedName) ? "waste" : "debris";
+    const sizeHint = requestedSize ||
+      (normalizedName.includes("20") ? "20 ياردة" : normalizedName.includes("12") ? "12 ياردة" : "");
+    return containerTypes.find(item => item.name.trim() === requestedName) ??
+      containerTypes.find(item =>
+        Boolean(sizeHint) &&
+        item.size.trim() === sizeHint &&
+        (item.category === category || item.category === "contract"),
+      );
+  };
   for (const [kind, status, payload] of [
     ...demo,
     ...linkedDemo,
@@ -985,29 +964,18 @@ const extendedDemo = [
       const categoryRecordId = seededCategoryIds.get(categoryName);
       if (categoryRecordId) payloadRecord.categoryRecordId = categoryRecordId;
     }
-    if (kind === "container_type") {
-      const typeName = String(payloadRecord.name ?? "").trim();
-      const categoryName = typeName.includes("أنقاض") ? "أنقاض" : "نفايات تجارية";
-      const categoryRecordId = seededCategoryIds.get(categoryName);
-      const sizeKey = `${categoryName}|${String(payloadRecord.size ?? "").trim()}`;
-      const categorySizeRecordId = seededSizeIds.get(sizeKey);
-      if (categoryRecordId) {
-        payloadRecord.categoryRecordId = categoryRecordId;
-        payloadRecord.categoryName = categoryName;
-      }
-      if (categorySizeRecordId) payloadRecord.categorySizeRecordId = categorySizeRecordId;
-    }
     if (kind === "container") {
-      const typeRecordId = seededTypeIds.get(String(payloadRecord.typeName ?? "").trim());
-      if (typeRecordId) {
-        const typeRecord = db.select().from(containerSystemRecordsTable).where(eq(containerSystemRecordsTable.id, typeRecordId)).get();
-        const typePayload = typeRecord ? JSON.parse(typeRecord.payload) as Record<string, unknown> : {};
-        payloadRecord.containerTypeRecordId = typeRecordId;
-        payloadRecord.categoryRecordId = typePayload.categoryRecordId;
-        payloadRecord.categoryName = typePayload.categoryName;
-        payloadRecord.categorySizeRecordId = typePayload.categorySizeRecordId;
-        payloadRecord.size = typePayload.size;
-        payloadRecord.capacity = typePayload.capacity;
+      const type = resolveContainerType(payloadRecord);
+      if (type) {
+        payloadRecord.containerTypeId = type.id;
+        payloadRecord.containerType = type.name;
+        payloadRecord.typeName = type.name;
+        payloadRecord.category = type.category;
+        payloadRecord.categoryName = type.category === "waste" ? "حاويات النفايات والمكابس" : "حاويات الأنقاض ومخلفات البناء";
+        payloadRecord.size = type.size;
+        payloadRecord.capacity = type.capacity;
+        payloadRecord.pricePerDay = type.pricePerDay;
+        payloadRecord.dailyRate = type.pricePerDay;
       }
     }
     const reference = String(
@@ -1037,9 +1005,6 @@ const extendedDemo = [
     }
     if (kind === "category_size") {
       seededSizeIds.set(`${String(payloadRecord.categoryName ?? "").trim()}|${String(payloadRecord.size ?? "").trim()}`, created.id);
-    }
-    if (kind === "container_type") {
-      seededTypeIds.set(String(payloadRecord.name ?? "").trim(), created.id);
     }
   }
 }

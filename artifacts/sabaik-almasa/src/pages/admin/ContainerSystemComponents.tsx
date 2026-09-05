@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react"
-import { useCreateContainerSystemRecord, type ContainerSystemRecord, type ServiceRequest } from "@workspace/api-client-react"
+import { useCreateContainerSystemRecord, useGetContainers, type ContainerSystemRecord, type ServiceRequest } from "@workspace/api-client-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -37,7 +37,6 @@ function canonicalCollections(records: ContainerSystemRecord[]) {
 export type RecordKind =
   | "customer"
   | "customer_site"
-  | "container_type"
   | "container"
   | "container_assignment"
   | "contract"
@@ -83,7 +82,6 @@ export type RecordKind =
 export const KIND_LABELS: Record<RecordKind, string> = {
   customer: "العملاء",
   customer_site: "مواقع العملاء",
-  container_type: "أنواع الحاويات",
   container: "الحاويات",
   container_assignment: "تخصيص الحاويات",
   contract: "العقود",
@@ -130,7 +128,6 @@ export const KIND_LABELS: Record<RecordKind, string> = {
 export const KIND_ICONS: Record<RecordKind, string> = {
   customer: "عميل",
   customer_site: "موقع",
-  container_type: "نوع",
   container: "أصل",
   container_assignment: "تخصيص",
   contract: "عقد",
@@ -206,21 +203,9 @@ export const FIELD_CONFIG: Record<RecordKind, FieldConfig[]> = {
     { key: "contactPhone", label: "جوال مسؤول الموقع", placeholder: "05xxxxxxxx" },
     { key: "notes", label: "ملاحظات الوصول", type: "textarea", wide: true },
   ],
-  container_type: [
-    { key: "categoryRecordId", label: "التصنيف المركزي", placeholder: "اختر التصنيف" },
-    { key: "categorySizeRecordId", label: "الحجم المركزي", placeholder: "اختر الحجم بعد تحديد التصنيف" },
-    { key: "name", label: "اسم النوع", placeholder: "حاوية أنقاض 20 ياردة" },
-    { key: "size", label: "المقاس", placeholder: "6 × 2.4 × 1.8 م" },
-    { key: "capacity", label: "السعة", placeholder: "15 طن" },
-    { key: "dailyRate", label: "السعر اليومي", type: "number", placeholder: "0" },
-    { key: "notes", label: "ملاحظات التشغيل", type: "textarea", wide: true },
-  ],
   container: [
     { key: "assetCode", label: "رقم الأصل", placeholder: "CNT-204" },
-    { key: "categoryRecordId", label: "التصنيف المركزي", placeholder: "اختر التصنيف" },
-    { key: "categorySizeRecordId", label: "الحجم المركزي", placeholder: "اختر الحجم بعد تحديد التصنيف" },
-    { key: "containerTypeRecordId", label: "نوع الحاوية المركزي", placeholder: "اختر النوع بعد تحديد الفئة" },
-    { key: "typeName", label: "نوع الحاوية", placeholder: "20 ياردة" },
+    { key: "containerTypeId", label: "نوع الحاوية المركزي", placeholder: "اختر النوع من مركز أنواع الحاويات" },
     { key: "status", label: "الحالة التشغيلية لأصل الحاوية", placeholder: "اختر الحالة التي تصف وضع الحاوية الآن" },
     { key: "location", label: "الموقع الحالي", placeholder: "مستودع الشفا" },
     { key: "lastInspection", label: "آخر فحص", type: "date" },
@@ -1068,12 +1053,16 @@ export function RecordDialog({
   const [newCustomer, setNewCustomer] = useState({ name: "", phone: "", email: "" })
   const [newCustomerError, setNewCustomerError] = useState("")
   const createCustomerMutation = useCreateContainerSystemRecord()
+  const { data: containerTypes = [] } = useGetContainers()
 
   useEffect(() => {
     if (!open) return
     const initial = emptyPayload(kind)
     Object.entries(initialPayload ?? {}).forEach(([key, value]) => { initial[key] = value })
     Object.entries(record?.payload ?? {}).forEach(([key, value]) => { initial[key] = String(value ?? "") })
+    if (kind === "container" && !initial.containerTypeId && initial.containerTypeRecordId) {
+      initial.containerTypeId = initial.containerTypeRecordId
+    }
     if (kind === "payment" && !initial.invoiceNumber) {
       const storedInvoiceId = Number(initial.invoiceRecordId ?? initial.invoiceId ?? 0)
       const allocationInvoiceId = (() => {
@@ -1119,6 +1108,20 @@ export function RecordDialog({
     setFormError("")
     setPayload(current => {
     const next = { ...current, [key]: value }
+    if (kind === "container" && key === "containerTypeId") {
+      const selectedType = containerTypes.find(item => String(item.id) === value)
+      if (selectedType) {
+        next.typeName = selectedType.name
+        next.containerType = selectedType.name
+        next.category = selectedType.category ?? ""
+        next.categoryName = selectedType.category ?? ""
+        next.size = selectedType.size
+        next.capacity = selectedType.capacity
+        next.dailyRate = String(selectedType.pricePerDay)
+        next.pricePerDay = String(selectedType.pricePerDay)
+        next.priceText = selectedType.priceText ?? ""
+      }
+    }
     if (kind === "invoice" && (key === "quantity" || key === "unitPrice")) {
       const quantity = Number(key === "quantity" ? value : next.quantity)
       const unitPrice = Number(key === "unitPrice" ? value : next.unitPrice)
@@ -1132,7 +1135,6 @@ export function RecordDialog({
   const fields = FIELD_CONFIG[kind]
   const categories = records.filter(item => item.kind === "category" && item.status !== "archived")
   const categorySizes = records.filter(item => item.kind === "category_size" && item.status !== "archived")
-  const containerTypes = records.filter(item => item.kind === "container_type" && item.status !== "archived")
   const isCustomerPayment = kind === "payment"
   const isInvoice = kind === "invoice"
   const isFinancialRecord = ["receipt", "payment", "expense", "deposit", "bank_deposit", "invoice", "invoice_return", "payment_return", "transfer", "purchase", "purchase_return", "commission", "salary_advance", "salary_payment"].includes(kind)
@@ -1369,48 +1371,24 @@ export function RecordDialog({
     : invoicePayload
   const optionsFor = (key: string) => {
     if (kind === "container" && key === "status") return CONTAINER_STATUS_OPTIONS
-    if (["container", "container_type", "category_size"].includes(kind) && key === "categoryRecordId") {
+    if (["category_size"].includes(kind) && key === "categoryRecordId") {
       return categories.map(item => {
         const categoryPayload = item.payload as Record<string, unknown>
         const label = String(categoryPayload.name ?? categoryPayload.title ?? item.reference ?? `تصنيف #${item.id}`)
         return { value: String(item.id), label }
       })
     }
-    if (["container", "container_type"].includes(kind) && key === "categorySizeRecordId") {
-      const categoryId = Number(payload.categoryRecordId ?? 0)
-      const categoryName = String(categories.find(item => item.id === categoryId)?.payload
-        ? ((categories.find(item => item.id === categoryId)?.payload as Record<string, unknown>).name ?? "")
-        : "")
-      return categorySizes
-        .filter(item => {
-          if (!categoryId) return true
-          const sizePayload = item.payload as Record<string, unknown>
-          return Number(sizePayload.categoryRecordId ?? 0) === categoryId ||
-            (!sizePayload.categoryRecordId && String(sizePayload.categoryName ?? "").trim() === categoryName.trim())
-        })
-        .map(item => {
-          const sizePayload = item.payload as Record<string, unknown>
-          const categoryName = String(sizePayload.categoryName ?? "")
-          const size = String(sizePayload.size ?? sizePayload.name ?? item.reference ?? "")
-          return { value: String(item.id), label: categoryName ? `${categoryName} · ${size}` : size }
-        })
-        .filter(option => option.label)
-    }
-    if (kind === "container" && key === "containerTypeRecordId") {
-      const categoryId = Number(payload.categoryRecordId ?? 0)
-      const sizeId = Number(payload.categorySizeRecordId ?? 0)
+    if (kind === "container" && key === "containerTypeId") {
       return containerTypes
-        .filter(item => {
-          const typePayload = item.payload as Record<string, unknown>
-          const matchesCategory = !categoryId || Number(typePayload.categoryRecordId ?? 0) === categoryId
-          const matchesSize = !sizeId || Number(typePayload.categorySizeRecordId ?? 0) === sizeId
-          return matchesCategory && matchesSize
-        })
+        .filter(item => item.isActive)
         .map(item => {
-          const typePayload = item.payload as Record<string, unknown>
-          const name = String(typePayload.name ?? typePayload.typeName ?? item.reference ?? `نوع #${item.id}`)
-          const size = String(typePayload.size ?? "")
-          return { value: String(item.id), label: size && !name.includes(size) ? `${name} · ${size}` : name }
+          const category = item.category === "debris"
+            ? "أنقاض"
+            : item.category === "waste"
+              ? "نفايات"
+              : item.category
+          const details = [category, item.size, item.pricePerDay > 0 ? `${item.pricePerDay} ر.س/يوم` : ""].filter(Boolean).join(" · ")
+          return { value: String(item.id), label: details ? `${item.name} · ${details}` : item.name }
         })
     }
     if (kind === "invoice" && key === "invoiceType") return INVOICE_TYPE_OPTIONS
@@ -1455,7 +1433,7 @@ export function RecordDialog({
       : key.toLowerCase().includes("branch") ? "branch"
       : key.toLowerCase().includes("warehouse") || key.toLowerCase().includes("store") ? "warehouse"
       : key.toLowerCase().includes("treasury") || key.toLowerCase().includes("cash") ? "treasury"
-      : key === "typeName" || key === "category" ? "container_type"
+       : key === "category" ? "category"
       : key === "item" || key === "itemName" ? "category"
       : undefined
     if (!source) return []
@@ -1601,39 +1579,19 @@ export function RecordDialog({
                           customerName: String(contractCustomer.payload.name ?? contractPayload?.customerName ?? ""),
                         } : {}),
                       }))
-                    } else if (["container", "container_type", "category_size"].includes(kind) && (field.key === "categoryRecordId" || field.key === "categorySizeRecordId" || field.key === "containerTypeRecordId")) {
+                    } else if (kind === "category_size" && (field.key === "categoryRecordId" || field.key === "categorySizeRecordId")) {
                       const selected = field.key === "categoryRecordId"
                         ? categories.find(item => String(item.id) === event.target.value)
-                        : field.key === "categorySizeRecordId"
-                          ? categorySizes.find(item => String(item.id) === event.target.value)
-                          : containerTypes.find(item => String(item.id) === event.target.value)
+                        : categorySizes.find(item => String(item.id) === event.target.value)
                       const selectedPayload = selected?.payload as Record<string, unknown> | undefined
                       setPayload(current => {
                         const next = { ...current, [field.key]: event.target.value }
                         if (field.key === "categoryRecordId") {
                           next.categoryName = String(selectedPayload?.name ?? selectedPayload?.title ?? "")
-                          if (kind === "container" || kind === "container_type") {
-                            next.categorySizeRecordId = ""
-                            next.size = ""
-                          }
-                          if (kind === "container") {
-                            next.containerTypeRecordId = ""
-                            next.typeName = ""
-                          }
                         } else if (selectedPayload) {
-                          if (field.key === "containerTypeRecordId") {
-                            next.categoryRecordId = String(selectedPayload.categoryRecordId ?? next.categoryRecordId ?? "")
-                            next.categorySizeRecordId = String(selectedPayload.categorySizeRecordId ?? next.categorySizeRecordId ?? "")
-                            next.categoryName = String(selectedPayload.categoryName ?? next.categoryName ?? "")
-                            next.size = String(selectedPayload.size ?? "")
-                            next.typeName = String(selectedPayload.name ?? selectedPayload.typeName ?? "")
-                            if (selectedPayload.capacity) next.capacity = String(selectedPayload.capacity)
-                          } else {
-                            next.categoryRecordId = String(selectedPayload.categoryRecordId ?? next.categoryRecordId ?? "")
-                            next.categoryName = String(selectedPayload.categoryName ?? "")
-                            next.size = String(selectedPayload.size ?? "")
-                            next.typeName = [next.categoryName, next.size].filter(Boolean).join(" — ")
-                          }
+                          next.categoryRecordId = String(selectedPayload.categoryRecordId ?? next.categoryRecordId ?? "")
+                          next.categoryName = String(selectedPayload.categoryName ?? "")
+                          next.size = String(selectedPayload.size ?? "")
                         }
                         return next
                       })
