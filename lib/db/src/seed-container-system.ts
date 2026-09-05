@@ -54,8 +54,9 @@ const demo = [
     "container_type",
     "active",
     {
-      name: "حاوية أنقاض 10 ياردة",
-      size: "10 ياردة",
+      reference: "TYPE-CENTRAL-DEBRIS-12",
+      name: "حاوية أنقاض 12 ياردة",
+      size: "12 ياردة",
       capacity: "8 طن",
       dailyRate: 180,
       taxRate: 15,
@@ -65,7 +66,8 @@ const demo = [
     "container_type",
     "active",
     {
-      name: "حاوية مخلفات 20 ياردة",
+      reference: "TYPE-CENTRAL-DEBRIS-20",
+      name: "حاوية أنقاض 20 ياردة",
       size: "20 ياردة",
       capacity: "15 طن",
       dailyRate: 260,
@@ -76,8 +78,9 @@ const demo = [
     "container_type",
     "active",
     {
+      reference: "TYPE-CENTRAL-WASTE-6",
       name: "حاوية مغلقة للنفايات",
-      size: "12 ياردة",
+      size: "6 ياردة",
       capacity: "6 طن",
       dailyRate: 220,
       taxRate: 15,
@@ -88,7 +91,7 @@ const demo = [
     "available",
     {
       assetCode: "CNT-101",
-      typeName: "حاوية أنقاض 10 ياردة",
+      typeName: "حاوية أنقاض 12 ياردة",
       location: "مستودع الرياض",
       lastInspection: daysFromNow(-8),
     },
@@ -98,7 +101,7 @@ const demo = [
     "rented",
     {
       assetCode: "CNT-102",
-      typeName: "حاوية مخلفات 20 ياردة",
+      typeName: "حاوية أنقاض 20 ياردة",
       location: "مشروع البناء المتين",
       lastInspection: daysFromNow(-4),
     },
@@ -118,7 +121,7 @@ const demo = [
     "maintenance",
     {
       assetCode: "CNT-104",
-      typeName: "حاوية أنقاض 10 ياردة",
+      typeName: "حاوية أنقاض 12 ياردة",
       location: "الورشة",
       lastInspection: daysFromNow(-45),
     },
@@ -969,6 +972,8 @@ const extendedDemo = [
   }
 
   const seededCategoryIds = new Map<string, number>();
+  const seededSizeIds = new Map<string, number>();
+  const seededTypeIds = new Map<string, number>();
   for (const [kind, status, payload] of [
     ...demo,
     ...linkedDemo,
@@ -979,6 +984,31 @@ const extendedDemo = [
       const categoryName = String(payloadRecord.categoryName ?? "").trim();
       const categoryRecordId = seededCategoryIds.get(categoryName);
       if (categoryRecordId) payloadRecord.categoryRecordId = categoryRecordId;
+    }
+    if (kind === "container_type") {
+      const typeName = String(payloadRecord.name ?? "").trim();
+      const categoryName = typeName.includes("أنقاض") ? "أنقاض" : "نفايات تجارية";
+      const categoryRecordId = seededCategoryIds.get(categoryName);
+      const sizeKey = `${categoryName}|${String(payloadRecord.size ?? "").trim()}`;
+      const categorySizeRecordId = seededSizeIds.get(sizeKey);
+      if (categoryRecordId) {
+        payloadRecord.categoryRecordId = categoryRecordId;
+        payloadRecord.categoryName = categoryName;
+      }
+      if (categorySizeRecordId) payloadRecord.categorySizeRecordId = categorySizeRecordId;
+    }
+    if (kind === "container") {
+      const typeRecordId = seededTypeIds.get(String(payloadRecord.typeName ?? "").trim());
+      if (typeRecordId) {
+        const typeRecord = db.select().from(containerSystemRecordsTable).where(eq(containerSystemRecordsTable.id, typeRecordId)).get();
+        const typePayload = typeRecord ? JSON.parse(typeRecord.payload) as Record<string, unknown> : {};
+        payloadRecord.containerTypeRecordId = typeRecordId;
+        payloadRecord.categoryRecordId = typePayload.categoryRecordId;
+        payloadRecord.categoryName = typePayload.categoryName;
+        payloadRecord.categorySizeRecordId = typePayload.categorySizeRecordId;
+        payloadRecord.size = typePayload.size;
+        payloadRecord.capacity = typePayload.capacity;
+      }
     }
     const reference = String(
       payloadRecord.reference ?? `${kind.toUpperCase().slice(0, 4)}-DEMO`,
@@ -1004,6 +1034,12 @@ const extendedDemo = [
     if (kind === "category") {
       const categoryName = String(payloadRecord.name ?? "").trim();
       if (categoryName) seededCategoryIds.set(categoryName, created.id);
+    }
+    if (kind === "category_size") {
+      seededSizeIds.set(`${String(payloadRecord.categoryName ?? "").trim()}|${String(payloadRecord.size ?? "").trim()}`, created.id);
+    }
+    if (kind === "container_type") {
+      seededTypeIds.set(String(payloadRecord.name ?? "").trim(), created.id);
     }
   }
 }

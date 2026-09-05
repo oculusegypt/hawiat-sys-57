@@ -208,6 +208,7 @@ export const FIELD_CONFIG: Record<RecordKind, FieldConfig[]> = {
   ],
   container_type: [
     { key: "categoryRecordId", label: "التصنيف المركزي", placeholder: "اختر التصنيف" },
+    { key: "categorySizeRecordId", label: "الحجم المركزي", placeholder: "اختر الحجم بعد تحديد التصنيف" },
     { key: "name", label: "اسم النوع", placeholder: "حاوية أنقاض 20 ياردة" },
     { key: "size", label: "المقاس", placeholder: "6 × 2.4 × 1.8 م" },
     { key: "capacity", label: "السعة", placeholder: "15 طن" },
@@ -218,6 +219,7 @@ export const FIELD_CONFIG: Record<RecordKind, FieldConfig[]> = {
     { key: "assetCode", label: "رقم الأصل", placeholder: "CNT-204" },
     { key: "categoryRecordId", label: "التصنيف المركزي", placeholder: "اختر التصنيف" },
     { key: "categorySizeRecordId", label: "الحجم المركزي", placeholder: "اختر الحجم بعد تحديد التصنيف" },
+    { key: "containerTypeRecordId", label: "نوع الحاوية المركزي", placeholder: "اختر النوع بعد تحديد الفئة" },
     { key: "typeName", label: "نوع الحاوية", placeholder: "20 ياردة" },
     { key: "status", label: "الحالة التشغيلية لأصل الحاوية", placeholder: "اختر الحالة التي تصف وضع الحاوية الآن" },
     { key: "location", label: "الموقع الحالي", placeholder: "مستودع الشفا" },
@@ -1130,6 +1132,7 @@ export function RecordDialog({
   const fields = FIELD_CONFIG[kind]
   const categories = records.filter(item => item.kind === "category" && item.status !== "archived")
   const categorySizes = records.filter(item => item.kind === "category_size" && item.status !== "archived")
+  const containerTypes = records.filter(item => item.kind === "container_type" && item.status !== "archived")
   const isCustomerPayment = kind === "payment"
   const isInvoice = kind === "invoice"
   const isFinancialRecord = ["receipt", "payment", "expense", "deposit", "bank_deposit", "invoice", "invoice_return", "payment_return", "transfer", "purchase", "purchase_return", "commission", "salary_advance", "salary_payment"].includes(kind)
@@ -1373,7 +1376,7 @@ export function RecordDialog({
         return { value: String(item.id), label }
       })
     }
-    if (kind === "container" && key === "categorySizeRecordId") {
+    if (["container", "container_type"].includes(kind) && key === "categorySizeRecordId") {
       const categoryId = Number(payload.categoryRecordId ?? 0)
       const categoryName = String(categories.find(item => item.id === categoryId)?.payload
         ? ((categories.find(item => item.id === categoryId)?.payload as Record<string, unknown>).name ?? "")
@@ -1392,6 +1395,23 @@ export function RecordDialog({
           return { value: String(item.id), label: categoryName ? `${categoryName} · ${size}` : size }
         })
         .filter(option => option.label)
+    }
+    if (kind === "container" && key === "containerTypeRecordId") {
+      const categoryId = Number(payload.categoryRecordId ?? 0)
+      const sizeId = Number(payload.categorySizeRecordId ?? 0)
+      return containerTypes
+        .filter(item => {
+          const typePayload = item.payload as Record<string, unknown>
+          const matchesCategory = !categoryId || Number(typePayload.categoryRecordId ?? 0) === categoryId
+          const matchesSize = !sizeId || Number(typePayload.categorySizeRecordId ?? 0) === sizeId
+          return matchesCategory && matchesSize
+        })
+        .map(item => {
+          const typePayload = item.payload as Record<string, unknown>
+          const name = String(typePayload.name ?? typePayload.typeName ?? item.reference ?? `نوع #${item.id}`)
+          const size = String(typePayload.size ?? "")
+          return { value: String(item.id), label: size && !name.includes(size) ? `${name} · ${size}` : name }
+        })
     }
     if (kind === "invoice" && key === "invoiceType") return INVOICE_TYPE_OPTIONS
     if (["invoice", "payment"].includes(kind) && key === "paymentMethod") return PAYMENT_METHOD_OPTIONS
@@ -1581,25 +1601,39 @@ export function RecordDialog({
                           customerName: String(contractCustomer.payload.name ?? contractPayload?.customerName ?? ""),
                         } : {}),
                       }))
-                    } else if (["container", "container_type", "category_size"].includes(kind) && (field.key === "categoryRecordId" || field.key === "categorySizeRecordId")) {
+                    } else if (["container", "container_type", "category_size"].includes(kind) && (field.key === "categoryRecordId" || field.key === "categorySizeRecordId" || field.key === "containerTypeRecordId")) {
                       const selected = field.key === "categoryRecordId"
                         ? categories.find(item => String(item.id) === event.target.value)
-                        : categorySizes.find(item => String(item.id) === event.target.value)
+                        : field.key === "categorySizeRecordId"
+                          ? categorySizes.find(item => String(item.id) === event.target.value)
+                          : containerTypes.find(item => String(item.id) === event.target.value)
                       const selectedPayload = selected?.payload as Record<string, unknown> | undefined
                       setPayload(current => {
                         const next = { ...current, [field.key]: event.target.value }
                         if (field.key === "categoryRecordId") {
                           next.categoryName = String(selectedPayload?.name ?? selectedPayload?.title ?? "")
-                          if (kind === "container") {
+                          if (kind === "container" || kind === "container_type") {
                             next.categorySizeRecordId = ""
                             next.size = ""
+                          }
+                          if (kind === "container") {
+                            next.containerTypeRecordId = ""
                             next.typeName = ""
                           }
                         } else if (selectedPayload) {
-                          next.categoryRecordId = String(selectedPayload.categoryRecordId ?? next.categoryRecordId ?? "")
-                          next.categoryName = String(selectedPayload.categoryName ?? "")
-                          next.size = String(selectedPayload.size ?? "")
-                          next.typeName = [next.categoryName, next.size].filter(Boolean).join(" — ")
+                          if (field.key === "containerTypeRecordId") {
+                            next.categoryRecordId = String(selectedPayload.categoryRecordId ?? next.categoryRecordId ?? "")
+                            next.categorySizeRecordId = String(selectedPayload.categorySizeRecordId ?? next.categorySizeRecordId ?? "")
+                            next.categoryName = String(selectedPayload.categoryName ?? next.categoryName ?? "")
+                            next.size = String(selectedPayload.size ?? "")
+                            next.typeName = String(selectedPayload.name ?? selectedPayload.typeName ?? "")
+                            if (selectedPayload.capacity) next.capacity = String(selectedPayload.capacity)
+                          } else {
+                            next.categoryRecordId = String(selectedPayload.categoryRecordId ?? next.categoryRecordId ?? "")
+                            next.categoryName = String(selectedPayload.categoryName ?? "")
+                            next.size = String(selectedPayload.size ?? "")
+                            next.typeName = [next.categoryName, next.size].filter(Boolean).join(" — ")
+                          }
                         }
                         return next
                       })

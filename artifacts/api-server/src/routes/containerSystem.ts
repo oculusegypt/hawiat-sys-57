@@ -46,9 +46,10 @@ function postedCollections(rows: typeof containerSystemRecordsTable.$inferSelect
   })];
 }
 
-function parsePayload(payload: string): Record<string, unknown> {
+function parsePayload(payload: unknown): Record<string, unknown> {
+  if (payload && typeof payload === "object") return payload as Record<string, unknown>;
   try {
-    const value = JSON.parse(payload);
+    const value = JSON.parse(String(payload));
     return value && typeof value === "object" ? value : {};
   } catch {
     return {};
@@ -61,6 +62,45 @@ async function normalizeCategoryReferences(kind: string, payload: Record<string,
   const records = await db.select().from(containerSystemRecordsTable);
   const activeCategories = records.filter(record => record.kind === "category" && record.status !== "archived");
   const activeSizes = records.filter(record => record.kind === "category_size" && record.status !== "archived");
+  const activeTypes = records.filter(record => record.kind === "container_type" && record.status !== "archived");
+
+  // A container type is the canonical bridge between a category, its size,
+  // and every physical asset. Older assets only stored typeName/size, so use
+  // the selected type first and fall back to an unambiguous legacy match.
+  if (kind === "container") {
+    const requestedTypeId = Number(payload.containerTypeRecordId ?? 0);
+    let typeRecord = requestedTypeId > 0
+      ? activeTypes.find(record => record.id === requestedTypeId)
+      : undefined;
+    if (requestedTypeId > 0 && !typeRecord) throw new Error("نوع الحاوية المركزي غير موجود أو مؤرشف");
+
+    if (!typeRecord) {
+      const requestedSize = String(payload.size ?? "").trim().toLowerCase();
+      const requestedTypeName = String(payload.typeName ?? "").trim().toLowerCase();
+      const requestedCategoryId = Number(payload.categoryRecordId ?? 0);
+      const candidates = activeTypes.filter(record => {
+        const typePayload = parsePayload(record.payload);
+        const matchesCategory = !requestedCategoryId ||
+          Number(typePayload.categoryRecordId ?? 0) === requestedCategoryId;
+        const matchesSize = !requestedSize || String(typePayload.size ?? "").trim().toLowerCase() === requestedSize;
+        const matchesName = !requestedTypeName ||
+          String(typePayload.name ?? typePayload.typeName ?? "").trim().toLowerCase() === requestedTypeName;
+        return matchesCategory && matchesSize && matchesName;
+      });
+      if (candidates.length === 1) typeRecord = candidates[0];
+    }
+
+    if (typeRecord) {
+      const typePayload = parsePayload(typeRecord.payload);
+      payload.containerTypeRecordId = typeRecord.id;
+      if (!payload.categoryRecordId && typePayload.categoryRecordId) payload.categoryRecordId = typePayload.categoryRecordId;
+      if (!payload.categorySizeRecordId && typePayload.categorySizeRecordId) payload.categorySizeRecordId = typePayload.categorySizeRecordId;
+      if (!String(payload.typeName ?? "").trim()) payload.typeName = typePayload.name ?? typePayload.typeName ?? typeRecord.reference;
+      if (!String(payload.size ?? "").trim() && typePayload.size) payload.size = typePayload.size;
+      if (!String(payload.capacity ?? "").trim() && typePayload.capacity) payload.capacity = typePayload.capacity;
+    }
+  }
+
   const categoryId = Number(payload.categoryRecordId ?? 0);
   let category = Number.isInteger(categoryId) && categoryId > 0
     ? activeCategories.find(record => record.id === categoryId)
@@ -88,9 +128,31 @@ async function normalizeCategoryReferences(kind: string, payload: Record<string,
   }
 
   const categorySizeId = Number(payload.categorySizeRecordId ?? 0);
-  if (categorySizeId <= 0) return;
-  const sizeRecord = activeSizes.find(record => record.id === categorySizeId);
-  if (!sizeRecord) throw new Error("الحجم المركزي غير موجود أو مؤرشف");
+  let sizeRecord = categorySizeId > 0 ? activeSizes.find(record => record.id === categorySizeId) : undefined;
+  if (categorySizeId > 0 && !sizeRecord) throw new Error("الحجم المركزي غير موجود أو مؤرشف");
+
+  // Legacy records can carry only the readable size. Resolve it when the
+  // category has exactly one matching central size.
+  if (!sizeRecord && category && String(payload.size ?? "").trim()) {
+    const requestedSize = String(payload.size).trim().toLowerCase();
+    const matchingSizes = activeSizes.filter(record => {
+      const sizePayload = parsePayload(record.payload);
+      return Number(sizePayload.categoryRecordId ?? 0) === category?.id &&
+        String(sizePayload.size ?? sizePayload.name ?? "").trim().toLowerCase() === requestedSize;
+    });
+    if (matchingSizes.length === 1) {
+      sizeRecord = matchingSizes[0];
+      payload.categorySizeRecordId = sizeRecord.id;
+    }
+  }
+
+  if (!sizeRecord) {
+    if (kind === "container_type" && !String(payload.size ?? "").trim()) {
+      throw new Error("الحجم المركزي أو اسم الحجم مطلوب لنوع الحاوية");
+    }
+    return;
+  }
+
   const sizePayload = parsePayload(sizeRecord.payload);
   const sizeCategoryId = Number(sizePayload.categoryRecordId ?? 0);
   if (category && sizeCategoryId > 0 && sizeCategoryId !== category.id) {
@@ -104,9 +166,66 @@ async function normalizeCategoryReferences(kind: string, payload: Record<string,
     payload.categoryName = String(categoryPayload.name ?? categoryPayload.title ?? category.reference ?? "").trim();
   }
   payload.size = String(sizePayload.size ?? sizePayload.name ?? "").trim();
-  if (!String(payload.typeName ?? "").trim() && payload.categoryName) {
+  if (kind === "container_type" && !String(payload.name ?? "").trim() && payload.categoryName) {
+    payload.name = [payload.categoryName, payload.size].filter(Boolean).join(" — ");
+  }
+  if (kind === "container" && !String(payload.typeName ?? "").trim() && payload.categoryName) {
     payload.typeName = [payload.categoryName, payload.size].filter(Boolean).join(" — ");
   }
+}
+
+function enrichContainerRegistryRows(
+  rows: Array<Omit<typeof containerSystemRecordsTable.$inferSelect, "payload"> & { payload: unknown }>,
+) {
+  const activeCategories = rows.filter(row => row.kind === "category" && row.status !== "archived");
+  const activeSizes = rows.filter(row => row.kind === "category_size" && row.status !== "archived");
+  const activeTypes = rows.filter(row => row.kind === "container_type" && row.status !== "archived");
+
+  return rows.map(row => {
+    if (!["container", "container_asset", "container_type", "category_size"].includes(row.kind)) return row;
+    const payload = parsePayload(row.payload);
+    const categoryId = Number(payload.categoryRecordId ?? 0);
+    const category = activeCategories.find(item => item.id === categoryId) ??
+      activeCategories.find(item => String(parsePayload(item.payload).name ?? "").trim() === String(payload.categoryName ?? "").trim());
+    const categoryPayload = category ? parsePayload(category.payload) : {};
+    if (category) {
+      payload.categoryRecordId = category.id;
+      payload.categoryName = String(categoryPayload.name ?? category.reference ?? "").trim();
+    }
+
+    const sizeId = Number(payload.categorySizeRecordId ?? 0);
+    const size = activeSizes.find(item => item.id === sizeId) ??
+      activeSizes.find(item => {
+        const sizePayload = parsePayload(item.payload);
+        return (!category || Number(sizePayload.categoryRecordId ?? 0) === category.id) &&
+          String(sizePayload.size ?? sizePayload.name ?? "").trim() === String(payload.size ?? "").trim();
+      });
+    if (size) {
+      const sizePayload = parsePayload(size.payload);
+      payload.categorySizeRecordId = size.id;
+      payload.size = String(sizePayload.size ?? sizePayload.name ?? payload.size ?? "").trim();
+    }
+
+    if (row.kind === "container" || row.kind === "container_asset") {
+      const typeId = Number(payload.containerTypeRecordId ?? 0);
+      const type = activeTypes.find(item => item.id === typeId) ??
+        activeTypes.find(item => {
+          const typePayload = parsePayload(item.payload);
+          return (!category || Number(typePayload.categoryRecordId ?? 0) === category.id) &&
+            (!size || Number(typePayload.categorySizeRecordId ?? 0) === size.id);
+        });
+      if (type) {
+        const typePayload = parsePayload(type.payload);
+        payload.containerTypeRecordId = type.id;
+        payload.typeName = String(payload.typeName ?? typePayload.name ?? typePayload.typeName ?? type.reference).trim();
+        if (!payload.capacity && typePayload.capacity) payload.capacity = typePayload.capacity;
+      }
+    } else if (row.kind === "container_type" && size && !payload.categorySizeRecordId) {
+      payload.categorySizeRecordId = size.id;
+    }
+
+    return { ...row, payload };
+  });
 }
 
 function ensureDepositReconciliation(
@@ -157,7 +276,9 @@ async function findByOperationKey(kind: string, operationKey: string) {
   ) ?? null;
 }
 
-function formatRecord(row: typeof containerSystemRecordsTable.$inferSelect) {
+function formatRecord(
+  row: Omit<typeof containerSystemRecordsTable.$inferSelect, "payload"> & { payload: unknown },
+) {
   const payload = parsePayload(row.payload);
   if (payload.driverProofPhotoUrl) payload.driverProofPhotoUrl = refreshPrivateUploadUrl(payload.driverProofPhotoUrl);
   if (payload.proofPhotoUrl) payload.proofPhotoUrl = refreshPrivateUploadUrl(payload.proofPhotoUrl);
@@ -866,6 +987,13 @@ router.get("/admin/container-system", requireContainerPermission("container_syst
     taxNumber: await getSetting("company_tax_number"),
     englishName: (await getSetting("company_name_en")).trim(),
   };
+  const registryRecords = enrichContainerRegistryRows(records);
+  const snapshotRecords = registryRecords.map(record => {
+    const contract = contracts.find(item => item.id === record.id);
+    // Contract payloads in the snapshot have historically been returned as an
+    // object (while SQLite stores every payload as text). Keep that API shape.
+    return contract ? { ...record, payload: contract.payload as unknown as string } : record;
+  });
   return res.json({
     organization,
     summary: {
@@ -890,7 +1018,7 @@ router.get("/admin/container-system", requireContainerPermission("container_syst
       vehiclesReady: records.filter(r => r.kind === "vehicle" && r.status === "available").length,
       maintenanceDue: records.filter(r => r.kind === "maintenance" && ["due", "overdue"].includes(r.status)).length,
     },
-    records: records.map(r => contracts.find(c => c.id === r.id) ?? r),
+    records: snapshotRecords,
     expiringContracts,
     recent: records.slice(0, 12),
   });
@@ -915,7 +1043,7 @@ router.get("/admin/container-system/records", requireContainerPermission("contai
   const rows = await db.select().from(containerSystemRecordsTable)
     .where(filters.length ? and(...filters) : undefined)
     .orderBy(desc(containerSystemRecordsTable.updatedAt));
-  return res.json(rows.map(formatRecord));
+  return res.json(enrichContainerRegistryRows(rows).map(formatRecord));
 });
 
 router.post("/admin/container-system/contracts/workflow", requireContainerPermission("contract"), async (req, res) => {

@@ -409,11 +409,11 @@ function MetricCard({ label, value, icon: Icon, tone, hint }: { label: string; v
   )
 }
 
-function EmptyState({ kind, onAdd }: { kind: RecordKind; onAdd: () => void }) {
+function EmptyState({ kind, onAdd, title }: { kind: RecordKind; onAdd: () => void; title?: string }) {
   return (
     <div className="flex min-h-64 flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-slate-50/60 px-6 text-center" data-testid={`empty-state-${kind}`}>
       <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-cyan-50 text-cyan-800"><ClipboardList size={24} /></div>
-      <h3 className="font-bold text-slate-800">لا توجد سجلات في {KIND_LABELS[kind]}</h3>
+      <h3 className="font-bold text-slate-800">{title ?? `لا توجد سجلات في ${KIND_LABELS[kind]}`}</h3>
       <p className="mt-1 max-w-sm text-sm text-slate-500">ابدأ بإضافة أول سجل. ستظهر التغييرات مباشرة في لوحة التشغيل والتقارير.</p>
       <Button onClick={onAdd} className="mt-5 gap-2 bg-cyan-800 hover:bg-cyan-900" data-testid={`button-empty-add-${kind}`}><Plus size={16} /> إضافة سجل</Button>
     </div>
@@ -440,6 +440,100 @@ function RecordRow({ record, kind, records, serviceRequests = [], onDetails, onE
     if (fieldKey === "siteRecordId") return String(payload.address ?? payload.name ?? related.reference ?? `#${related.id}`)
     if (fieldKey === "containerRecordId") return String(payload.assetCode ?? payload.code ?? related.reference ?? `#${related.id}`)
     return String(record.payload[fieldKey] ?? "—")
+  }
+  if (kind === "container_type") {
+    const category = String(record.payload.categoryName ?? "فئة غير محددة")
+    const size = String(record.payload.size ?? "الحجم غير محدد")
+    const name = String(record.payload.name ?? record.payload.typeName ?? "نوع حاوية")
+    const capacity = String(record.payload.capacity ?? "السعة غير محددة")
+    const dailyRate = Number(record.payload.dailyRate ?? 0)
+    return (
+      <div className="border-b border-slate-100 p-3 last:border-0 sm:p-4" data-testid={`row-record-${record.id}`}>
+        <div className="group relative overflow-hidden rounded-2xl border border-slate-200 bg-white p-4 transition hover:border-cyan-300 hover:shadow-[0_12px_30px_rgba(15,118,130,.10)] sm:p-5">
+          <div className="absolute inset-y-0 right-0 w-1 bg-cyan-700" />
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center">
+            <div className="flex min-w-0 flex-1 items-start gap-3">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-cyan-50 text-cyan-800"><Box size={22} /></div>
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h3 className="truncate text-base font-black text-slate-900">{name}</h3>
+                  <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-bold text-slate-500">{category}</span>
+                </div>
+                <p className="mt-1 font-mono text-[11px] text-slate-400" dir="ltr">{record.reference || `TYPE-${record.id}`}</p>
+                <div className="mt-3 flex flex-wrap gap-2 text-[11px]">
+                  <span className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 font-bold text-slate-700"><Gauge size={13} className="text-cyan-700" /> {size}</span>
+                  <span className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 font-bold text-slate-700"><Box size={13} className="text-cyan-700" /> {capacity}</span>
+                  {dailyRate > 0 && <span className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-100 bg-emerald-50 px-2.5 py-1.5 font-bold text-emerald-800"><CircleDollarSign size={13} /> {dailyRate.toLocaleString("ar-SA")} ر.س / يوم</span>}
+                </div>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-3 border-t border-slate-100 pt-3 lg:min-w-[245px] lg:justify-end lg:border-t-0 lg:pt-0">
+              <div className="text-right">
+                <RecordStatus status={record.status} />
+                <p className="mt-1 text-[10px] text-slate-400">آخر تحديث {formatRecordDate(record.updatedAt)}</p>
+              </div>
+              <div className="flex items-center gap-1 border-r border-slate-100 pr-3">
+                <Button variant="outline" size="sm" onClick={onDetails} className="h-9 gap-1.5 text-xs text-cyan-800"><FileText size={14} /> التفاصيل</Button>
+                <Button variant="ghost" size="icon" onClick={onEdit} className="h-9 w-9 text-slate-500 hover:bg-cyan-50 hover:text-cyan-800" title="تعديل النوع"><FilePenLine size={14} /></Button>
+                <Button variant="ghost" size="icon" onClick={onArchive} className="h-9 w-9 text-slate-400 hover:bg-rose-50 hover:text-rose-600" title="أرشفة النوع"><Archive size={14} /></Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+  if (kind === "container_assignment") {
+    const containerId = Number(record.payload.containerRecordId ?? 0)
+    const siteId = Number(record.payload.siteRecordId ?? 0)
+    const container = records.find(item => item.id === containerId)
+    const site = records.find(item => item.id === siteId)
+    const containerPayload = container?.payload as Record<string, unknown> | undefined
+    const sitePayload = site?.payload as Record<string, unknown> | undefined
+    const customer = sitePayload?.customerRecordId
+      ? records.find(item => item.id === Number(sitePayload.customerRecordId))
+      : undefined
+    const customerPayload = customer?.payload as Record<string, unknown> | undefined
+    const assetName = String(containerPayload?.assetCode ?? containerPayload?.containerCode ?? container?.reference ?? `أصل #${containerId}`)
+    const customerName = String(customerPayload?.name ?? customerPayload?.customerName ?? record.payload.customerName ?? "عميل غير محدد")
+    const siteName = String(sitePayload?.name ?? sitePayload?.address ?? record.payload.siteName ?? `موقع #${siteId}`)
+    const assignmentStatus = String(record.payload.assignmentStatus ?? record.status)
+    const period = [record.payload.startDate ?? record.payload.assignedAt, record.payload.endDate ?? record.payload.returnDate].filter(Boolean).map(value => String(value).slice(0, 10)).join("  ←  ")
+    return (
+      <div className="border-b border-slate-100 p-3 last:border-0 sm:p-4" data-testid={`row-record-${record.id}`}>
+        <div className="group relative overflow-hidden rounded-2xl border border-slate-200 bg-white p-4 transition hover:border-amber-300 hover:shadow-[0_12px_30px_rgba(180,120,20,.10)] sm:p-5">
+          <div className="absolute inset-y-0 right-0 w-1 bg-amber-500" />
+          <div className="flex flex-col gap-4 xl:flex-row xl:items-center">
+            <div className="flex min-w-0 flex-1 items-start gap-3">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-amber-50 text-amber-700"><Link2 size={22} /></div>
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h3 className="font-mono text-base font-black text-slate-900" dir="ltr">{record.reference || `ASN-${record.id}`}</h3>
+                  <RecordStatus status={assignmentStatus} />
+                </div>
+                <div className="mt-3 grid gap-2 text-xs text-slate-700 sm:grid-cols-2">
+                  <div className="flex min-w-0 items-center gap-2 rounded-xl bg-slate-50 px-3 py-2"><Box size={14} className="shrink-0 text-cyan-700" /><span className="truncate"><b className="text-slate-400">الأصل</b> · {assetName}</span></div>
+                  <div className="flex min-w-0 items-center gap-2 rounded-xl bg-slate-50 px-3 py-2"><MapPin size={14} className="shrink-0 text-amber-600" /><span className="truncate"><b className="text-slate-400">الموقع</b> · {siteName}</span></div>
+                  <div className="flex min-w-0 items-center gap-2 rounded-xl bg-slate-50 px-3 py-2"><UserRound size={14} className="shrink-0 text-slate-500" /><span className="truncate"><b className="text-slate-400">العميل</b> · {customerName}</span></div>
+                  {period && <div className="flex min-w-0 items-center gap-2 rounded-xl bg-slate-50 px-3 py-2"><CalendarDays size={14} className="shrink-0 text-slate-500" /><span className="truncate" dir="ltr">{period}</span></div>}
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center justify-between gap-3 border-t border-slate-100 pt-3 xl:min-w-[245px] xl:justify-end xl:border-t-0 xl:pt-0">
+              <div className="text-right">
+                <p className="text-[10px] font-bold text-slate-400">آخر تحديث</p>
+                <p className="mt-1 text-xs font-bold text-slate-600">{formatRecordDate(record.updatedAt)}</p>
+              </div>
+              <div className="flex items-center gap-1 border-r border-slate-100 pr-3">
+                <Button variant="outline" size="sm" onClick={onDetails} className="h-9 gap-1.5 text-xs text-cyan-800"><FileText size={14} /> التفاصيل</Button>
+                <Button variant="ghost" size="icon" onClick={onEdit} className="h-9 w-9 text-slate-500 hover:bg-cyan-50 hover:text-cyan-800" title="تعديل التخصيص"><FilePenLine size={14} /></Button>
+                <Button variant="ghost" size="icon" onClick={onArchive} className="h-9 w-9 text-slate-400 hover:bg-rose-50 hover:text-rose-600" title="أرشفة التخصيص"><Archive size={14} /></Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
   }
   return (
     <div className="group grid grid-cols-[minmax(0,1.4fr)_minmax(0,2fr)_auto] items-center gap-4 border-b border-slate-100 px-4 py-4 last:border-0 hover:bg-cyan-50/30 sm:grid-cols-[minmax(0,1.2fr)_minmax(0,2fr)_minmax(0,1fr)_auto]" data-testid={`row-record-${record.id}`}>
@@ -614,18 +708,45 @@ function InvoiceWorkspace({ records, onAdd, onDetails, onEdit, onArchive }: { re
 }
 
 function RecordsPanel({ kind, records, allRecords = records, serviceRequests = [], loading, onAdd, onDetails, onEdit, onArchive }: { kind: RecordKind; records: ContainerSystemRecord[]; allRecords?: ContainerSystemRecord[]; serviceRequests?: ServiceRequest[]; loading: boolean; onAdd: () => void; onDetails: (record: ContainerSystemRecord) => void; onEdit: (record: ContainerSystemRecord) => void; onArchive: (record: ContainerSystemRecord) => void }) {
+  const registryCopy = kind === "container_type"
+    ? {
+        eyebrow: "كتالوج الحاويات",
+        title: "أنواع الحاويات",
+        description: "عرّف النوع مرة واحدة واربطه بالفئة والحجم ليظهر تلقائياً عند تسجيل الأصول والعقود.",
+        action: "نوع حاوية جديد",
+        empty: "لا توجد أنواع حاويات معرفة بعد",
+      }
+    : kind === "container_assignment"
+      ? {
+          eyebrow: "التشغيل الميداني",
+          title: "تخصيص الحاويات",
+          description: "تابع انتقال كل أصل من المستودع إلى موقع العميل مع الحالة الحالية ومرجع التخصيص.",
+          action: "تخصيص جديد",
+          empty: "لا توجد تخصيصات حاويات حالية",
+        }
+      : null
   return (
-    <Card className="border-slate-200/80 shadow-[0_8px_28px_rgba(15,44,58,.05)]">
-      <CardHeader className="border-b border-slate-100 px-4 py-4 sm:px-5">
+    <Card className={`overflow-hidden border-slate-200/80 shadow-[0_8px_28px_rgba(15,44,58,.05)] ${registryCopy ? "border-t-4 border-t-cyan-700" : ""}`}>
+      <CardHeader className={`border-b border-slate-100 px-4 py-4 sm:px-5 ${registryCopy ? "bg-[linear-gradient(110deg,#f8fbfc_0%,#ffffff_55%,#eff9fa_100%)]" : ""}`}>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div><CardTitle className="text-base text-slate-900">سجلات {KIND_LABELS[kind]}</CardTitle><p className="mt-1 text-xs text-slate-500">آخر تحديث محفوظ من نظام العمليات</p></div>
-          <Button onClick={onAdd} className="gap-2 bg-cyan-800 hover:bg-cyan-900" data-testid={`button-add-${kind}`}><Plus size={16} /> إضافة سجل</Button>
+          <div className="flex items-start gap-3">
+            {registryCopy && <div className="hidden h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-cyan-100 text-cyan-800 sm:flex">{kind === "container_type" ? <Box size={21} /> : <Link2 size={21} />}</div>}
+            <div>
+              {registryCopy && <p className="text-[10px] font-black uppercase tracking-[0.18em] text-cyan-700">{registryCopy.eyebrow}</p>}
+              <CardTitle className="mt-0.5 text-base text-slate-900">{registryCopy?.title ?? `سجلات ${KIND_LABELS[kind]}`}</CardTitle>
+              <p className="mt-1 max-w-2xl text-xs leading-6 text-slate-500">{registryCopy?.description ?? "آخر تحديث محفوظ من نظام العمليات"}</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            {registryCopy && <span className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-bold text-slate-500">{records.length} سجل نشط</span>}
+            <Button onClick={onAdd} className="gap-2 bg-cyan-800 shadow-sm hover:bg-cyan-900" data-testid={`button-add-${kind}`}><Plus size={16} /> {registryCopy?.action ?? "إضافة سجل"}</Button>
+          </div>
         </div>
       </CardHeader>
       <CardContent className="p-0">
-        {loading ? <div className="space-y-1 p-4">{[1, 2, 3, 4].map(i => <SkeletonLine key={i} className="h-14 w-full" />)}</div> : records.length === 0 ? <div className="p-4"><EmptyState kind={kind} onAdd={onAdd} /></div> : (
+        {loading ? <div className="space-y-2 p-4">{[1, 2, 3, 4].map(i => <SkeletonLine key={i} className={registryCopy ? "h-28 w-full rounded-2xl" : "h-14 w-full"} />)}</div> : records.length === 0 ? <div className="p-4"><EmptyState kind={kind} onAdd={onAdd} title={registryCopy?.empty} /></div> : (
           <div>
-            <div className="hidden grid-cols-[minmax(0,1.4fr)_minmax(0,2fr)_minmax(0,1fr)_auto] gap-4 bg-slate-50 px-4 py-2.5 text-[10px] font-bold text-slate-400 sm:grid"><span>السجل</span><span>التفاصيل</span><span>الحالة والتحديث</span><span /></div>
+            {!registryCopy && <div className="hidden grid-cols-[minmax(0,1.4fr)_minmax(0,2fr)_minmax(0,1fr)_auto] gap-4 bg-slate-50 px-4 py-2.5 text-[10px] font-bold text-slate-400 sm:grid"><span>السجل</span><span>التفاصيل</span><span>الحالة والتحديث</span><span /></div>}
              {records.map(record => <RecordRow key={record.id} record={record} kind={kind} records={allRecords} serviceRequests={serviceRequests} onDetails={() => onDetails(record)} onEdit={() => onEdit(record)} onArchive={() => onArchive(record)} />)}
           </div>
         )}
