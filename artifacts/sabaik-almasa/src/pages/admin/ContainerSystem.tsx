@@ -418,9 +418,17 @@ function EmptyState({ kind, onAdd }: { kind: RecordKind; onAdd: () => void }) {
   )
 }
 
-function RecordRow({ record, kind, records, onDetails, onEdit, onArchive }: { record: ContainerSystemRecord; kind: RecordKind; records: ContainerSystemRecord[]; onDetails: () => void; onEdit: () => void; onArchive: () => void }) {
+function RecordRow({ record, kind, records, serviceRequests = [], onDetails, onEdit, onArchive }: { record: ContainerSystemRecord; kind: RecordKind; records: ContainerSystemRecord[]; serviceRequests?: ServiceRequest[]; onDetails: () => void; onEdit: () => void; onArchive: () => void }) {
   const fields = FIELD_CONFIG[kind].slice(0, 4)
   const primary = String(record.payload[fields[0]?.key] ?? record.reference ?? `#${record.id}`)
+  const relatedSite = records.find(item => item.kind === "customer_site" && Number(item.payload.customerRecordId ?? 0) === record.id)
+  const linkedRequestId = Number(record.payload.requestId ?? relatedSite?.payload.requestId ?? 0)
+  const proofPhotoUrl = String(
+    record.payload.driverProofPhotoUrl ??
+      record.payload.proofPhotoUrl ??
+      serviceRequests.find(request => request.id === linkedRequestId)?.driverProofPhotoUrl ??
+      "",
+  ).trim()
   const relatedLabel = (fieldKey: string) => {
     const id = Number(record.payload[fieldKey])
     const related = records.find(item => item.id === id)
@@ -447,7 +455,8 @@ function RecordRow({ record, kind, records, onDetails, onEdit, onArchive }: { re
              </div>
            </div>
          ) : <button type="button" onClick={onDetails} className={`truncate text-right font-bold ${kind === "customer" ? "text-cyan-900 hover:underline" : "text-slate-800"}`} data-testid={`text-record-primary-${record.id}`}>{primary}</button>}
-        <p className="mt-0.5 text-[11px] font-mono text-slate-400" dir="ltr">{record.reference || `#${record.id}`}</p>
+         <p className="mt-0.5 text-[11px] font-mono text-slate-400" dir="ltr">{record.reference || `#${record.id}`}</p>
+         {proofPhotoUrl && <a href={proofPhotoUrl} target="_blank" rel="noopener noreferrer" onClick={event => event.stopPropagation()} className="mt-2 inline-flex w-fit items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-black text-emerald-800 hover:bg-emerald-100" data-testid={`link-proof-photo-${record.id}`}><FileCheck2 size={13} /> عرض صورة الإثبات</a>}
       </div>
       <div className="hidden min-w-0 gap-2 sm:grid sm:grid-cols-2">
          {fields.slice(1, 3).map(field => <div key={field.key} className="min-w-0"><p className="text-[10px] text-slate-400">{field.label}</p><p className="truncate text-xs text-slate-700">{kind === "contract" && ["customerRecordId", "siteRecordId", "containerRecordId"].includes(field.key) ? relatedLabel(field.key) : String(record.payload[field.key] ?? "—")}</p></div>)}
@@ -602,7 +611,7 @@ function InvoiceWorkspace({ records, onAdd, onDetails, onEdit, onArchive }: { re
   )
 }
 
-function RecordsPanel({ kind, records, allRecords = records, loading, onAdd, onDetails, onEdit, onArchive }: { kind: RecordKind; records: ContainerSystemRecord[]; allRecords?: ContainerSystemRecord[]; loading: boolean; onAdd: () => void; onDetails: (record: ContainerSystemRecord) => void; onEdit: (record: ContainerSystemRecord) => void; onArchive: (record: ContainerSystemRecord) => void }) {
+function RecordsPanel({ kind, records, allRecords = records, serviceRequests = [], loading, onAdd, onDetails, onEdit, onArchive }: { kind: RecordKind; records: ContainerSystemRecord[]; allRecords?: ContainerSystemRecord[]; serviceRequests?: ServiceRequest[]; loading: boolean; onAdd: () => void; onDetails: (record: ContainerSystemRecord) => void; onEdit: (record: ContainerSystemRecord) => void; onArchive: (record: ContainerSystemRecord) => void }) {
   return (
     <Card className="border-slate-200/80 shadow-[0_8px_28px_rgba(15,44,58,.05)]">
       <CardHeader className="border-b border-slate-100 px-4 py-4 sm:px-5">
@@ -615,7 +624,7 @@ function RecordsPanel({ kind, records, allRecords = records, loading, onAdd, onD
         {loading ? <div className="space-y-1 p-4">{[1, 2, 3, 4].map(i => <SkeletonLine key={i} className="h-14 w-full" />)}</div> : records.length === 0 ? <div className="p-4"><EmptyState kind={kind} onAdd={onAdd} /></div> : (
           <div>
             <div className="hidden grid-cols-[minmax(0,1.4fr)_minmax(0,2fr)_minmax(0,1fr)_auto] gap-4 bg-slate-50 px-4 py-2.5 text-[10px] font-bold text-slate-400 sm:grid"><span>السجل</span><span>التفاصيل</span><span>الحالة والتحديث</span><span /></div>
-             {records.map(record => <RecordRow key={record.id} record={record} kind={kind} records={allRecords} onDetails={() => onDetails(record)} onEdit={() => onEdit(record)} onArchive={() => onArchive(record)} />)}
+             {records.map(record => <RecordRow key={record.id} record={record} kind={kind} records={allRecords} serviceRequests={serviceRequests} onDetails={() => onDetails(record)} onEdit={() => onEdit(record)} onArchive={() => onArchive(record)} />)}
           </div>
         )}
       </CardContent>
@@ -1571,7 +1580,7 @@ export default function ContainerSystem() {
                 ? <InvoiceWorkspace records={records} onAdd={() => openCreate("invoice")} onDetails={record => navigate(`/admin/container-system/invoice/${record.id}/details`)} onEdit={openEdit} onArchive={archiveRecord} />
               : view === "container"
                ? <ContainerPOS records={records} onAdd={() => openCreate("container")} onDetails={openRecordDetails} onEdit={openEdit} onDelete={deleteContainerRecord} />
-                : <RecordsPanel kind={collectionKind ?? "customer"} records={records} allRecords={snapshot?.records ?? records} loading={loading} onAdd={() => openCreate(collectionKind ?? "customer")} onDetails={openRecordDetails} onEdit={openEdit} onArchive={archiveRecord} />}
+                 : <RecordsPanel kind={collectionKind ?? "customer"} records={records} allRecords={snapshot?.records ?? records} serviceRequests={serviceRequestsQuery.data ?? []} loading={loading} onAdd={() => openCreate(collectionKind ?? "customer")} onDetails={openRecordDetails} onEdit={openEdit} onArchive={archiveRecord} />}
         </main>
       </div>
       <RecordDetails record={detailRecord} allRecords={snapshot?.records ?? records} serviceRequests={serviceRequestsQuery.data ?? []} open={Boolean(detailRecord)} onOpenChange={open => { if (!open) setDetailRecord(null) }} onContractAction={contractAction} />
