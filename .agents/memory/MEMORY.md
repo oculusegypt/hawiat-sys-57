@@ -12,3 +12,4 @@
 - [SEO noindex error policy](seo-noindex-error-policy.md) — only confirmed missing pages should become noindex; transient API failures must preserve indexability.
 - [Public chat attachments](public-chat-attachments.md) — anonymous image uploads are allowed only through validation and a strict per-IP rate limit.
 - [Container category registry](container-category-registry.md) — central category and size IDs must survive seed/backfill while legacy text remains readable.
+- [Contract line central types](contract-line-central-types.md) — rental templates use central package IDs; contract creation snapshots the selected line into the same transaction and invoice.

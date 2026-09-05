@@ -62,6 +62,41 @@ const CONTAINER_CATEGORY_LABELS: Record<string, string> = {
   contract: "عقود النظافة ورخص بلدي",
 };
 
+const CONTAINER_CATEGORY_ALIASES: Record<string, string> = {
+  debris: "debris",
+  "أنقاض": "debris",
+  "مخلفات البناء": "debris",
+  waste: "waste",
+  "نفايات": "waste",
+  "النفايات": "waste",
+  contract: "contract",
+  "عقود النظافة": "contract",
+  "عقود نظافة": "contract",
+};
+
+function canonicalContainerCategory(value: unknown) {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  return CONTAINER_CATEGORY_ALIASES[normalized] ?? normalized;
+}
+
+function applyContainerTypePayload(payload: Record<string, unknown>, type: typeof containersTable.$inferSelect) {
+  payload.containerTypeId = type.id;
+  delete payload.containerTypeRecordId;
+  payload.typeName = type.name;
+  payload.containerType = type.name;
+  payload.category = type.category;
+  payload.categoryName = CONTAINER_CATEGORY_LABELS[type.category] ?? type.category;
+  payload.size = type.size;
+  payload.containerSize = type.size;
+  payload.classification = type.category;
+  payload.capacity = type.capacity;
+  payload.dailyRate = type.pricePerDay;
+  payload.pricePerDay = type.pricePerDay;
+  payload.priceText = type.priceText;
+  payload.typeDescription = type.description;
+  payload.typeFeatures = type.features;
+}
+
 async function normalizeCategoryReferences(kind: string, payload: Record<string, unknown>) {
   if (kind === "container_type") {
     throw new Error("أنواع الحاويات تُدار من مركز /admin/packages فقط");
@@ -87,19 +122,66 @@ async function normalizeCategoryReferences(kind: string, payload: Record<string,
     throw new Error("اختيار نوع الحاوية من مركز أنواع الحاويات مطلوب");
   }
 
-  payload.containerTypeId = type.id;
-  delete payload.containerTypeRecordId;
-  payload.typeName = type.name;
-  payload.containerType = type.name;
-  payload.category = type.category;
-  payload.categoryName = CONTAINER_CATEGORY_LABELS[type.category] ?? type.category;
-  payload.size = type.size;
-  payload.capacity = type.capacity;
-  payload.dailyRate = type.pricePerDay;
-  payload.pricePerDay = type.pricePerDay;
-  payload.priceText = type.priceText;
-  payload.typeDescription = type.description;
-  payload.typeFeatures = type.features;
+  applyContainerTypePayload(payload, type);
+}
+
+async function normalizeContractLinePayload(payload: Record<string, unknown>, recordId?: number) {
+  const activeTypes = await db.select().from(containersTable).where(eq(containersTable.isActive, true));
+  const requestedTypeId = Number(payload.containerTypeId ?? payload.containerTypeRecordId ?? 0);
+  let type = requestedTypeId > 0 ? activeTypes.find(item => item.id === requestedTypeId) : undefined;
+  if (!type) {
+    const requestedName = String(payload.typeName ?? payload.containerType ?? "").trim().toLowerCase();
+    const requestedSize = String(payload.size ?? payload.containerSize ?? "").trim().toLowerCase();
+    const requestedCategory = canonicalContainerCategory(payload.category ?? payload.classification ?? "");
+    const candidates = activeTypes.filter(item => {
+      const matchesName = !requestedName || item.name.trim().toLowerCase() === requestedName;
+      const matchesSize = !requestedSize || item.size.trim().toLowerCase() === requestedSize;
+      const matchesCategory = !requestedCategory ||
+        canonicalContainerCategory(item.category) === requestedCategory ||
+        canonicalContainerCategory(CONTAINER_CATEGORY_LABELS[item.category]) === requestedCategory;
+      return matchesName && matchesSize && matchesCategory;
+    });
+    if (candidates.length === 1) type = candidates[0];
+  }
+  if (!type) throw new Error("اختيار نوع الحاوية المركزي مطلوب لبند الإيجار");
+  applyContainerTypePayload(payload, type);
+
+  const contractRecordId = Number(payload.contractRecordId ?? 0);
+  if (contractRecordId > 0) {
+    const contract = await db.select().from(containerSystemRecordsTable).where(eq(containerSystemRecordsTable.id, contractRecordId)).get();
+    if (!contract || contract.kind !== "contract" || contract.status === "archived") {
+      throw new Error("العقد المرتبط ببند الإيجار غير موجود أو مؤرشف");
+    }
+    const contractPayload = parsePayload(contract.payload);
+    payload.contractRecordId = contract.id;
+    payload.contractNumber = String(contractPayload.contractNumber ?? contract.reference ?? "");
+    payload.customerRecordId = Number(contractPayload.customerRecordId ?? 0) || payload.customerRecordId;
+    payload.customerName = contractPayload.customerName ?? payload.customerName ?? "";
+  } else {
+    delete payload.contractRecordId;
+    payload.isTemplate = true;
+  }
+
+  const quantity = Number(payload.quantity ?? payload.trips ?? 1);
+  const unitPrice = Number(payload.unitPrice ?? payload.pricePerDay ?? type.pricePerDay ?? 0);
+  const taxRate = Number(payload.taxRate ?? 15);
+  const taxEnabled = payload.taxEnabled === true ||
+    ["true", "1", "yes", "نعم"].includes(String(payload.taxEnabled ?? "").trim().toLowerCase());
+  if (!Number.isFinite(quantity) || quantity <= 0) throw new Error("كمية بند الإيجار يجب أن تكون أكبر من صفر");
+  if (!Number.isFinite(unitPrice) || unitPrice < 0) throw new Error("سعر بند الإيجار غير صحيح");
+  payload.quantity = quantity;
+  payload.unitPrice = unitPrice;
+  payload.taxRate = Number.isFinite(taxRate) && taxRate >= 0 ? taxRate : 15;
+  payload.taxEnabled = taxEnabled;
+  const subtotal = Math.round(quantity * unitPrice * 100) / 100;
+  const taxAmount = taxEnabled ? Math.round(subtotal * Number(payload.taxRate) / 100 * 100) / 100 : 0;
+  payload.amount = subtotal;
+  payload.taxAmount = taxAmount;
+  payload.lineTotal = Math.round((subtotal + taxAmount) * 100) / 100;
+  payload.total = payload.lineTotal;
+  payload.lineName = String(payload.lineName ?? payload.description ?? payload.serviceType ?? `بند ${type.name}`).trim() || `بند ${type.name}`;
+  payload.serviceType = String(payload.serviceType ?? payload.lineName ?? "إيجار حاوية").trim();
+  if (recordId) payload.isTemplate = !contractRecordId;
 }
 
 async function enrichContainerRegistryRows(
@@ -108,6 +190,17 @@ async function enrichContainerRegistryRows(
   const activeTypes = await db.select().from(containersTable).where(eq(containersTable.isActive, true));
 
   return rows.map(row => {
+    if (row.kind === "contract_line") {
+      const payload = parsePayload(row.payload);
+      const typeId = Number(payload.containerTypeId ?? payload.containerTypeRecordId ?? 0);
+      const type = activeTypes.find(item => item.id === typeId) ??
+        activeTypes.find(item =>
+          item.name.trim() === String(payload.typeName ?? payload.containerType ?? "").trim() &&
+          (!String(payload.size ?? payload.containerSize ?? "").trim() || item.size.trim() === String(payload.size ?? payload.containerSize ?? "").trim()),
+        );
+      if (type) applyContainerTypePayload(payload, type);
+      return { ...row, payload };
+    }
     if (!["container", "container_asset"].includes(row.kind)) return row;
     const payload = parsePayload(row.payload);
     const typeId = Number(payload.containerTypeId ?? payload.containerTypeRecordId ?? 0);
@@ -987,6 +1080,7 @@ router.post("/admin/container-system/contracts/workflow", requireContainerPermis
       const payload = parsePayload(row.payload);
       return Number(payload.contractRecordId ?? 0) === existingContract.id;
     });
+    const rentalLine = related("contract_line");
     return res.status(200).json({
       contract: formatRecord(existingContract),
       assignment: related("container_assignment") ? formatRecord(related("container_assignment")!) : null,
@@ -994,10 +1088,20 @@ router.post("/admin/container-system/contracts/workflow", requireContainerPermis
       workOrder: workOrder ? formatRecord(workOrder) : null,
       serviceRequest: serviceRequest ?? null,
       invoice: invoice ? formatRecord(invoice) : null,
+      rentalLine: rentalLine ? formatRecord(rentalLine) : null,
       idempotent: true,
     });
   }
   const contractPayload = normalizeContractPayload({ ...(body.contract ?? {}), ...(operationKey ? { operationKey } : {}) });
+  const rentalLineTemplateId = Number(contractPayload.rentalLineRecordId ?? contractPayload.contractLineTemplateId ?? 0);
+  const rentalLineTemplate = rentalLineTemplateId > 0
+    ? await db.select().from(containerSystemRecordsTable).where(eq(containerSystemRecordsTable.id, rentalLineTemplateId)).get()
+    : undefined;
+  if (rentalLineTemplateId > 0 && (!rentalLineTemplate || rentalLineTemplate.kind !== "contract_line" || rentalLineTemplate.status === "archived")) {
+    return res.status(422).json({ error: "نموذج بند الإيجار المحدد غير موجود أو مؤرشف" });
+  }
+  const rentalLineTemplatePayload = rentalLineTemplate ? parsePayload(rentalLineTemplate.payload) : {};
+  const activeContainerTypes = await db.select().from(containersTable).where(eq(containersTable.isActive, true));
   const assignmentPayload = { ...(body.assignment ?? {}) };
   const appointmentPayload = { ...(body.appointment ?? {}) };
   const servicePayload = { ...(body.serviceRequest ?? {}) };
@@ -1051,6 +1155,22 @@ router.post("/admin/container-system/contracts/workflow", requireContainerPermis
       // Check the latter so assets shown as available by the wizard can be
       // assigned by the workflow.
       const assetPayload = parsePayload(asset.payload);
+      const requestedTypeId = Number(
+        contractPayload.containerTypeId ??
+        rentalLineTemplatePayload.containerTypeId ??
+        assetPayload.containerTypeId ??
+        assetPayload.containerTypeRecordId ??
+        0,
+      );
+      const contractContainerType = requestedTypeId > 0
+        ? activeContainerTypes.find(item => item.id === requestedTypeId)
+        : undefined;
+      if (rentalLineTemplateId > 0 && !contractContainerType) throw new Error("نوع الحاوية المركزي المرتبط بنموذج البند غير موجود");
+      if (rentalLineTemplateId > 0 && Number(rentalLineTemplatePayload.containerTypeId) > 0 &&
+          Number(rentalLineTemplatePayload.containerTypeId) !== Number(contractContainerType?.id)) {
+        throw new Error("نموذج بند الإيجار لا يتبع نوع الحاوية المختار");
+      }
+      if (contractContainerType) applyContainerTypePayload(contractPayload, contractContainerType);
       const assetAvailability = canonicalAssetStatus(assetPayload.status ?? asset.status, asset.status);
       if (!["available", "reserved", "active"].includes(assetAvailability)) throw new Error("الحاوية ليست متاحة للتخصيص");
       contractPayload.siteRecordId = siteId;
@@ -1138,6 +1258,57 @@ router.post("/admin/container-system/contracts/workflow", requireContainerPermis
         payload: JSON.stringify({ ...parsePayload(appointment.payload), workOrderRecordId: workOrder.id }),
         updatedAt: now,
       }).where(eq(containerSystemRecordsTable.id, appointment.id)).run();
+      let rentalLine: typeof containerSystemRecordsTable.$inferSelect | null = null;
+      if (contractContainerType) {
+        const template = rentalLineTemplatePayload;
+        const quantity = Number(contractPayload.trips ?? template.quantity ?? 1) > 0
+          ? Number(contractPayload.trips ?? template.quantity ?? 1)
+          : 1;
+        const unitPrice = Number(
+          contractPayload.unitPrice ??
+          template.unitPrice ??
+          (Number(contractPayload.amount ?? 0) / quantity),
+        );
+        const taxRate = Number(contractPayload.taxRate ?? template.taxRate ?? 15);
+        const taxEnabled = contractPayload.taxEnabled === true ||
+          ["true", "1", "yes", "نعم"].includes(String(contractPayload.taxEnabled ?? "").toLowerCase());
+        const subtotal = Math.round(quantity * Math.max(unitPrice, 0) * 100) / 100;
+        const taxAmount = taxEnabled ? Math.round(subtotal * taxRate / 100 * 100) / 100 : 0;
+        const lineTotal = Math.round((subtotal + taxAmount) * 100) / 100;
+        const linePayload = {
+          ...template,
+          contractRecordId: contract.id,
+          contractNumber,
+          customerRecordId: customerId,
+          customerName: String(customerPayload.name ?? customerPayload.customerName ?? ""),
+          siteRecordId: siteId,
+          containerRecordId: assetId,
+          containerCode: String(contractPayload.containerCode ?? assetPayload.assetCode ?? assetPayload.code ?? asset.reference ?? ""),
+          rentalLineTemplateId: rentalLineTemplateId || null,
+          lineName: String(template.lineName ?? template.description ?? template.serviceType ?? `بند ${contractContainerType.name}`),
+          serviceType: String(template.serviceType ?? contractPayload.serviceType ?? "إيجار حاوية"),
+          quantity,
+          unitPrice: Math.max(unitPrice, 0),
+          amount: subtotal,
+          taxRate,
+          taxEnabled,
+          taxAmount,
+          lineTotal,
+          total: lineTotal,
+          startDate: contractPayload.startDate ?? template.startDate ?? "",
+          endDate: contractPayload.endDate ?? template.endDate ?? "",
+          billingFrequency: contractPayload.billingFrequency ?? template.billingFrequency ?? "monthly",
+          isTemplate: false,
+        };
+        applyContainerTypePayload(linePayload, contractContainerType);
+        rentalLine = tx.insert(containerSystemRecordsTable).values({
+          kind: "contract_line",
+          status: "active",
+          reference: referenceFor("contract_line", linePayload, Date.now()),
+          payload: JSON.stringify(linePayload),
+          createdBy: adminReq.adminId,
+        }).returning().get();
+      }
       // Contract is the billing source of truth. Create the first billing-period
       // invoice inside the same transaction so retries cannot leave half a cycle.
       // Keep the record in the financial draft lifecycle while exposing the
@@ -1167,17 +1338,20 @@ router.post("/admin/container-system/contracts/workflow", requireContainerPermis
           const containerCode = String(contractPayload.containerCode ?? assetPayload.assetCode ?? assetPayload.code ?? asset.reference ?? "");
           const containerType = String(contractPayload.containerType ?? assetPayload.typeName ?? assetPayload.containerType ?? assetPayload.size ?? "");
           const contractLocation = String(contractPayload.location ?? parsePayload(site.payload).address ?? "").trim();
+          const rentalLinePayload = rentalLine ? parsePayload(rentalLine.payload) : undefined;
           const lineItem = {
-            description: containerType ? `حاوية ${containerCode} — ${containerType}` : `حاوية ${containerCode}`,
+            description: String(rentalLinePayload?.lineName ?? (containerType ? `حاوية ${containerCode} — ${containerType}` : `حاوية ${containerCode}`)),
             containerCode,
-            quantity: 1,
-            unitPrice: subtotal,
-            amount: subtotal,
-            taxRate,
-            taxAmount,
-            taxEnabled,
-            total,
+            containerType,
+            quantity: Number(rentalLinePayload?.quantity ?? 1),
+            unitPrice: Number(rentalLinePayload?.unitPrice ?? subtotal),
+            amount: Number(rentalLinePayload?.amount ?? subtotal),
+            taxRate: Number(rentalLinePayload?.taxRate ?? taxRate),
+            taxAmount: Number(rentalLinePayload?.taxAmount ?? taxAmount),
+            taxEnabled: rentalLinePayload?.taxEnabled ?? taxEnabled,
+            total: Number(rentalLinePayload?.lineTotal ?? total),
             location: contractLocation,
+            contractLineRecordId: rentalLine?.id ?? null,
           };
           const invoicePayload = {
             invoiceType: "standard",
@@ -1241,12 +1415,12 @@ router.post("/admin/container-system/contracts/workflow", requireContainerPermis
           }).run();
         }
       }
-      for (const record of [finalizedContract, assignment, appointment, workOrder]) {
+      for (const record of [finalizedContract, assignment, appointment, workOrder, ...(rentalLine ? [rentalLine] : [])]) {
         tx.insert(containerSystemAuditTable).values({ recordId: record.id, kind: record.kind, action: "workflow_create", afterPayload: record.payload, actorId: adminReq.adminId }).run();
       }
-      return { contract: finalizedContract, assignment, appointment, workOrder, serviceRequest, invoice };
+      return { contract: finalizedContract, assignment, appointment, workOrder, serviceRequest, invoice, rentalLine };
     });
-    return res.status(201).json({ contract: formatRecord(result.contract), assignment: formatRecord(result.assignment), appointment: formatRecord(result.appointment), workOrder: formatRecord(result.workOrder), serviceRequest: result.serviceRequest ?? null, invoice: result.invoice ? formatRecord(result.invoice) : null, idempotent: false });
+    return res.status(201).json({ contract: formatRecord(result.contract), assignment: formatRecord(result.assignment), appointment: formatRecord(result.appointment), workOrder: formatRecord(result.workOrder), serviceRequest: result.serviceRequest ?? null, invoice: result.invoice ? formatRecord(result.invoice) : null, rentalLine: result.rentalLine ? formatRecord(result.rentalLine) : null, idempotent: false });
   } catch (error) {
     return res.status(422).json({ error: "تعذر إنشاء دورة العقد كاملة" });
   }
@@ -1900,6 +2074,7 @@ router.post("/admin/container-system/records", async (req, res) => {
   if (!payload || typeof payload !== "object") return res.status(400).json({ error: "بيانات السجل غير صالحة" });
   try {
     await normalizeCategoryReferences(kind, payload);
+    if (kind === "contract_line") await normalizeContractLinePayload(payload);
   } catch (error) {
     return res.status(422).json({ error: error instanceof Error ? error.message : "بيانات التصنيف المركزي غير صحيحة" });
   }
@@ -2198,6 +2373,7 @@ router.patch("/admin/container-system/records/:id", async (req, res) => {
   const nextPayload = body.payload ? { ...parsePayload(current.payload), ...body.payload } : parsePayload(current.payload);
   try {
     await normalizeCategoryReferences(current.kind, nextPayload);
+    if (current.kind === "contract_line") await normalizeContractLinePayload(nextPayload, id);
   } catch (error) {
     return res.status(422).json({ error: error instanceof Error ? error.message : "بيانات التصنيف المركزي غير صحيحة" });
   }

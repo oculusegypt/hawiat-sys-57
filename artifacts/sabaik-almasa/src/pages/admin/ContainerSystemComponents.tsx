@@ -241,11 +241,14 @@ export const FIELD_CONFIG: Record<RecordKind, FieldConfig[]> = {
     { key: "notes", label: "بنود وملاحظات", type: "textarea", wide: true },
   ],
   contract_line: [
-    { key: "contractNumber", label: "رقم العقد", placeholder: "RNT-2026-001" },
-    { key: "serviceType", label: "نوع الخدمة", placeholder: "توصيل / رفع / تبديل / نقل" },
-    { key: "containerCode", label: "رقم الحاوية", placeholder: "CNT-101" },
-    { key: "quantity", label: "الكمية", type: "number", placeholder: "1" },
-    { key: "unitPrice", label: "سعر الوحدة", type: "number", placeholder: "0" },
+    { key: "lineName", label: "اسم نموذج / بند الإيجار", placeholder: "إيجار حاوية أنقاض — رحلة رفع", required: true },
+    { key: "containerTypeId", label: "نوع الحاوية المركزي", placeholder: "اختر النوع: أنقاض أو نفايات أو عقود نظافة", required: true },
+    { key: "contractRecordId", label: "العقد المرتبط (اختياري)", placeholder: "اتركه فارغاً لإنشاء نموذج قابل لإعادة الاستخدام" },
+    { key: "serviceType", label: "نوع الخدمة", placeholder: "توصيل / رفع / تبديل / نقل", required: true },
+    { key: "billingFrequency", label: "دورية البند", placeholder: "اختر الدورية" },
+    { key: "containerCode", label: "رقم الحاوية (اختياري)", placeholder: "CNT-101" },
+    { key: "quantity", label: "الكمية / عدد الرحلات", type: "number", placeholder: "1", required: true },
+    { key: "unitPrice", label: "سعر الوحدة", type: "number", placeholder: "0", required: true },
     { key: "taxEnabled", label: "تفعيل الضريبة", type: "checkbox" },
     { key: "taxRate", label: "الضريبة %", type: "number", placeholder: "15" },
     { key: "lineTotal", label: "إجمالي البند", type: "number", placeholder: "0" },
@@ -1063,6 +1066,13 @@ export function RecordDialog({
     if (kind === "container" && !initial.containerTypeId && initial.containerTypeRecordId) {
       initial.containerTypeId = initial.containerTypeRecordId
     }
+    if (kind === "contract_line") {
+      if (!initial.containerTypeId && initial.containerTypeRecordId) initial.containerTypeId = initial.containerTypeRecordId
+      if (!initial.lineName) initial.lineName = initial.description || initial.serviceType || ""
+      if (!initial.quantity) initial.quantity = "1"
+      if (!initial.taxRate) initial.taxRate = "15"
+      if (!initial.billingFrequency) initial.billingFrequency = "monthly"
+    }
     if (kind === "payment" && !initial.invoiceNumber) {
       const storedInvoiceId = Number(initial.invoiceRecordId ?? initial.invoiceId ?? 0)
       const allocationInvoiceId = (() => {
@@ -1120,6 +1130,20 @@ export function RecordDialog({
         next.dailyRate = String(selectedType.pricePerDay)
         next.pricePerDay = String(selectedType.pricePerDay)
         next.priceText = selectedType.priceText ?? ""
+      }
+    }
+    if (kind === "contract_line" && key === "containerTypeId") {
+      const selectedType = containerTypes.find(item => String(item.id) === value)
+      if (selectedType) {
+        next.typeName = selectedType.name
+        next.containerType = selectedType.name
+        next.category = selectedType.category ?? ""
+        next.categoryName = selectedType.category ?? ""
+        next.size = selectedType.size
+        next.capacity = selectedType.capacity
+        next.unitPrice = next.unitPrice || String(selectedType.pricePerDay ?? 0)
+        next.serviceType = next.serviceType || (selectedType.category === "contract" ? "خدمة عقد نظافة" : "إيجار حاوية")
+        next.lineName = next.lineName || `بند ${selectedType.name}`
       }
     }
     if (kind === "invoice" && (key === "quantity" || key === "unitPrice")) {
@@ -1391,6 +1415,34 @@ export function RecordDialog({
           return { value: String(item.id), label: details ? `${item.name} · ${details}` : item.name }
         })
     }
+    if (kind === "contract_line" && key === "containerTypeId") {
+      return containerTypes
+        .filter(item => item.isActive)
+        .map(item => {
+          const category = item.category === "debris" ? "أنقاض" : item.category === "waste" ? "نفايات" : item.category === "contract" ? "عقود نظافة" : item.category
+          const details = [category, item.size, item.pricePerDay > 0 ? `${item.pricePerDay} ر.س/يوم` : ""].filter(Boolean).join(" · ")
+          return { value: String(item.id), label: details ? `${item.name} · ${details}` : item.name }
+        })
+    }
+    if (kind === "contract_line" && key === "contractRecordId") {
+      return records
+        .filter(item => item.kind === "contract" && item.status !== "archived")
+        .map(item => {
+          const value = item.payload as Record<string, unknown>
+          return {
+            value: String(item.id),
+            label: `${String(value.contractNumber ?? item.reference ?? `عقد #${item.id}`)} · ${String(value.customerName ?? "عميل غير محدد")}`,
+          }
+        })
+    }
+    if (kind === "contract_line" && key === "billingFrequency") {
+      return [
+        { value: "daily", label: "يومي" },
+        { value: "weekly", label: "أسبوعي" },
+        { value: "monthly", label: "شهري" },
+        { value: "yearly", label: "سنوي" },
+      ]
+    }
     if (kind === "invoice" && key === "invoiceType") return INVOICE_TYPE_OPTIONS
     if (["invoice", "payment"].includes(kind) && key === "paymentMethod") return PAYMENT_METHOD_OPTIONS
     const employeeSelectionKeys = ["employeeName", "employeeRecordId", "driverName", "supervisorName", "staffName", "createdByName"]
@@ -1525,7 +1577,19 @@ export function RecordDialog({
                   <Textarea id={`record-${field.key}`} value={payload[field.key] ?? ""} onChange={event => setValue(field.key, event.target.value)} placeholder={field.placeholder} required={field.required} rows={3} className="min-h-20 resize-y border-slate-200 bg-white" data-testid={`textarea-record-${field.key}`} />
                 ) : optionsFor(field.key).length > 0 ? (
                     <select id={`record-${field.key}`} value={isCustomerLinkedFinancial && field.key === "customerName" ? String(payload.customerRecordId ?? (isInvoice ? invoiceCustomerId : "")) : payload[field.key] ?? ""} onChange={event => {
-                    if (isCustomerLinkedFinancial && field.key === "customerName") {
+                    if (kind === "contract_line" && field.key === "containerTypeId") {
+                      setValue(field.key, event.target.value)
+                    } else if (kind === "contract_line" && field.key === "contractRecordId") {
+                      const contract = records.find(item => item.kind === "contract" && String(item.id) === event.target.value)
+                      const contractPayload = contract?.payload as Record<string, unknown> | undefined
+                      setPayload(current => ({
+                        ...current,
+                        contractRecordId: event.target.value,
+                        contractNumber: String(contractPayload?.contractNumber ?? contract?.reference ?? ""),
+                        customerRecordId: contract?.id ? String(contractPayload?.customerRecordId ?? "") : "",
+                        customerName: String(contractPayload?.customerName ?? ""),
+                      }))
+                    } else if (isCustomerLinkedFinancial && field.key === "customerName") {
                       const customer = customers.find(item => String(item.id) === event.target.value)
                       const customerPayload = customer?.payload as Record<string, unknown> | undefined
                       setPayload(current => ({
