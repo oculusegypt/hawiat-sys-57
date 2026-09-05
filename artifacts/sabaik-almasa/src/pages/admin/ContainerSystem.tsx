@@ -20,6 +20,7 @@ import {
   useGetContainerSystemAudit,
   useGetContainerSystemRecords,
   useGetFinancialTruth,
+  useGetContainers,
   useGetServiceRequests,
   useUpdateContainerSystemRecord,
 } from "@workspace/api-client-react"
@@ -1587,6 +1588,17 @@ const DETAIL_LABELS: Record<string, string> = {
   contractRecordId: "العقد المرتبط",
 }
 
+const CONTAINER_CATEGORY_LABELS: Record<string, string> = {
+  debris: "أنقاض ومخلفات بناء",
+  waste: "نفايات ومكابس",
+  contract: "عقود نظافة",
+}
+
+function containerCategoryLabel(value: unknown) {
+  const key = String(value ?? "").trim().toLowerCase()
+  return CONTAINER_CATEGORY_LABELS[key] ?? String(value ?? "")
+}
+
 function detailLabel(key: string) {
   return DETAIL_LABELS[key] ?? FIELD_CONFIG.container.find(field => field.key === key)?.label ?? "تفاصيل إضافية"
 }
@@ -1788,9 +1800,10 @@ function ContractRecordDetails({
 
 function RecordDetails({ record, allRecords, serviceRequests = [], open, onOpenChange, onContractAction }: { record?: ContainerSystemRecord | null; allRecords: ContainerSystemRecord[]; serviceRequests?: ServiceRequest[]; open: boolean; onOpenChange: (open: boolean) => void; onContractAction: (record: ContainerSystemRecord, action: string) => void }) {
   const [, navigate] = useLocation()
+  const isContainer = Boolean(record && ["container", "container_asset"].includes(record.kind))
+  const { data: containerTypes = [] } = useGetContainers()
   if (!record) return null
   if (record.kind === "contract") return <ContractRecordDetails record={record} allRecords={allRecords} serviceRequests={serviceRequests} open={open} onOpenChange={onOpenChange} onContractAction={onContractAction} />
-  const isContainer = ["container", "container_asset"].includes(record.kind)
   const isPaymentRecord = ["payment", "receipt", "payment_return", "ledger_entry"].includes(record.kind)
   const sourcePayment = record.kind === "ledger_entry"
     ? allRecords.find(item => item.kind === "payment" && item.id === Number(record.payload.sourceId ?? 0))
@@ -1932,10 +1945,18 @@ function RecordDetails({ record, allRecords, serviceRequests = [], open, onOpenC
     const related = allRecords.find(item => item.id === id)
     return related ? recordDisplayName(related, `#${id}`) : `#${id}`
   }
+  const centralTypeId = Number(containerPayload.containerTypeId ?? containerPayload.centralTypeId ?? 0)
+  const centralType = containerTypes.find(item => item.id === centralTypeId)
+  const centralTypeValue = centralType
+    ? `${centralType.name} · #${centralType.id}`
+    : centralTypeId > 0
+      ? `نوع حاوية #${centralTypeId}`
+      : containerPayload.typeName ?? containerPayload.containerType
+  const categoryValue = containerPayload.categoryName ?? containerPayload.category ?? containerPayload.classification
   const containerDetailEntries: Array<[string, unknown]> = [
     ["المعرّف الداخلي", containerPayload.assetKey ?? containerPayload.assetId],
-    ["نوع الحاوية المركزي", containerPayload.containerTypeId ?? containerPayload.centralTypeId],
-    ["التصنيف", containerPayload.category ?? containerPayload.classification],
+    ["نوع الحاوية المركزي", centralTypeValue],
+    ["التصنيف", containerCategoryLabel(categoryValue)],
     ["وصف النوع", containerPayload.description ?? containerPayload.typeDescription],
     ["الحجم", containerPayload.size ?? containerPayload.containerSize],
     ["السعة", containerPayload.capacity],
