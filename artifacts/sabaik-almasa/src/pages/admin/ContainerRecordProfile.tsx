@@ -1,4 +1,4 @@
-import { ArrowRight, BriefcaseBusiness, CalendarDays, CheckCircle2, FileDown, FileText, MapPin, Phone, Printer, Truck, UserRound, Wallet, Wrench, RotateCcw, Trash2, LockKeyhole } from "lucide-react"
+import { ArrowRight, BriefcaseBusiness, CalendarDays, CheckCircle2, ChevronDown, ClipboardList, FileText, MapPin, Phone, Printer, ReceiptText, Truck, UserRound, Wallet, Wrench, RotateCcw, Trash2, LockKeyhole, Building2, Clock3, CircleDollarSign, ExternalLink, Activity } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
 import type { ReactNode } from "react"
 import { useQueryClient } from "@tanstack/react-query"
@@ -93,6 +93,111 @@ const siteAddress = (site: ContainerSystemRecord) => {
   return text(payload.address ?? payload.location ?? payload.name, "")
 }
 
+const PROFILE_STATUS_LABELS: Record<string, string> = {
+  active: "نشط",
+  available: "متاح",
+  reserved: "محجوز",
+  rented: "مؤجر",
+  in_transit: "في الطريق",
+  with_customer: "لدى العميل",
+  awaiting_return: "بانتظار الاسترجاع",
+  inspection: "تحت الفحص",
+  maintenance: "في الصيانة",
+  damaged: "تالف",
+  lost: "مفقود",
+  out_of_service: "خارج الخدمة",
+  busy: "في مهمة",
+  due: "مستحقة",
+  overdue: "متأخرة",
+  completed: "مكتمل",
+  open: "مفتوح",
+  posted: "مرحّل",
+  issued: "صادر",
+  scheduled: "مجدول",
+  delivered: "تم التسليم",
+  returned: "تم الاسترجاع",
+  archived: "مؤرشف",
+  pending: "قيد الانتظار",
+  new: "جديد",
+  draft: "مسودة",
+  cancelled: "ملغى",
+  canceled: "ملغى",
+  closed: "مغلق",
+  settled: "مصفى",
+  delinquent: "متأخر السداد",
+  approved: "معتمد",
+  rejected: "مرفوض",
+  unassigned: "غير مسند",
+  assigned: "مسند",
+  in_progress: "قيد التنفيذ",
+  work_order: "أمر عمل",
+  payment: "تحصيل",
+}
+
+const SERVICE_LABELS: Record<string, string> = {
+  delivery: "توصيل حاوية",
+  dropoff: "تسليم حاوية",
+  pickup: "استرجاع حاوية",
+  empty: "تفريغ حاوية",
+  exchange: "تبديل حاوية",
+  inspection: "فحص وتجهيز حاوية",
+  scheduled: "خدمة مجدولة",
+  "استرجاع وسحب حاوية": "استرجاع وسحب حاوية",
+  "أمر تفريغ حاوية": "تفريغ حاوية",
+}
+
+const profileStatus = (value: unknown, fallback = "غير محددة") => {
+  const raw = String(value ?? "").trim()
+  if (!raw) return fallback
+  return PROFILE_STATUS_LABELS[raw] ?? PROFILE_STATUS_LABELS[raw.toLowerCase()] ?? formatStatus(raw)
+}
+
+const serviceTitle = (value: unknown) => {
+  const raw = String(value ?? "").trim()
+  if (!raw) return "خدمة حاويات"
+  return SERVICE_LABELS[raw] ?? SERVICE_LABELS[raw.toLowerCase()] ?? raw.replace(/_/g, " ")
+}
+
+const PROFILE_KIND_LABELS: Record<string, string> = {
+  contract: "عقد",
+  contract_line: "بند عقد",
+  container_movement: "حركة تشغيلية",
+  work_order: "أمر عمل",
+  appointment: "موعد تشغيل",
+  maintenance: "صيانة",
+  payment: "تحصيل",
+  receipt: "سند قبض",
+  invoice: "فاتورة",
+}
+
+const relatedRecordHeading = (record: ContainerSystemRecord) => {
+  const payload = payloadOf(record)
+  if (record.kind === "contract") return `العقد ${text(payload.contractNumber ?? record.reference, `#${record.id}`)}`
+  if (["work_order", "appointment"].includes(record.kind)) {
+    return serviceTitle(payload.serviceType ?? payload.operationType ?? payload.name)
+  }
+  if (record.kind === "container_movement") return text(payload.movementType, "حركة حاوية")
+  return text(payload.name ?? payload.contractNumber ?? payload.assetCode ?? record.reference, `سجل #${record.id}`)
+}
+
+const relatedRecordMeta = (record: ContainerSystemRecord) => {
+  const payload = payloadOf(record)
+  const kind = PROFILE_KIND_LABELS[record.kind] ?? "سجل مرتبط"
+  const date = formatRecordDate(String(payload.date ?? payload.scheduledAt ?? record.createdAt))
+  return `${kind} · ${date}`
+}
+
+const customerSiteName = (site: ContainerSystemRecord | undefined) => {
+  if (!site) return "الموقع غير محدد"
+  const payload = payloadOf(site)
+  return text(payload.name ?? payload.address ?? payload.location, "الموقع غير محدد")
+}
+
+const recordDateValue = (record: ContainerSystemRecord, ...keys: string[]) => {
+  const payload = payloadOf(record)
+  return keys.map(key => payload[key]).find(value => String(value ?? "").trim()) ?? record.createdAt
+}
+
 async function createProfileWorkOrder(input: Record<string, unknown>) {
   const operationKey = String(input.operationKey ?? "").trim()
   const response = await fetch(`${API_BASE}/api/admin/service-requests/from-contract`, {
@@ -169,7 +274,7 @@ function FieldGrid({ record }: { record: ContainerSystemRecord }) {
 
 function RelatedRows({ title, records, empty = "لا توجد سجلات مرتبطة", headerAction }: { title: string; records: ContainerSystemRecord[]; empty?: string; headerAction?: ReactNode }) {
   const embeddedAction = (records as ContainerSystemRecord[] & { headerAction?: ReactNode }).headerAction
-  return <Card className="border-slate-200/80 shadow-sm"><CardHeader className="border-b border-slate-100 px-5 py-4"><div className="flex flex-wrap items-center justify-between gap-3"><CardTitle className="text-base">{title}</CardTitle>{headerAction ?? embeddedAction}</div></CardHeader><CardContent className="p-0">{records.length === 0 ? <p className="p-8 text-center text-sm text-slate-500">{empty}</p> : records.map((record, index) => <div key={`${record.kind}-${record.id}-${index}`} className="flex items-center gap-3 border-b border-slate-100 px-5 py-3.5 last:border-0"><div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-cyan-50 text-cyan-800"><FileText size={16} /></div><div className="min-w-0 flex-1"><p className="truncate text-sm font-black text-slate-800">{text(record.payload.name ?? record.payload.customerName ?? record.payload.contractNumber ?? record.payload.assetCode ?? record.reference, `سجل ${record.id}`)}</p><p className="mt-1 text-[11px] text-slate-400">{KIND_LABELS[record.kind as RecordKind] ?? record.kind} · {formatRecordDate(record.createdAt)}</p></div><RecordStatus status={record.status} /><span className="text-xs font-black text-slate-700">{amountOf(record) ? money(amountOf(record)) : ""}</span></div>)}</CardContent></Card>
+  return <Card className="border-slate-200/80 shadow-sm"><CardHeader className="border-b border-slate-100 px-5 py-4"><div className="flex flex-wrap items-center justify-between gap-3"><CardTitle className="text-base">{title}</CardTitle>{headerAction ?? embeddedAction}</div></CardHeader><CardContent className="p-0">{records.length === 0 ? <p className="p-8 text-center text-sm text-slate-500">{empty}</p> : records.map((record, index) => <div key={`${record.kind}-${record.id}-${index}`} className="flex items-center gap-3 border-b border-slate-100 px-5 py-3.5 last:border-0"><div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-cyan-50 text-cyan-800"><FileText size={16} /></div><div className="min-w-0 flex-1"><p className="truncate text-sm font-black text-slate-800">{relatedRecordHeading(record)}</p><p className="mt-1 text-[11px] text-slate-400">{relatedRecordMeta(record)}</p></div><Badge variant="outline" className="shrink-0 font-bold">{profileStatus(record.status)}</Badge><span className="text-xs font-black text-slate-700">{amountOf(record) ? money(amountOf(record)) : ""}</span></div>)}</CardContent></Card>
 }
 
 function CompletionEvidence({ items }: {
@@ -177,11 +282,18 @@ function CompletionEvidence({ items }: {
 }) {
   const evidence = items.filter(item => Boolean(item.url))
   if (evidence.length === 0) return null
-  return <Card className="border-emerald-200 bg-emerald-50/40 shadow-sm">
-    <CardHeader className="border-b border-emerald-100 px-5 py-4">
-      <CardTitle className="flex items-center gap-2 text-base text-emerald-950"><CheckCircle2 size={17} className="text-emerald-600" /> إثباتات التنفيذ المحفوظة</CardTitle>
-    </CardHeader>
-    <CardContent className="grid gap-4 p-5 md:grid-cols-2">
+  return <details className="group overflow-hidden rounded-2xl border border-emerald-200 bg-emerald-50/40 shadow-sm">
+    <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-5 py-4 transition hover:bg-emerald-100/50 [&::-webkit-details-marker]:hidden">
+      <div>
+        <p className="flex items-center gap-2 text-base font-black text-emerald-950"><CheckCircle2 size={17} className="text-emerald-600" /> إثباتات التنفيذ المحفوظة</p>
+        <p className="mt-1 text-xs text-emerald-800/70">افتح القسم لمعاينة الصور المحفوظة وتفاصيل التنفيذ.</p>
+      </div>
+      <div className="flex shrink-0 items-center gap-3">
+        <Badge variant="outline" className="border-emerald-200 bg-white/70 text-emerald-800">{evidence.length} {evidence.length === 1 ? "صورة" : "صور"}</Badge>
+        <ChevronDown size={18} className="text-emerald-700 transition-transform group-open:rotate-180" />
+      </div>
+    </summary>
+    <div className="grid gap-4 border-t border-emerald-100 p-5 md:grid-cols-2">
       {evidence.map(item => <div key={item.id} className="overflow-hidden rounded-2xl border border-emerald-200 bg-white">
         <div className="flex items-start justify-between gap-3 border-b border-emerald-100 bg-emerald-50/70 px-3 py-2.5">
           <div className="min-w-0">
@@ -193,8 +305,8 @@ function CompletionEvidence({ items }: {
         </div>
         <img src={item.url ?? ""} alt={`صورة إثبات ${item.label}`} className="h-48 w-full bg-white object-contain" loading="lazy" />
       </div>)}
-    </CardContent>
-  </Card>
+    </div>
+  </details>
 }
 
 function InvoiceRows({ invoices, payments }: { invoices: ContainerSystemRecord[]; payments: ContainerSystemRecord[] }) {
@@ -262,6 +374,7 @@ function CustomerProfile({ record, records }: { record: ContainerSystemRecord; r
     if (paymentInvoice && action === null) setAction("payment")
   }, [paymentInvoice, action])
   const sites = records.filter(item => item.kind === "customer_site" && item.status !== "archived" && customerSiteBelongsTo(item, record))
+  const customerAddress = text(p.address ?? p.location, "") || siteAddress(sites[0]) || (p.city ? text(p.city) : "")
   const assignments = related.filter(item => item.kind === "container_assignment" || contractIds.has(Number(payloadOf(item).contractRecordId)))
   const appointments = related.filter(item => item.kind === "appointment" || contractIds.has(Number(payloadOf(item).contractRecordId)))
   const containers = records.filter(item => ["container", "container_asset"].includes(item.kind) && (
@@ -306,21 +419,6 @@ function CustomerProfile({ record, records }: { record: ContainerSystemRecord; r
         date: text(payload.movementDate ?? item.updatedAt, ""),
       }
     }),
-  ]
-  const workOrderViewRecords: ContainerSystemRecord[] = [
-    ...workOrders.map(item => ({
-      id: item.id,
-      kind: "appointment",
-      status: item.driverStatus ?? "pending",
-      reference: `WO-${item.id}`,
-      payload: { name: item.serviceType, customerName: item.clientName, scheduledAt: item.scheduledAt ?? "", driverStatus: item.driverStatus ?? "unassigned", driverProofPhotoUrl: item.driverProofPhotoUrl ?? "" },
-      createdAt: item.createdAt,
-      updatedAt: item.updatedAt ?? item.createdAt,
-    })),
-    ...operationalWorkOrders.map(item => ({
-      ...item,
-      kind: "work_order",
-    })),
   ]
   const upcomingAppointments = appointments.filter(item => String(payloadOf(item).appointmentDate ?? "") >= new Date().toISOString().slice(0, 10))
   const refreshProfile = () => {
@@ -479,11 +577,106 @@ function CustomerProfile({ record, records }: { record: ContainerSystemRecord; r
       toast({ title: error instanceof Error ? error.message : "تعذر تسجيل الدفعة", variant: "destructive" })
     }).finally(() => setBusy(false))
   }
-  return <div className="space-y-5">
-    <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-cyan-100 bg-cyan-50/60 p-4">
-      <div><p className="text-sm font-black text-cyan-950">إجراءات العميل</p><p className="mt-1 text-xs text-cyan-800/70">كل العمليات تبدأ من ملف العميل وتبقى مرتبطة بسجله.</p></div>
-      <div className="flex flex-wrap gap-2"><Button size="sm" onClick={() => setAction("contract")} className="bg-cyan-800 hover:bg-cyan-900">إنشاء عقد</Button><Button size="sm" variant="outline" onClick={() => setAction("site")} className="border-cyan-200 text-cyan-800">إضافة موقع</Button><Button size="sm" variant="outline" onClick={() => setAction("payment")} className="border-emerald-200 text-emerald-800">تسجيل دفعة</Button></div>
-    </div>
+  const activeContracts = contracts.filter(item => !["archived", "completed", "cancelled", "canceled"].includes(String(item.status).toLowerCase()))
+  const activeContainers = containers.filter(item => !["archived", "out_of_service"].includes(String(item.status).toLowerCase()))
+  const invoices = related.filter(item => item.kind === "invoice" && item.status !== "archived")
+  const collections = canonicalCollections(payments)
+  const timeline = [
+    {
+      id: `customer-${record.id}`,
+      date: record.createdAt,
+      title: "إنشاء ملف العميل",
+      detail: `${name} · ${text(p.city, "المدينة غير محددة")}`,
+      icon: UserRound,
+      tone: "bg-cyan-50 text-cyan-800",
+    },
+    ...sites.map(site => ({
+      id: `site-${site.id}`,
+      date: site.createdAt,
+      title: `إضافة موقع: ${customerSiteName(site)}`,
+      detail: siteAddress(site),
+      icon: Building2,
+      tone: "bg-indigo-50 text-indigo-800",
+    })),
+    ...contracts.map(contract => {
+      const contractPayload = payloadOf(contract)
+      const site = sites.find(item => String(item.id) === String(contractPayload.siteRecordId))
+      return {
+        id: `contract-${contract.id}`,
+        date: recordDateValue(contract, "issueDate", "startDate"),
+        title: `العقد ${text(contractPayload.contractNumber ?? contract.reference)}`,
+        detail: `${money(Number(contractPayload.total ?? contractPayload.amount ?? 0))} · ${customerSiteName(site)}`,
+        icon: FileText,
+        tone: "bg-emerald-50 text-emerald-800",
+      }
+    }),
+    ...invoices.map(invoice => {
+      const invoicePayload = payloadOf(invoice)
+      return {
+        id: `invoice-${invoice.id}`,
+        date: recordDateValue(invoice, "date", "issueDate"),
+        title: `إصدار فاتورة ${text(invoicePayload.invoiceNumber ?? invoice.reference)}`,
+        detail: `${money(Number(invoicePayload.total ?? invoicePayload.amount ?? 0))} · ${profileStatus(invoicePayload.invoiceStatus ?? invoice.status)}`,
+        icon: ReceiptText,
+        tone: "bg-violet-50 text-violet-800",
+      }
+    }),
+    ...collections.map(payment => ({
+      id: `collection-${payment.id}`,
+      date: recordDateValue(payment, "date", "paymentDate"),
+      title: `تحصيل ${money(amountOf(payment))}`,
+      detail: `${text(payloadOf(payment).paymentMethod, "طريقة الدفع غير محددة")} · ${profileStatus(payment.status)}`,
+      icon: CircleDollarSign,
+      tone: "bg-emerald-50 text-emerald-800",
+    })),
+    ...workOrders.map(item => ({
+      id: `work-order-${item.id}`,
+      date: item.scheduledAt ?? item.createdAt,
+      title: serviceTitle(item.serviceType),
+      detail: `${profileStatus(item.driverStatus)} · ${formatRecordDate(item.scheduledAt ?? item.createdAt)}`,
+      icon: ClipboardList,
+      tone: "bg-amber-50 text-amber-800",
+    })),
+  ].sort((a, b) => Date.parse(String(b.date)) - Date.parse(String(a.date)))
+
+  return <div className="space-y-6">
+     <Card className="overflow-hidden border-0 bg-[#123d4e] text-white shadow-[0_18px_50px_rgba(18,61,78,.18)]">
+       <CardContent className="relative p-5 sm:p-7">
+         <div className="absolute inset-y-0 left-0 w-1/3 bg-gradient-to-l from-transparent to-cyan-300/10" />
+         <div className="relative flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
+           <div className="flex min-w-0 items-start gap-4">
+             <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-amber-400 text-slate-900 shadow-sm"><UserRound size={29} /></div>
+             <div className="min-w-0">
+               <div className="flex flex-wrap items-center gap-2">
+                 <span className="rounded-full border border-cyan-200/20 bg-white/10 px-3 py-1 text-[10px] font-black tracking-wide text-cyan-100">ملف العميل</span>
+                 <Badge className="border-white/10 bg-white/10 text-cyan-50">{profileStatus(p.status ?? record.status)}</Badge>
+               </div>
+               <h2 className="mt-3 text-2xl font-black tracking-tight sm:text-3xl" data-testid="text-customer-profile-name">{name}</h2>
+               <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-xs text-cyan-100/80">
+                 <span className="flex items-center gap-1.5"><Phone size={13} /> {text(p.phone ?? p.mobile, "لا يوجد هاتف")}</span>
+                 <span className="flex items-center gap-1.5"><MapPin size={13} /> {text(customerAddress, "العنوان غير محدد")}</span>
+                 <span className="flex items-center gap-1.5"><CalendarDays size={13} /> آخر تحديث {formatRecordDate(record.updatedAt)}</span>
+               </div>
+             </div>
+           </div>
+           <div className="flex shrink-0 flex-wrap gap-2">
+             <Button variant="outline" onClick={() => window.print()} data-testid="button-print-customer-profile" className="gap-2 border-white/20 bg-white/10 text-white hover:bg-white/20 hover:text-white"><Printer size={15} /> طباعة الملف</Button>
+             <Button variant="ghost" onClick={() => window.history.length > 1 ? window.history.back() : navigate("/admin/container-system")} data-testid="button-back-customer-profile" className="gap-2 text-cyan-100 hover:bg-white/10 hover:text-white"><ArrowRight size={15} /> العودة</Button>
+           </div>
+         </div>
+       </CardContent>
+     </Card>
+
+     <Card className="border-slate-200/80 bg-white shadow-sm">
+       <CardContent className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between">
+         <div><p className="text-sm font-black text-slate-900">إجراءات العميل</p><p className="mt-1 text-xs text-slate-500">أنشئ العناصر المرتبطة من هنا، وستظهر تلقائيًا في سجل العميل.</p></div>
+         <div className="flex flex-wrap gap-2">
+           <Button size="sm" onClick={() => setAction("contract")} data-testid="button-create-customer-contract" className="gap-2 bg-cyan-800 hover:bg-cyan-900"><FileText size={15} /> إنشاء عقد</Button>
+           <Button size="sm" variant="outline" onClick={() => setAction("site")} data-testid="button-add-customer-site" className="gap-2 border-cyan-200 text-cyan-800 hover:bg-cyan-50"><Building2 size={15} /> إضافة موقع</Button>
+           <Button size="sm" variant="outline" onClick={() => setAction("payment")} data-testid="button-record-customer-payment" className="gap-2 border-emerald-200 text-emerald-800 hover:bg-emerald-50"><CircleDollarSign size={15} /> تسجيل دفعة</Button>
+         </div>
+       </CardContent>
+     </Card>
     <ContractWizard
       open={action === "contract"}
       records={records}
@@ -526,12 +719,67 @@ function CustomerProfile({ record, records }: { record: ContainerSystemRecord; r
       onOpenChange={open => { if (!open && !busy) closeAction() }}
       onSubmit={action === "payment" ? submitPayment : submitSite}
     />
-    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4"><Stat label="إجمالي العقود" value={contracts.length} /><Stat label="المواقع" value={sites.length} /><Stat label="الحاويات الحالية" value={containers.length} /><Stat label="المواعيد القادمة" value={upcomingAppointments.length} /></div>
-    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4"><Stat label="إجمالي المطالبات" value={money(charges)} /><Stat label="المدفوع" value={money(paid)} tone="text-emerald-700" /><Stat label="الرصيد المستحق" value={money(Math.max(charges - paid, 0))} tone="text-rose-700" /><Stat label="أوامر العمل" value={workOrders.length} tone="text-amber-700" /></div>
-    <InvoiceRows invoices={related.filter(item => item.kind === "invoice" && item.status !== "archived")} payments={related.filter(item => item.kind === "payment" && item.status === "posted")} />
-    <div className="grid gap-5 xl:grid-cols-2"><RelatedRows title="مواقع العميل" records={sites} empty="لم تتم إضافة موقع لهذا العميل بعد" /><RelatedRows title="الحاويات المخصصة" records={containers} empty="لا توجد حاويات مخصصة حاليًا" /></div>
-     <div className="grid gap-5 xl:grid-cols-2"><RelatedRows title="العقود والإيجارات" records={related.filter(item => ["contract", "contract_line"].includes(item.kind))} /><RelatedRows title="المواعيد وأوامر العمل" records={[...appointments, ...workOrderViewRecords]} empty="لا توجد مواعيد أو أوامر عمل" /></div>
-    <RelatedRows title="التحصيلات والحركات المالية" records={payments} />
+     <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+       <Stat label="العقود النشطة" value={activeContracts.length} />
+       <Stat label="المواقع المسجلة" value={sites.length} />
+       <Stat label="الحاويات الحالية" value={activeContainers.length} />
+       <Stat label="أوامر العمل" value={workOrders.length + operationalWorkOrders.length} tone="text-amber-700" />
+     </div>
+     <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+       <Stat label="إجمالي قيمة العقود" value={money(charges)} />
+       <Stat label="إجمالي التحصيلات" value={money(paid)} tone="text-emerald-700" />
+       <Stat label="الرصيد المستحق" value={money(Math.max(charges - paid, 0))} tone="text-rose-700" />
+       <Stat label="المواعيد القادمة" value={upcomingAppointments.length} tone="text-cyan-800" />
+     </div>
+
+     <div className="grid gap-5 xl:grid-cols-[1.15fr_.85fr]">
+       <Card className="border-slate-200/80 shadow-sm">
+         <CardHeader className="border-b border-slate-100 px-5 py-4">
+           <CardTitle className="flex items-center gap-2 text-base"><Activity size={17} className="text-cyan-800" /> ملخص العلاقة</CardTitle>
+           <p className="mt-1 text-xs text-slate-500">صورة واحدة عن النشاط التشغيلي والمالي لهذا العميل.</p>
+         </CardHeader>
+         <CardContent className="grid gap-3 p-5 sm:grid-cols-2">
+           <div className="rounded-2xl bg-cyan-50/70 p-4"><p className="text-[11px] font-bold text-cyan-700">المواقع والتغطية</p><p className="mt-2 text-sm font-black text-slate-900">{sites.length ? `${sites.length} ${sites.length === 1 ? "موقع مسجل" : "مواقع مسجلة"}` : "لا توجد مواقع مسجلة"}</p><p className="mt-1 text-xs text-slate-500">{text(p.city, "المدينة غير محددة")} · {text(p.address, "العنوان يحدد من المواقع")}</p></div>
+           <div className="rounded-2xl bg-emerald-50/70 p-4"><p className="text-[11px] font-bold text-emerald-700">الموقف المالي</p><p className="mt-2 text-sm font-black text-slate-900">{money(Math.max(charges - paid, 0))}</p><p className="mt-1 text-xs text-slate-500">{invoices.length} فواتير · {collections.length} تحصيلات موثقة</p></div>
+           <div className="rounded-2xl bg-amber-50/70 p-4"><p className="text-[11px] font-bold text-amber-700">التشغيل الحالي</p><p className="mt-2 text-sm font-black text-slate-900">{activeContainers.length ? `${activeContainers.length} حاويات مرتبطة` : "لا توجد حاويات مرتبطة"}</p><p className="mt-1 text-xs text-slate-500">{workOrders.length + operationalWorkOrders.length} أوامر عمل في السجل</p></div>
+           <div className="rounded-2xl bg-violet-50/70 p-4"><p className="text-[11px] font-bold text-violet-700">آخر نشاط</p><p className="mt-2 text-sm font-black text-slate-900">{timeline[0]?.title ?? "لا يوجد نشاط بعد"}</p><p className="mt-1 text-xs text-slate-500">{timeline[0] ? formatRecordDate(String(timeline[0].date)) : "—"}</p></div>
+         </CardContent>
+       </Card>
+       <Card className="border-slate-200/80 shadow-sm">
+         <CardHeader className="border-b border-slate-100 px-5 py-4"><CardTitle className="flex items-center gap-2 text-base"><Clock3 size={17} className="text-cyan-800" /> النشاط الزمني</CardTitle></CardHeader>
+         <CardContent className="p-5">
+           {timeline.length === 0 ? <p className="py-8 text-center text-sm text-slate-500">لا يوجد نشاط مرتبط بهذا العميل بعد.</p> : <div className="relative max-h-[440px] space-y-4 overflow-y-auto pr-1 before:absolute before:bottom-4 before:right-[15px] before:top-4 before:w-px before:bg-slate-200">{timeline.slice(0, 12).map(event => { const EventIcon = event.icon; return <div key={event.id} className="relative flex gap-3"><div className={`z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl ${event.tone}`}><EventIcon size={14} /></div><div className="min-w-0 flex-1 border-b border-slate-100 pb-3 last:border-0"><p className="text-xs font-black text-slate-800">{event.title}</p><p className="mt-1 text-[11px] text-slate-500">{event.detail}</p><time className="mt-1 block text-[10px] font-bold text-slate-400">{formatRecordDate(String(event.date))}</time></div></div> })}</div>}
+         </CardContent>
+       </Card>
+     </div>
+
+     <InvoiceRows invoices={invoices} payments={payments.filter(item => item.kind === "payment" && item.status === "posted")} />
+
+     <div className="grid gap-5 xl:grid-cols-2">
+       <Card className="border-slate-200/80 shadow-sm">
+         <CardHeader className="border-b border-slate-100 px-5 py-4"><div className="flex items-center justify-between gap-3"><CardTitle className="flex items-center gap-2 text-base"><Building2 size={17} className="text-cyan-800" /> مواقع العميل</CardTitle><Badge variant="outline">{sites.length}</Badge></div></CardHeader>
+         <CardContent className="p-4">{sites.length === 0 ? <p className="p-5 text-center text-sm text-slate-500">لم تتم إضافة موقع لهذا العميل بعد.</p> : <div className="space-y-3">{sites.map(site => <div key={site.id} data-testid={`card-customer-site-${site.id}`} className="rounded-2xl border border-slate-100 bg-slate-50/60 p-4"><div className="flex items-start justify-between gap-3"><div><p className="text-sm font-black text-slate-900">{customerSiteName(site)}</p><p className="mt-1 text-xs text-slate-500">{siteAddress(site)}</p></div><Badge className="bg-cyan-50 text-cyan-800 hover:bg-cyan-50">{profileStatus(site.status)}</Badge></div><div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-slate-500"><span>{text(payloadOf(site).city, "المدينة غير محددة")}</span><span>{text(payloadOf(site).contactName, "مسؤول الموقع غير محدد")}</span><span>{text(payloadOf(site).contactPhone, "لا يوجد جوال")}</span></div></div>)}</div>}</CardContent>
+       </Card>
+       <Card className="border-slate-200/80 shadow-sm">
+         <CardHeader className="border-b border-slate-100 px-5 py-4"><div className="flex items-center justify-between gap-3"><CardTitle className="flex items-center gap-2 text-base"><Truck size={17} className="text-cyan-800" /> الحاويات المرتبطة</CardTitle><Badge variant="outline">{containers.length}</Badge></div></CardHeader>
+         <CardContent className="p-4">{containers.length === 0 ? <p className="p-5 text-center text-sm text-slate-500">لا توجد حاويات مخصصة حاليًا.</p> : <div className="space-y-3">{containers.map(container => { const containerPayload = payloadOf(container); return <div key={container.id} data-testid={`card-customer-container-${container.id}`} className="flex items-center justify-between gap-3 rounded-2xl border border-slate-100 bg-slate-50/60 p-4"><div><p className="font-black text-slate-900" dir="ltr">{text(containerPayload.assetCode ?? containerPayload.containerCode ?? container.reference)}</p><p className="mt-1 text-xs text-slate-500">{text(containerPayload.typeName ?? containerPayload.containerType, "حاوية")} · {text(containerPayload.location, "الموقع غير محدد")}</p></div><Badge className="bg-cyan-50 text-cyan-800 hover:bg-cyan-50">{profileStatus(container.status)}</Badge></div> })}</div>}</CardContent>
+       </Card>
+     </div>
+
+     <Card className="border-slate-200/80 shadow-sm">
+       <CardHeader className="border-b border-slate-100 px-5 py-4"><div className="flex items-center justify-between gap-3"><CardTitle className="flex items-center gap-2 text-base"><FileText size={17} className="text-cyan-800" /> العقود المرتبطة</CardTitle><Badge variant="outline">{contracts.length}</Badge></div><p className="mt-1 text-xs text-slate-500">العقد يظهر برقم واضح وقيمته ومدته وموقع التنفيذ المرتبط به.</p></CardHeader>
+       <CardContent className="p-0">{contracts.length === 0 ? <p className="p-8 text-center text-sm text-slate-500">لا توجد عقود مرتبطة بهذا العميل بعد.</p> : <div className="divide-y divide-slate-100">{contracts.map(contract => { const contractPayload = payloadOf(contract); const site = sites.find(item => String(item.id) === String(contractPayload.siteRecordId)); const contractNumber = text(contractPayload.contractNumber ?? contract.reference, `عقد #${contract.id}`); return <div key={contract.id} data-testid={`row-customer-contract-${contract.id}`} className="grid gap-4 px-5 py-4 lg:grid-cols-[1.15fr_1fr_1fr_auto] lg:items-center"><div><p className="text-sm font-black text-cyan-800" dir="ltr">{contractNumber}</p><p className="mt-1 text-xs text-slate-500">{customerSiteName(site)} · {text(contractPayload.containerCode, "الحاوية غير محددة")}</p></div><div><p className="text-[10px] font-bold text-slate-400">القيمة</p><p className="mt-1 text-sm font-black text-slate-900">{money(Number(contractPayload.total ?? contractPayload.amount ?? 0))}</p></div><div><p className="text-[10px] font-bold text-slate-400">المدة والتاريخ</p><p className="mt-1 text-xs font-bold text-slate-700">{text(contractPayload.startDate, "—")} إلى {text(contractPayload.endDate, "—")}</p></div><div className="flex items-center justify-between gap-3 lg:justify-end"><Badge className="bg-emerald-50 text-emerald-800 hover:bg-emerald-50">{profileStatus(contractPayload.status ?? contract.status)}</Badge><Button size="sm" variant="ghost" onClick={() => navigate(`/admin/container-system/contract/${contract.id}/print`)} data-testid={`button-open-customer-contract-${contract.id}`} className="gap-1.5 text-cyan-800"><ExternalLink size={14} /> فتح</Button></div></div> })}</div>}</CardContent>
+     </Card>
+
+     <Card className="border-slate-200/80 shadow-sm">
+       <CardHeader className="border-b border-slate-100 px-5 py-4"><div className="flex items-center justify-between gap-3"><CardTitle className="flex items-center gap-2 text-base"><ClipboardList size={17} className="text-amber-700" /> أوامر العمل</CardTitle><Badge variant="outline">{workOrders.length + operationalWorkOrders.length}</Badge></div><p className="mt-1 text-xs text-slate-500">عنوان الخدمة والحالة والموعد، مع ربط كل أمر بالعقد أو الموقع بدل عرض النوع الخام.</p></CardHeader>
+       <CardContent className="p-0">{workOrders.length + operationalWorkOrders.length === 0 ? <p className="p-8 text-center text-sm text-slate-500">لا توجد أوامر عمل مرتبطة بهذا العميل.</p> : <div className="divide-y divide-slate-100">{workOrders.map(item => <div key={`request-${item.id}`} data-testid={`row-customer-work-order-${item.id}`} className="grid gap-3 px-5 py-4 lg:grid-cols-[1.2fr_1fr_1fr_auto] lg:items-center"><div><p className="text-sm font-black text-slate-900">{serviceTitle(item.serviceType)}</p><p className="mt-1 text-xs text-slate-500">أمر العمل #{item.id} · {text(item.clientName, name)}</p></div><div><p className="text-[10px] font-bold text-slate-400">الموعد</p><p className="mt-1 text-xs font-bold text-slate-700">{formatRecordDate(item.scheduledAt ?? item.createdAt)}</p></div><div><p className="text-[10px] font-bold text-slate-400">الحالة</p><p className="mt-1 text-xs font-bold text-slate-700">{profileStatus(item.driverStatus)}</p></div><Badge className="w-fit bg-amber-50 text-amber-800 hover:bg-amber-50">{text(item.containerSize, "الحاوية غير محددة")}</Badge></div>)}{operationalWorkOrders.map(item => { const orderPayload = payloadOf(item); return <div key={`operational-${item.id}`} data-testid={`row-customer-operational-order-${item.id}`} className="grid gap-3 px-5 py-4 lg:grid-cols-[1.2fr_1fr_1fr_auto] lg:items-center"><div><p className="text-sm font-black text-slate-900">{serviceTitle(orderPayload.serviceType ?? orderPayload.operationType)}</p><p className="mt-1 text-xs text-slate-500">{text(orderPayload.workOrderNumber ?? item.reference, `أمر العمل #${item.id}`)} · {text(orderPayload.customerName, name)}</p></div><div><p className="text-[10px] font-bold text-slate-400">الموعد</p><p className="mt-1 text-xs font-bold text-slate-700">{formatRecordDate(String(orderPayload.scheduledAt ?? item.createdAt))}</p></div><div><p className="text-[10px] font-bold text-slate-400">الحالة</p><p className="mt-1 text-xs font-bold text-slate-700">{profileStatus(orderPayload.driverStatus ?? item.status)}</p></div><Badge className="w-fit bg-amber-50 text-amber-800 hover:bg-amber-50">{text(orderPayload.containerCode, "الحاوية غير محددة")}</Badge></div> })}</div>}</CardContent>
+     </Card>
+
+     <Card className="border-slate-200/80 shadow-sm">
+       <CardHeader className="border-b border-slate-100 px-5 py-4"><div className="flex items-center justify-between gap-3"><CardTitle className="flex items-center gap-2 text-base"><Wallet size={17} className="text-emerald-700" /> التحصيلات</CardTitle><Badge variant="outline">{collections.length}</Badge></div><p className="mt-1 text-xs text-slate-500">الدفعات المرحّلة فقط، مع مرجعها وطريقة سدادها وتاريخها.</p></CardHeader>
+       <CardContent className="p-0">{collections.length === 0 ? <p className="p-8 text-center text-sm text-slate-500">لا توجد تحصيلات مسجلة لهذا العميل.</p> : <div className="divide-y divide-slate-100">{collections.map(payment => { const paymentPayload = payloadOf(payment); return <div key={payment.id} data-testid={`row-customer-collection-${payment.id}`} className="grid gap-3 px-5 py-4 sm:grid-cols-[1.2fr_1fr_1fr_auto] sm:items-center"><div><p className="text-sm font-black text-slate-900">{text(paymentPayload.receiptNumber ?? paymentPayload.reference ?? payment.reference, `تحصيل #${payment.id}`)}</p><p className="mt-1 text-xs text-slate-500">{text(paymentPayload.contractNumber, "غير مرتبط بعقد")} · {text(paymentPayload.invoiceNumber, "غير مرتبط بفاتورة")}</p></div><div><p className="text-[10px] font-bold text-slate-400">طريقة السداد</p><p className="mt-1 text-xs font-bold text-slate-700">{text(paymentPayload.paymentMethod, "غير محددة")}</p></div><div><p className="text-[10px] font-bold text-slate-400">التاريخ</p><p className="mt-1 text-xs font-bold text-slate-700">{formatRecordDate(String(paymentPayload.date ?? paymentPayload.paymentDate ?? payment.createdAt))}</p></div><p className="text-sm font-black text-emerald-700">{money(amountOf(payment))}</p></div> })}</div>}</CardContent>
+     </Card>
   </div>
 }
 
@@ -611,26 +859,27 @@ function ContainerProfile({ record, records }: { record: ContainerSystemRecord; 
       }
     }),
   ]
-  const activeContract = contracts.find(item => item.status !== "archived")
+  const activeContract = contracts.find(item => ["active", "approved", "issued", "scheduled", "delivered"].includes(String(item.status).toLowerCase()))
+    ?? contracts.find(item => item.status !== "archived")
   const activeContractPayload = payloadOf(activeContract)
   const customer = records.find(item => item.kind === "customer" && String(item.id) === String(activeContractPayload.customerRecordId))
     ?? records.find(item => item.kind === "customer" && text(payloadOf(item).name ?? payloadOf(item).customerName, "") === text(activeContractPayload.customerName, ""))
   const customerPayload = payloadOf(customer)
   const timeline = [
     ...movements.map(item => ({ id: `movement-${item.id}`, date: item.createdAt, title: text(payloadOf(item).movementType, "حركة حاوية"), detail: text(payloadOf(item).location, "الموقع غير محدد"), icon: ArrowRight, tone: "bg-cyan-50 text-cyan-800" })),
-    ...workOrders.map(item => ({ id: `work-${item.id}`, date: item.scheduledAt ?? item.createdAt, title: item.serviceType, detail: `${item.clientName} · ${text(item.driverStatus, "غير مسند")}`, icon: CalendarDays, tone: "bg-amber-50 text-amber-800" })),
+     ...workOrders.map(item => ({ id: `work-${item.id}`, date: item.scheduledAt ?? item.createdAt, title: serviceTitle(item.serviceType), detail: `${text(item.clientName, "العميل")} · ${profileStatus(item.driverStatus)}`, icon: CalendarDays, tone: "bg-amber-50 text-amber-800" })),
     ...operationalWorkOrders.map(item => {
       const payload = payloadOf(item)
       return {
         id: `operational-work-${item.id}`,
         date: text(payload.scheduledAt ?? item.createdAt, item.createdAt),
         title: text(payload.serviceType ?? payload.operationType, "حركة تشغيلية"),
-        detail: `${text(payload.customerName ?? payload.clientName, "العميل")} · ${text(payload.driverStatus, "غير مسند")}`,
+         detail: `${text(payload.customerName ?? payload.clientName, "العميل")} · ${profileStatus(payload.driverStatus)}`,
         icon: CalendarDays,
         tone: "bg-amber-50 text-amber-800",
       }
     }),
-    ...contracts.map(item => ({ id: `contract-${item.id}`, date: item.createdAt, title: `العقد ${text(payloadOf(item).contractNumber ?? item.reference)}`, detail: text(item.status), icon: FileText, tone: "bg-emerald-50 text-emerald-800" })),
+     ...contracts.map(item => ({ id: `contract-${item.id}`, date: item.createdAt, title: `العقد ${text(payloadOf(item).contractNumber ?? item.reference, `#${item.id}`)}`, detail: profileStatus(item.status), icon: FileText, tone: "bg-emerald-50 text-emerald-800" })),
   ].sort((a, b) => Date.parse(b.date) - Date.parse(a.date))
   const workOrderRecords: ContainerSystemRecord[] = [
     ...workOrders.map(item => ({
@@ -756,7 +1005,8 @@ export function ContainerRecordProfile({ mode }: { mode: ProfileMode }) {
   const headerAddress = mode === "customer"
     ? text(p.address ?? p.location, "") || siteAddress(customerSites[0])
     : text(p.address ?? p.location ?? p.branchName, "")
-  return <div dir="rtl" className="container-system space-y-5"><Card className="overflow-hidden border-0 bg-[#123d4e] text-white shadow-[0_14px_40px_rgba(18,61,78,.18)]"><CardContent className="p-4 sm:p-6"><div className="flex flex-col gap-5 sm:flex-row sm:items-center">{mode === "container" ? <div className="order-2 flex h-28 w-full shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-white sm:order-1 sm:h-28 sm:w-56"><ContainerStatusImage status={getContainerOperationalStatus(record.status, p)} code={title} className="h-full w-full" numberClassName="top-[45.5%]" /></div> : <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-amber-400 text-slate-900"><Icon size={30} /></div>}<div className="order-1 min-w-0 flex-1 sm:order-2"><p className="text-xs font-bold text-cyan-200">{mode === "customer" ? "ملف عميل" : mode === "employee" ? "ملف موظف" : "ملف أصل حاوية"}</p><h1 className="mt-1 text-2xl font-black" dir={mode === "container" ? "ltr" : undefined}>{title}</h1><div className="mt-3 flex flex-wrap gap-3 text-xs text-cyan-100/75">{mode !== "container" && <><span className="flex items-center gap-1"><Phone size={13} /> {text(p.phone ?? p.customerPhone, "لا يوجد هاتف")}</span><span className="flex items-center gap-1"><MapPin size={13} /> {text(headerAddress, "لا يوجد عنوان")}</span>{mode === "customer" && customerSites.length > 0 && <span className="flex items-center gap-1"><MapPin size={13} /> {customerSites.length} {customerSites.length === 1 ? "موقع مسجل" : "مواقع مسجلة"}</span>}</>} {mode === "container" && <span>{text(p.typeName ?? p.containerType, "نوع الحاوية غير محدد")} · {text(p.size ?? p.capacity, "الحجم غير محدد")}</span>}<span className="flex items-center gap-1"><CalendarDays size={13} /> آخر تحديث {formatRecordDate(record.updatedAt)}</span></div></div><div className="flex shrink-0 flex-wrap items-center gap-2">{mode === "container" && <><Button variant="outline" onClick={() => window.print()} className="gap-2 border-white/20 bg-white/10 text-white hover:bg-white/20 hover:text-white"><Printer size={15} /> طباعة الملف</Button><Button variant="ghost" onClick={goBack} className="gap-2 text-cyan-100 hover:bg-white/10 hover:text-white"><ArrowRight size={15} /> العودة</Button></>}{mode !== "container" && <RecordStatus status={String(p.status ?? record.status)} />}</div>{mode === "container" && <RecordStatus status={getContainerOperationalStatus(record.status, p)} />}</div></CardContent></Card>{mode !== "container" && <Card className="border-slate-200/80 shadow-sm"><CardHeader className="border-b border-slate-100 px-5 py-4"><CardTitle className="text-base">البيانات الأساسية</CardTitle></CardHeader><CardContent className="p-5"><FieldGrid record={record} /></CardContent></Card>}{mode === "customer" ? <CustomerProfile record={record} records={records} /> : mode === "employee" ? <EmployeeProfile record={record} records={records} /> : <ContainerProfile record={record} records={records} />}</div>
+  if (String(mode) === "customer") return <div dir="rtl" className="container-system space-y-5"><CustomerProfile record={record} records={records} /><Card className="border-slate-200/80 shadow-sm"><CardHeader className="border-b border-slate-100 px-5 py-4"><CardTitle className="text-base">البيانات الأساسية</CardTitle></CardHeader><CardContent className="p-5"><FieldGrid record={record} /></CardContent></Card></div>
+   return <div dir="rtl" className="container-system space-y-5"><Card className="overflow-hidden border-0 bg-[#123d4e] text-white shadow-[0_14px_40px_rgba(18,61,78,.18)]"><CardContent className="p-4 sm:p-6"><div className="flex flex-col gap-5 sm:flex-row sm:items-center">{mode === "container" ? <div className="order-2 flex h-28 w-full shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-white sm:order-1 sm:h-28 sm:w-56"><ContainerStatusImage status={getContainerOperationalStatus(record.status, p)} code={title} className="h-full w-full" numberClassName="top-[45.5%]" /></div> : <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-amber-400 text-slate-900"><Icon size={30} /></div>}<div className="order-1 min-w-0 flex-1 sm:order-2"><p className="text-xs font-bold text-cyan-200">{mode === "customer" ? "ملف عميل" : mode === "employee" ? "ملف موظف" : "ملف أصل حاوية"}</p><h1 className="mt-1 text-2xl font-black" dir={mode === "container" ? "ltr" : undefined}>{title}</h1><div className="mt-3 flex flex-wrap gap-3 text-xs text-cyan-100/75">{mode !== "container" && <><span className="flex items-center gap-1"><Phone size={13} /> {text(p.phone ?? p.customerPhone, "لا يوجد هاتف")}</span><span className="flex items-center gap-1"><MapPin size={13} /> {text(headerAddress, "لا يوجد عنوان")}</span>{mode === "customer" && customerSites.length > 0 && <span className="flex items-center gap-1"><MapPin size={13} /> {customerSites.length} {customerSites.length === 1 ? "موقع مسجل" : "مواقع مسجلة"}</span>}</>} {mode === "container" && <span>{text(p.typeName ?? p.containerType, "نوع الحاوية غير محدد")} · {text(p.size ?? p.capacity, "الحجم غير محدد")}</span>}<span className="flex items-center gap-1"><CalendarDays size={13} /> آخر تحديث {formatRecordDate(record.updatedAt)}</span></div></div><div className="flex shrink-0 flex-wrap items-center gap-2">{mode === "container" && <><Button variant="outline" onClick={() => window.print()} className="gap-2 border-white/20 bg-white/10 text-white hover:bg-white/20 hover:text-white"><Printer size={15} /> طباعة الملف</Button><Button variant="ghost" onClick={goBack} className="gap-2 text-cyan-100 hover:bg-white/10 hover:text-white"><ArrowRight size={15} /> العودة</Button></>}{mode !== "container" && <Badge className="border-white/10 bg-white/10 text-cyan-50">{profileStatus(p.status ?? record.status)}</Badge>}</div>{mode === "container" && <RecordStatus status={getContainerOperationalStatus(record.status, p)} />}</div></CardContent></Card>{mode !== "container" && <Card className="border-slate-200/80 shadow-sm"><CardHeader className="border-b border-slate-100 px-5 py-4"><CardTitle className="text-base">البيانات الأساسية</CardTitle></CardHeader><CardContent className="p-5"><FieldGrid record={record} /></CardContent></Card>}{mode === "customer" ? <CustomerProfile record={record} records={records} /> : mode === "employee" ? <EmployeeProfile record={record} records={records} /> : <ContainerProfile record={record} records={records} />}</div>
 }
 
 export function ContractPrintPage() {
