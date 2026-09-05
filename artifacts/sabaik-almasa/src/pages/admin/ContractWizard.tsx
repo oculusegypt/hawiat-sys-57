@@ -57,7 +57,7 @@ type FormState = {
   containerSize: string
   location: string
   locationCoordinates: string
-  locationMode: "manual" | "map"
+  locationMode: "registered" | "manual" | "map"
   billingFrequency: "daily" | "weekly" | "monthly" | "yearly"
   contractType: string
   propertyNumber: string
@@ -160,6 +160,58 @@ function contractCategoryKey(value?: string | null) {
   return normalized
 }
 
+function coordinatesFromText(value: unknown) {
+  const match = String(value ?? "").match(/(?:إحداثيات\s*GPS|GPS)\s*[:：]\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)/i)
+  if (!match) return ""
+  const lat = Number(match[1])
+  const lng = Number(match[2])
+  return Number.isFinite(lat) && Number.isFinite(lng) ? `${lat}, ${lng}` : ""
+}
+
+function locationFromSite(site?: ContainerSystemRecord | null) {
+  if (!site) return { address: "", coordinates: "" }
+  const payload = payloadOf(site)
+  const address = String(payload.address ?? payload.location ?? payload.name ?? "").trim()
+  return {
+    address,
+    coordinates: String(payload.locationCoordinates ?? payload.coordinates ?? coordinatesFromText(address)).trim(),
+  }
+}
+
+function clausesFromLine(line: ContainerSystemRecord | undefined, category?: string | null, typeName?: string | null) {
+  const payload = line ? payloadOf(line) : {}
+  const candidate = payload.contractTerms ?? payload.clauses ?? payload.terms
+  const clauses = Array.isArray(candidate)
+    ? candidate.map(value => String(value ?? "").trim()).filter(Boolean)
+    : typeof candidate === "string"
+      ? candidate.split(/\r?\n/).map(value => value.trim()).filter(Boolean)
+      : []
+  if (clauses.length > 0) return clauses
+  const typeLabel = typeName ? ` ${typeName}` : ""
+  if (contractCategoryKey(category) === "waste") {
+    return [
+      `يخصص الطرف الأول الحاوية${typeLabel} لجمع ونقل النفايات وفق طبيعة النشاط والموقع المسجل.`,
+      "يلتزم الطرف الثاني بعدم وضع المواد الخطرة أو المخالفة للاشتراطات البلدية داخل الحاوية.",
+      "يتحمل الطرف الثاني أي أضرار أو تكاليف تنتج عن سوء الاستخدام أو تجاوز السعة المتفق عليها.",
+      "تسجل عمليات التسليم والرفع والاسترجاع في النظام وترتبط بهذا العقد.",
+    ]
+  }
+  if (contractCategoryKey(category) === "contract") {
+    return [
+      `ينفذ الطرف الأول خدمات النظافة والتشغيل المرتبطة${typeLabel} في موقع العميل المسجل.`,
+      "يلتزم الطرف الثاني بتمكين فريق التشغيل من الوصول إلى الموقع في المواعيد المتفق عليها.",
+      "تحتسب قيمة العقد والضريبة وأي خدمات إضافية وفق البند المرتبط بالنوع المحدد.",
+      "تسجل الأعمال المنفذة والملاحظات التشغيلية في النظام وترتبط بهذا العقد.",
+    ]
+  }
+  return [
+    `يوفر الطرف الأول الحاوية${typeLabel} وينفذ خدمات النقل والرفع للموقع المحدد في العقد.`,
+    "يلتزم الطرف الثاني بالمحافظة على الحاوية وعدم استخدامها لغير الغرض المتفق عليه.",
+    "يتحمل الطرف الثاني أي أضرار ناتجة عن سوء الاستخدام أو تجاوز الوزن أو تعبئة مواد غير مسموحة.",
+    "تسجل كل عملية تسليم أو رفع أو تبديل أو استرجاع في النظام وترتبط بهذا العقد.",
+  ]
+}
+
 function MapPicker({ initialCoordinates, onSelect }: { initialCoordinates: string; onSelect: (coordinates: string, address: string) => void }) {
   const mapElement = useRef<HTMLDivElement | null>(null)
   const mapRef = useRef<L.Map | null>(null)
@@ -228,15 +280,20 @@ export function ContractWizard({ open, records, initialCustomerId = null, initia
         })
       : undefined
     const customerId = initialCustomerId ? String(initialCustomerId) : requestCustomer?.id ? String(requestCustomer.id) : ""
+    const customerSites = records.filter(record =>
+      record.kind === "customer_site" &&
+      record.status !== "archived" &&
+      String(payloadOf(record).customerRecordId ?? "") === customerId,
+    )
     const requestSite = initialRequest
-      ? records.find(record => {
-          if (record.kind !== "customer_site" || record.status === "archived") return false
+      ? customerSites.find(record => {
           const payload = payloadOf(record)
-          const sameCustomer = !customerId || String(payload.customerRecordId) === customerId
-          const address = String(payload.address ?? payload.name ?? "")
-          return sameCustomer && Boolean(address) && initialRequest.location.includes(address)
+          const address = String(payload.address ?? payload.location ?? payload.name ?? "")
+          return Number(payload.requestId ?? 0) === initialRequest.id ||
+            Boolean(address) && initialRequest.location.includes(address)
         })
       : undefined
+    const selectedSite = requestSite ?? customerSites[0]
     const requestContainer = initialRequest
       ? records.find(record => {
           if (!["container", "container_asset"].includes(record.kind) || record.status === "archived") return false
@@ -249,27 +306,55 @@ export function ContractWizard({ open, records, initialCustomerId = null, initia
     const requestContainerPayload = requestContainer ? payloadOf(requestContainer) : undefined
     const requestContainerTypeId = String(requestContainerPayload?.containerTypeId ?? requestContainerPayload?.containerTypeRecordId ?? "")
     const requestType = containerTypes.find(item => String(item.id) === requestContainerTypeId)
+    const initialTypeLines = requestType
+      ? records.filter(record => {
+          if (record.kind !== "contract_line" || record.status === "archived") return false
+          const payload = payloadOf(record)
+          return String(payload.containerTypeId ?? payload.containerTypeRecordId ?? "") === String(requestType.id)
+        })
+      : []
+    const initialLines = initialTypeLines.length > 0
+      ? initialTypeLines
+      : requestType
+        ? records.filter(record => {
+            if (record.kind !== "contract_line" || record.status === "archived") return false
+            const payload = payloadOf(record)
+            const lineCategory = contractCategoryKey(String(payload.category ?? payload.categoryName ?? payload.classification ?? ""))
+            return lineCategory === contractCategoryKey(requestType.category) &&
+              !payload.containerTypeId &&
+              !payload.containerTypeRecordId
+          })
+        : []
+    const initialLine = initialLines[0]
+    const initialLinePayload = initialLine ? payloadOf(initialLine) : {}
+    const selectedLocation = locationFromSite(selectedSite)
     const scheduledDate = initialRequest?.scheduledAt ? new Date(initialRequest.scheduledAt).toISOString().slice(0, 10) : ""
     const billingFrequency = billingFrequencyFromValue(initialRequest?.duration)
     const endDate = endDateFromBillingFrequency(initialForm.startDate, billingFrequency)
     setForm({
       ...initialForm,
       customerRecordId: customerId,
-      siteRecordId: requestSite?.id ? String(requestSite.id) : "",
+      siteRecordId: selectedSite?.id ? String(selectedSite.id) : "",
       containerRecordId: requestContainer?.id ? String(requestContainer.id) : "",
       containerTypeId: requestType?.id ? String(requestType.id) : requestContainerTypeId,
-      rentalLineId: "",
+      rentalLineId: initialLine?.id ? String(initialLine.id) : "",
       requestId: initialRequest ? String(initialRequest.id) : "",
       endDate,
       customerPhone: initialRequest?.phone ?? "",
       customerEmail: initialRequest?.email ?? "",
       customerCommercialRegistration: String(requestCustomer ? payloadOf(requestCustomer).commercialRegistration ?? payloadOf(requestCustomer).crNumber ?? "" : ""),
       customerTaxNumber: String(requestCustomer ? payloadOf(requestCustomer).taxNumber ?? payloadOf(requestCustomer).vatNumber ?? payloadOf(requestCustomer).taxId ?? "" : ""),
-      serviceType: initialRequest?.serviceType ?? "",
+      serviceType: String(initialLinePayload.serviceType ?? initialRequest?.serviceType ?? ""),
       containerSize: initialRequest?.containerSize ?? "",
-      location: initialRequest?.location ?? "",
+      location: selectedLocation.address || (initialRequest?.location ?? ""),
+      locationCoordinates: selectedLocation.coordinates || coordinatesFromText(initialRequest?.location),
+      locationMode: selectedSite ? "registered" : "manual",
       billingFrequency,
       contractType: requestType ? contractCategoryLabel(requestType.category) : initialForm.contractType,
+      classification: requestType?.category ?? String(initialLinePayload.category ?? initialLinePayload.classification ?? ""),
+      trips: String(initialLinePayload.quantity ?? ""),
+      unitPrice: String(initialLinePayload.unitPrice ?? ""),
+      clauses: clausesFromLine(initialLine, requestType?.category, requestType?.name),
       notes: initialRequest?.notes ?? "",
       appointmentDate: scheduledDate,
       appointmentType: initialRequest?.appointmentType === "pickup" ? "pickup" : initialRequest?.appointmentType === "inspection" ? "inspection" : "delivery",
@@ -323,19 +408,8 @@ export function ContractWizard({ open, records, initialCustomerId = null, initia
   const isAssetlessContract = selectedContainerType?.category === "contract"
   const isWasteContract = selectedContainerType?.category === "waste"
   const showBusinessIdentifiers = isWasteContract || isAssetlessContract
-  const containerCategory = String(containerPayload?.category ?? containerPayload?.classification ?? containerPayload?.categoryName ?? "")
   const containerSize = String(containerPayload?.size ?? containerPayload?.containerSize ?? containerPayload?.capacity ?? containerPayload?.typeName ?? "")
-  const categoryOptions = Array.from(new Set([
-    "أنقاض",
-    "نفايات",
-    ...records.filter(record => ["category", "category_size", "container", "container_asset"].includes(record.kind))
-      .flatMap(record => {
-        const payload = payloadOf(record)
-        return [payload.name, payload.category, payload.categoryName, payload.classification]
-      })
-      .map(value => String(value ?? "").trim())
-      .filter(value => value && /أنقاض|نفايات/i.test(value)),
-  ]))
+  const categoryOptions = selectedContainerType ? [selectedContainerType.category] : []
   const amount = Number(form.amount || 0)
   const taxRate = Number(form.taxRate || 0)
   const taxInclusive = form.taxInclusive === "true"
@@ -349,12 +423,33 @@ export function ContractWizard({ open, records, initialCustomerId = null, initia
     setError("")
     if (key === "unitPrice" || key === "trips" || key === "amount" || key === "pricingMode") setPriceConfirmed(false)
     setForm(current => {
-      const next = { ...current, [key]: value, ...(key === "customerRecordId" ? { siteRecordId: "" } : {}) }
+      const next = { ...current, [key]: value }
       if (key === "customerRecordId") {
         const selectedCustomer = customers.find(record => String(record.id) === value)
         const selectedPayload = selectedCustomer ? payloadOf(selectedCustomer) : {}
+        const selectedSite = records.find(record =>
+          record.kind === "customer_site" &&
+          record.status !== "archived" &&
+          String(payloadOf(record).customerRecordId ?? "") === value,
+        )
+        const selectedLocation = locationFromSite(selectedSite)
+        next.siteRecordId = selectedSite?.id ? String(selectedSite.id) : ""
+        next.location = selectedLocation.address
+        next.locationCoordinates = selectedLocation.coordinates
+        next.locationMode = selectedSite ? "registered" : "manual"
         next.customerCommercialRegistration = String(selectedPayload.commercialRegistration ?? selectedPayload.crNumber ?? "")
         next.customerTaxNumber = String(selectedPayload.taxNumber ?? selectedPayload.vatNumber ?? selectedPayload.taxId ?? "")
+      }
+      if (key === "siteRecordId") {
+        const selectedSite = records.find(record =>
+          record.kind === "customer_site" &&
+          record.status !== "archived" &&
+          String(record.id) === value,
+        )
+        const selectedLocation = locationFromSite(selectedSite)
+        next.location = selectedLocation.address
+        next.locationCoordinates = selectedLocation.coordinates
+        next.locationMode = selectedSite ? "registered" : "manual"
       }
       if (key === "startDate" || key === "billingFrequency") {
         next.endDate = endDateFromBillingFrequency(
@@ -388,16 +483,38 @@ export function ContractWizard({ open, records, initialCustomerId = null, initia
     const currentLineTypeId = currentLine ? String(payloadOf(currentLine).containerTypeId ?? payloadOf(currentLine).containerTypeRecordId ?? "") : ""
     const currentContainer = records.find(record => ["container", "container_asset"].includes(record.kind) && String(record.id) === form.containerRecordId)
     const currentContainerTypeId = currentContainer ? String(payloadOf(currentContainer).containerTypeId ?? payloadOf(currentContainer).containerTypeRecordId ?? "") : ""
+    const exactLines = records.filter(record => {
+      if (record.kind !== "contract_line" || record.status === "archived") return false
+      const payload = payloadOf(record)
+      return String(payload.containerTypeId ?? payload.containerTypeRecordId ?? "") === value
+    })
+    const matchingLines = exactLines.length > 0
+      ? exactLines
+      : records.filter(record => {
+          if (record.kind !== "contract_line" || record.status === "archived") return false
+          const payload = payloadOf(record)
+          const lineCategory = contractCategoryKey(String(payload.category ?? payload.categoryName ?? payload.classification ?? ""))
+          return lineCategory === contractCategoryKey(selectedType?.category) &&
+            !payload.containerTypeId &&
+            !payload.containerTypeRecordId
+        })
+    const selectedLine = matchingLines[0]
+    const selectedLinePayload = selectedLine ? payloadOf(selectedLine) : {}
     setError("")
     setForm(current => ({
       ...current,
       containerTypeId: value,
-       rentalLineId: current.rentalLineId && currentLineTypeId === value ? current.rentalLineId : "",
+      rentalLineId: selectedLine?.id ? String(selectedLine.id) : current.rentalLineId && currentLineTypeId === value ? current.rentalLineId : "",
       containerRecordId: selectedType?.category === "contract" ? "" : current.containerRecordId && currentContainerTypeId === value ? current.containerRecordId : "",
       contractType: selectedType ? contractCategoryLabel(selectedType.category) : "",
-      classification: selectedType?.category ?? current.classification,
+      classification: selectedType?.category ?? "",
       containerSize: selectedType?.size ?? current.containerSize,
-      unitPrice: current.unitPrice || (selectedType?.pricePerDay ? String(selectedType.pricePerDay) : ""),
+      serviceType: String(selectedLinePayload.serviceType ?? current.serviceType),
+      trips: String(selectedLinePayload.quantity ?? current.trips),
+      unitPrice: String(selectedLinePayload.unitPrice ?? (selectedType?.pricePerDay ?? current.unitPrice)),
+      billingFrequency: billingFrequencyFromValue(String(selectedLinePayload.billingFrequency ?? current.billingFrequency)),
+      notes: String(selectedLinePayload.notes ?? selectedLinePayload.description ?? current.notes),
+      clauses: clausesFromLine(selectedLine, selectedType?.category, selectedType?.name),
     }))
   }
 
@@ -413,7 +530,8 @@ export function ContractWizard({ open, records, initialCustomerId = null, initia
       unitPrice: String(linePayload.unitPrice ?? current.unitPrice),
       billingFrequency: billingFrequencyFromValue(String(linePayload.billingFrequency ?? current.billingFrequency)),
       notes: current.notes || String(linePayload.notes ?? linePayload.description ?? ""),
-      classification: String(linePayload.category ?? current.classification),
+      classification: String(linePayload.category ?? selectedContainerType?.category ?? current.classification),
+      clauses: clausesFromLine(line, selectedContainerType?.category, selectedContainerType?.name),
     }))
   }
 
@@ -447,7 +565,7 @@ export function ContractWizard({ open, records, initialCustomerId = null, initia
 
   const validateStep = (targetStep = step) => {
     if (targetStep === 0 && !customer) return "اختر عميلاً مسجلاً قبل المتابعة"
-    if (targetStep === 1 && !form.location.trim()) return "أدخل الموقع يدويًا أو حدده من الخريطة"
+    if (targetStep === 1 && !form.location.trim()) return "اختر موقع العميل المسجل أو أدخل الموقع يدويًا عند عدم توفر موقع مسجل"
     if (targetStep === 1 && !form.containerTypeId) return "اختر نوع الحاوية المركزي قبل المتابعة"
     if (targetStep === 1 && !isAssetlessContract && !container) return "اختر أصلاً متاحاً من النوع المحدد قبل المتابعة"
     if (targetStep === 1 && isWasteContract && !form.customerCommercialRegistration.trim()) return "السجل التجاري للعميل مطلوب لعقود النفايات"
@@ -565,9 +683,9 @@ export function ContractWizard({ open, records, initialCustomerId = null, initia
                   <div><Label htmlFor="contract-type">نوع العقد التابع للنوع</Label><Input id="contract-type" value={form.contractType || (selectedContainerType ? contractCategoryLabel(selectedContainerType.category) : "")} readOnly className="mt-2 bg-slate-50" /></div>
                  <div><Label htmlFor="contract-number">رقم العقد</Label><Input id="contract-number" value={form.contractNumber} onChange={event => update("contractNumber", event.target.value)} placeholder="سيولد تلقائياً عند الحفظ" className="mt-2" dir="ltr" /><p className="mt-1 text-[11px] text-slate-500">اتركه فارغاً ليولد النظام رقماً فريداً تلقائياً.</p></div>
                   <div><Label htmlFor="contract-container">أصل الحاوية المتاح {isAssetlessContract ? "(غير مطلوب)" : ""}</Label><select id="contract-container" value={form.containerRecordId} onChange={event => selectContainer(event.target.value)} disabled={!form.containerTypeId || isAssetlessContract} className="mt-2 h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm"><option value="">{isAssetlessContract ? "عقود النظافة لا ترتبط بأصل" : form.containerTypeId ? "اختر الأصل من النوع المحدد" : "اختر نوع الحاوية أولاً"}</option>{containers.map(record => <option key={record.id} value={record.id}>{labelOf(record)} · {String(payloadOf(record).typeName ?? payloadOf(record).size ?? "نوع غير محدد")}</option>)}</select>{!isAssetlessContract && form.containerTypeId && containers.length === 0 && <p className="mt-1 text-[11px] text-amber-700">لا يوجد أصل متاح من هذا النوع حالياً.</p>}</div>
-                   <div className="sm:col-span-2"><Label htmlFor="contract-location">موقع العقد</Label><div className="mt-2 flex flex-col gap-2 sm:flex-row"><Input id="contract-location" value={form.location} onChange={event => setForm(current => ({ ...current, location: event.target.value, locationMode: "manual", locationCoordinates: "" }))} placeholder="أدخل العنوان يدويًا أو اختر نقطة من الخريطة" className="flex-1" /><Button type="button" variant="outline" onClick={() => setMapOpen(current => !current)} className="gap-2 border-cyan-200 text-cyan-800"><MapPin size={16} /> {mapOpen ? "إخفاء الخريطة" : "اختيار من الخريطة"}</Button></div>{mapOpen && <div className="mt-3 space-y-2"><p className="text-xs text-slate-500">انقر على النقطة المطلوبة مباشرة على الخريطة، وسيتم حفظ الإحداثيات والعنوان الناتج.</p><MapPicker initialCoordinates={form.locationCoordinates} onSelect={handleMapSelect} /></div>}{form.locationMode === "map" && <p className="mt-1 flex items-center gap-1 text-[11px] font-bold text-emerald-700"><LocateFixed size={13} /> تم اختيار الموقع يدويًا: {form.locationCoordinates}</p>}</div>
-                  {form.locationMode === "manual" && <><div><Label htmlFor="contract-site">موقع العميل المسجل</Label><select id="contract-site" value={form.siteRecordId} onChange={event => update("siteRecordId", event.target.value)} className="mt-2 h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm"><option value="">{sites.length ? "اختر موقع العميل" : "لا توجد مواقع لهذا العميل"}</option>{sites.map(record => <option key={record.id} value={record.id}>{labelOf(record)} · {String(payloadOf(record).address ?? "")}</option>)}</select></div><div><Label htmlFor="contract-property-number">رقم القطعة</Label><Input id="contract-property-number" value={form.propertyNumber} onChange={event => update("propertyNumber", event.target.value)} placeholder="رقم القطعة" className="mt-2" /></div><div><Label htmlFor="contract-plan-number">رقم المخطط</Label><Input id="contract-plan-number" value={form.planNumber} onChange={event => update("planNumber", event.target.value)} placeholder="رقم المخطط" className="mt-2" /></div></>}
-                  <div><Label htmlFor="contract-classification">التصنيف</Label><select id="contract-classification" value={form.classification || containerCategory} onChange={event => update("classification", event.target.value)} className="mt-2 h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm"><option value="">اختر التصنيف</option>{categoryOptions.map(option => <option key={option} value={option}>{option}</option>)}</select></div>
+                    <div className="sm:col-span-2"><Label htmlFor="contract-location">عنوان العقد</Label><div className="mt-2 flex flex-col gap-2 sm:flex-row"><Input id="contract-location" value={form.location} readOnly={Boolean(form.siteRecordId)} onChange={event => setForm(current => ({ ...current, location: event.target.value, locationMode: "manual", locationCoordinates: "" }))} placeholder={form.siteRecordId ? "يُملأ تلقائيًا من موقع العميل" : "أدخل العنوان يدويًا أو اختر نقطة من الخريطة"} className={`flex-1 ${form.siteRecordId ? "bg-emerald-50" : ""}`} /><Button type="button" variant="outline" disabled={Boolean(form.siteRecordId)} onClick={() => setMapOpen(current => !current)} className="gap-2 border-cyan-200 text-cyan-800"><MapPin size={16} /> {mapOpen ? "إخفاء الخريطة" : "اختيار من الخريطة"}</Button></div>{form.siteRecordId ? <p className="mt-1 flex items-center gap-1 text-[11px] font-bold text-emerald-700"><CheckCircle2 size={13} /> العنوان مرتبط تلقائيًا بموقع العميل المسجل</p> : <p className="mt-1 text-[11px] text-slate-500">لا يوجد موقع مسجل؛ يمكنك إدخال العنوان أو تحديده من الخريطة.</p>}{mapOpen && !form.siteRecordId && <div className="mt-3 space-y-2"><p className="text-xs text-slate-500">انقر على النقطة المطلوبة مباشرة على الخريطة، وسيتم حفظ الإحداثيات والعنوان الناتج.</p><MapPicker initialCoordinates={form.locationCoordinates} onSelect={handleMapSelect} /></div>}{form.locationMode === "map" && <p className="mt-1 flex items-center gap-1 text-[11px] font-bold text-emerald-700"><LocateFixed size={13} /> تم اختيار الموقع يدويًا: {form.locationCoordinates}</p>}</div>
+                   <div><Label htmlFor="contract-site">موقع العميل المسجل</Label><select id="contract-site" value={form.siteRecordId} onChange={event => update("siteRecordId", event.target.value)} className="mt-2 h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm"><option value="">{sites.length ? "بدون موقع مسجل — إدخال يدوي" : "لا توجد مواقع لهذا العميل"}</option>{sites.map(record => <option key={record.id} value={record.id}>{labelOf(record)} · {String(payloadOf(record).address ?? "")}</option>)}</select></div><div><Label htmlFor="contract-property-number">رقم القطعة</Label><Input id="contract-property-number" value={form.propertyNumber} onChange={event => update("propertyNumber", event.target.value)} placeholder="رقم القطعة" className="mt-2" /></div><div><Label htmlFor="contract-plan-number">رقم المخطط</Label><Input id="contract-plan-number" value={form.planNumber} onChange={event => update("planNumber", event.target.value)} placeholder="رقم المخطط" className="mt-2" /></div>
+                   <div><Label htmlFor="contract-classification">التصنيف التابع لنوع العقد</Label><select id="contract-classification" value={form.classification || ""} onChange={event => update("classification", event.target.value)} disabled={!form.containerTypeId} className="mt-2 h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm"><option value="">اختر نوع الحاوية أولاً</option>{categoryOptions.map(option => <option key={option} value={option}>{contractCategoryLabel(option)}</option>)}</select><p className="mt-1 text-[11px] text-slate-500">يتحدد من فئة نوع الحاوية ولا يعرض تصنيفات عامة.</p></div>
                   <div><Label htmlFor="contract-size">حجم الحاوية</Label><Input id="contract-size" value={form.containerSize || containerSize} readOnly placeholder="يُحدد تلقائيًا من الأصل" className="mt-2 bg-slate-50" /></div>
                  <div><Label htmlFor="contract-trips">عدد الرحلات</Label><Input id="contract-trips" type="number" min="0" value={form.trips} onChange={event => update("trips", event.target.value)} placeholder="عدد الرحلات" className="mt-2" dir="ltr" /></div>
                   <div><Label htmlFor="contract-billing-frequency">دورية التعاقد</Label><select id="contract-billing-frequency" value={form.billingFrequency} onChange={event => update("billingFrequency", event.target.value)} className="mt-2 h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm"><option value="daily">يومي</option><option value="weekly">أسبوعي</option><option value="monthly">شهري</option><option value="yearly">سنوي</option></select><p className="mt-1 text-[11px] text-slate-500">يُحتسب تاريخ النهاية تلقائيًا من تاريخ البداية.</p></div>

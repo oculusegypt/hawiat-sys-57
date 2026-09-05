@@ -1157,6 +1157,26 @@ router.post("/admin/container-system/contracts/workflow", requireContainerPermis
       }
       if (site.kind !== "customer_site" || site.status === "archived") throw new Error("موقع العميل غير موجود");
       if (Number(parsePayload(site.payload).customerRecordId) !== customerId) throw new Error("الموقع لا يتبع العميل المحدد");
+      const registeredSitePayload = parsePayload(site.payload);
+      const registeredAddress = String(
+        registeredSitePayload.address ??
+        registeredSitePayload.location ??
+        registeredSitePayload.name ??
+        "",
+      ).trim();
+      if (registeredAddress) {
+        contractPayload.location = registeredAddress;
+        servicePayload.location = registeredAddress;
+      }
+      const registeredCoordinates = String(
+        registeredSitePayload.locationCoordinates ??
+        registeredSitePayload.coordinates ??
+        "",
+      ).trim();
+      if (registeredCoordinates) {
+        contractPayload.locationCoordinates = registeredCoordinates;
+        contractPayload.locationMode = "registered";
+      }
       if (!isAssetlessContract && (!asset || !["container", "container_asset"].includes(asset.kind) || asset.status === "archived")) throw new Error("أصل الحاوية غير موجود");
       // The record status is the lifecycle of the system record (often
       // "active"), while the asset availability is stored in its payload.
