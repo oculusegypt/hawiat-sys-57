@@ -207,6 +207,7 @@ export const FIELD_CONFIG: Record<RecordKind, FieldConfig[]> = {
     { key: "notes", label: "ملاحظات الوصول", type: "textarea", wide: true },
   ],
   container_type: [
+    { key: "categoryRecordId", label: "التصنيف المركزي", placeholder: "اختر التصنيف" },
     { key: "name", label: "اسم النوع", placeholder: "حاوية أنقاض 20 ياردة" },
     { key: "size", label: "المقاس", placeholder: "6 × 2.4 × 1.8 م" },
     { key: "capacity", label: "السعة", placeholder: "15 طن" },
@@ -215,6 +216,8 @@ export const FIELD_CONFIG: Record<RecordKind, FieldConfig[]> = {
   ],
   container: [
     { key: "assetCode", label: "رقم الأصل", placeholder: "CNT-204" },
+    { key: "categoryRecordId", label: "التصنيف المركزي", placeholder: "اختر التصنيف" },
+    { key: "categorySizeRecordId", label: "الحجم المركزي", placeholder: "اختر الحجم بعد تحديد التصنيف" },
     { key: "typeName", label: "نوع الحاوية", placeholder: "20 ياردة" },
     { key: "status", label: "الحالة التشغيلية لأصل الحاوية", placeholder: "اختر الحالة التي تصف وضع الحاوية الآن" },
     { key: "location", label: "الموقع الحالي", placeholder: "مستودع الشفا" },
@@ -454,7 +457,7 @@ export const FIELD_CONFIG: Record<RecordKind, FieldConfig[]> = {
     { key: "notes", label: "ملاحظات", type: "textarea", wide: true },
   ],
   category_size: [
-    { key: "categoryName", label: "التصنيف", placeholder: "أنقاض" },
+    { key: "categoryRecordId", label: "التصنيف المركزي", placeholder: "اختر التصنيف" },
     { key: "size", label: "الحجم", placeholder: "20 ياردة" },
     { key: "price", label: "السعر", type: "number", placeholder: "0" },
     { key: "notes", label: "ملاحظات", type: "textarea", wide: true },
@@ -1125,6 +1128,8 @@ export function RecordDialog({
     })
   }
   const fields = FIELD_CONFIG[kind]
+  const categories = records.filter(item => item.kind === "category" && item.status !== "archived")
+  const categorySizes = records.filter(item => item.kind === "category_size" && item.status !== "archived")
   const isCustomerPayment = kind === "payment"
   const isInvoice = kind === "invoice"
   const isFinancialRecord = ["receipt", "payment", "expense", "deposit", "bank_deposit", "invoice", "invoice_return", "payment_return", "transfer", "purchase", "purchase_return", "commission", "salary_advance", "salary_payment"].includes(kind)
@@ -1361,6 +1366,33 @@ export function RecordDialog({
     : invoicePayload
   const optionsFor = (key: string) => {
     if (kind === "container" && key === "status") return CONTAINER_STATUS_OPTIONS
+    if (["container", "container_type", "category_size"].includes(kind) && key === "categoryRecordId") {
+      return categories.map(item => {
+        const categoryPayload = item.payload as Record<string, unknown>
+        const label = String(categoryPayload.name ?? categoryPayload.title ?? item.reference ?? `تصنيف #${item.id}`)
+        return { value: String(item.id), label }
+      })
+    }
+    if (kind === "container" && key === "categorySizeRecordId") {
+      const categoryId = Number(payload.categoryRecordId ?? 0)
+      const categoryName = String(categories.find(item => item.id === categoryId)?.payload
+        ? ((categories.find(item => item.id === categoryId)?.payload as Record<string, unknown>).name ?? "")
+        : "")
+      return categorySizes
+        .filter(item => {
+          if (!categoryId) return true
+          const sizePayload = item.payload as Record<string, unknown>
+          return Number(sizePayload.categoryRecordId ?? 0) === categoryId ||
+            (!sizePayload.categoryRecordId && String(sizePayload.categoryName ?? "").trim() === categoryName.trim())
+        })
+        .map(item => {
+          const sizePayload = item.payload as Record<string, unknown>
+          const categoryName = String(sizePayload.categoryName ?? "")
+          const size = String(sizePayload.size ?? sizePayload.name ?? item.reference ?? "")
+          return { value: String(item.id), label: categoryName ? `${categoryName} · ${size}` : size }
+        })
+        .filter(option => option.label)
+    }
     if (kind === "invoice" && key === "invoiceType") return INVOICE_TYPE_OPTIONS
     if (["invoice", "payment"].includes(kind) && key === "paymentMethod") return PAYMENT_METHOD_OPTIONS
     const employeeSelectionKeys = ["employeeName", "employeeRecordId", "driverName", "supervisorName", "staffName", "createdByName"]
@@ -1549,6 +1581,28 @@ export function RecordDialog({
                           customerName: String(contractCustomer.payload.name ?? contractPayload?.customerName ?? ""),
                         } : {}),
                       }))
+                    } else if (["container", "container_type", "category_size"].includes(kind) && (field.key === "categoryRecordId" || field.key === "categorySizeRecordId")) {
+                      const selected = field.key === "categoryRecordId"
+                        ? categories.find(item => String(item.id) === event.target.value)
+                        : categorySizes.find(item => String(item.id) === event.target.value)
+                      const selectedPayload = selected?.payload as Record<string, unknown> | undefined
+                      setPayload(current => {
+                        const next = { ...current, [field.key]: event.target.value }
+                        if (field.key === "categoryRecordId") {
+                          next.categoryName = String(selectedPayload?.name ?? selectedPayload?.title ?? "")
+                          if (kind === "container") {
+                            next.categorySizeRecordId = ""
+                            next.size = ""
+                            next.typeName = ""
+                          }
+                        } else if (selectedPayload) {
+                          next.categoryRecordId = String(selectedPayload.categoryRecordId ?? next.categoryRecordId ?? "")
+                          next.categoryName = String(selectedPayload.categoryName ?? "")
+                          next.size = String(selectedPayload.size ?? "")
+                          next.typeName = [next.categoryName, next.size].filter(Boolean).join(" — ")
+                        }
+                        return next
+                      })
                     } else {
                       setValue(field.key, event.target.value)
                     }

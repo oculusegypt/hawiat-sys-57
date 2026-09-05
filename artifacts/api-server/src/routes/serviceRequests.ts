@@ -445,6 +445,32 @@ router.post("/admin/service-requests/from-contract", requireAdmin, requireAnySec
       parseContainerPayload(row.payload).operationKey === operationKey);
   if (existingWorkOrder) return res.status(200).json({ ...operationalRecordAsWorkOrder(existingWorkOrder), idempotent: true });
 
+  const activeWorkOrder = (await db.select().from(containerSystemRecordsTable))
+    .find(row => {
+      if (row.kind !== "work_order" || row.status === "archived") return false;
+      const payload = parseContainerPayload(row.payload);
+      const matches = Number(payload.contractRecordId ?? 0) === contractId ||
+        Number(payload.containerRecordId ?? 0) === containerId;
+      const status = String(payload.driverStatus ?? payload.status ?? row.status).toLowerCase();
+      return matches && !["completed", "cancelled", "rejected", "closed"].includes(status) &&
+        !["completed", "cancelled", "rejected", "closed"].includes(String(row.status).toLowerCase());
+    });
+  const activeRequest = (await db.select().from(serviceRequestsTable))
+    .find(row => (row.contractRecordId === contractId || row.containerRecordId === containerId) &&
+      !["completed", "cancelled", "rejected"].includes(String(row.status).toLowerCase()) &&
+      !["completed", "cancelled", "rejected"].includes(String(row.driverStatus).toLowerCase()));
+  if (activeWorkOrder || activeRequest) {
+    const operationId = activeWorkOrder?.id ?? activeRequest?.id;
+    const operationStatus = activeWorkOrder
+      ? parseContainerPayload(activeWorkOrder.payload).driverStatus ?? activeWorkOrder.status
+      : activeRequest?.driverStatus ?? activeRequest?.status;
+    return res.status(409).json({
+      error: `يوجد أمر تشغيل قائم رقم ${operationId} حالته ${operationStatus}؛ أكمل الأمر الحالي قبل إنشاء حركة أخرى`,
+      operationId,
+      operationStatus,
+    });
+  }
+
   const [existingRequest] = await db.select().from(serviceRequestsTable)
     .where(and(
       eq(serviceRequestsTable.contractRecordId, contractId),

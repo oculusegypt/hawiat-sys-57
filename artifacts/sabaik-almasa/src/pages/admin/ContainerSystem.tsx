@@ -40,6 +40,7 @@ import { ContractWizard } from "./ContractWizard"
 import type { ServiceRequest } from "@workspace/api-client-react"
 import { ContainerAssignmentWizard } from "./ContainerAssignmentWizard"
 import { FinancialCycleWorkspace } from "./FinancialCycleWorkspace"
+import { findOpenContainerOperation } from "@/lib/containerOperationState"
 
 const API_BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") || ""
 
@@ -937,6 +938,16 @@ function RecordDetails({ record, allRecords, serviceRequests = [], open, onOpenC
     .slice()
     .sort((a, b) => String(b.updatedAt ?? b.createdAt).localeCompare(String(a.updatedAt ?? a.createdAt)))[0]
   const latestContractPayload = (latestContract?.payload ?? {}) as Record<string, unknown>
+  const openOperation = record.kind === "contract"
+    ? findOpenContainerOperation(
+        allRecords,
+        serviceRequests,
+        record.id,
+        Number(record.payload.containerRecordId ?? 0) || null,
+      )
+    : isContainer
+      ? findOpenContainerOperation(allRecords, serviceRequests, Number(latestContract?.id ?? 0) || null, record.id)
+      : null
   const linkedSite = allRecords.find(item => item.kind === "customer_site" && (
     String(latestContractPayload.siteRecordId ?? "") === String(item.id) ||
     (latestContractPayload.customerName && String(item.payload.customerName ?? "") === String(latestContractPayload.customerName))
@@ -1124,7 +1135,7 @@ function RecordDetails({ record, allRecords, serviceRequests = [], open, onOpenC
                  return <button type="button" key={invoice.id} onClick={() => { onOpenChange(false); navigate(`/admin/container-system/invoice/${invoice.id}/details`) }} className="grid w-full gap-2 rounded-xl bg-white p-3 text-right transition hover:bg-cyan-100/60 sm:grid-cols-[1.2fr_1fr_1fr_1fr_1fr]"><span className="font-black text-cyan-800" dir="ltr">{String(invoicePayload.invoiceNumber ?? invoice.reference)}</span><span><small className="block text-[10px] text-slate-400">الفترة</small>{String(invoicePayload.billingPeriod ?? invoicePayload.date ?? "—")}</span><span><small className="block text-[10px] text-slate-400">الإجمالي</small>{total.toLocaleString("ar-SA")} ر.س</span><span><small className="block text-[10px] text-slate-400">المدفوع</small><span className="text-emerald-700">{paid.toLocaleString("ar-SA")} ر.س</span></span><span><small className="block text-[10px] text-slate-400">المتبقي</small><span className="font-black text-rose-700">{Math.max(total - paid, 0).toLocaleString("ar-SA")} ر.س</span></span></button>
                })}</div>}
              </div>
-             <div className="rounded-2xl border border-amber-100 bg-amber-50/60 p-4"><h4 className="mb-3 text-sm font-black text-amber-950">دورة العقد</h4><div className="flex flex-wrap gap-2">{["draft", "pending_approval", "issued"].includes(record.status) && <><Button size="sm" onClick={() => onContractAction(record, "approve")} className="bg-emerald-700 hover:bg-emerald-800">اعتماد العقد</Button><Button size="sm" variant="outline" onClick={() => onContractAction(record, "reject")} className="border-rose-200 text-rose-700">رفض العقد</Button></>}<Button size="sm" onClick={() => onContractAction(record, "deliver")} className="bg-cyan-800 hover:bg-cyan-900">تسجيل التسليم</Button><Button size="sm" variant="outline" onClick={() => onContractAction(record, "return")} className="border-cyan-200 text-cyan-900">تسجيل الاسترجاع</Button><Button size="sm" variant="outline" onClick={() => onContractAction(record, "settle")} className="border-emerald-200 text-emerald-800">تصفية العقد</Button><Button size="sm" variant="outline" onClick={() => onContractAction(record, "debt")} className="border-rose-200 text-rose-700">تحويل لمديونية</Button><Button size="sm" variant="outline" onClick={() => onContractAction(record, "close")} className="border-slate-200 text-slate-700">إغلاق العقد</Button></div></div>
+              <div className="rounded-2xl border border-amber-100 bg-amber-50/60 p-4"><h4 className="mb-3 text-sm font-black text-amber-950">دورة العقد</h4>{openOperation && <p className="mb-3 rounded-xl border border-amber-200 bg-white px-3 py-2 text-xs font-bold text-amber-900">أمر تشغيل قائم #{openOperation.id}: {openOperation.statusLabel} · {openOperation.assigned ? "تم الإسناد" : "غير مسند"}. ستبقى أزرار الاسترجاع والإغلاق معطلة حتى إكماله.</p>}<div className="flex flex-wrap gap-2">{["draft", "pending_approval", "issued"].includes(record.status) && <><Button size="sm" onClick={() => onContractAction(record, "approve")} className="bg-emerald-700 hover:bg-emerald-800">اعتماد العقد</Button><Button size="sm" variant="outline" onClick={() => onContractAction(record, "reject")} className="border-rose-200 text-rose-700">رفض العقد</Button></>}<Button size="sm" onClick={() => onContractAction(record, "deliver")} className="bg-cyan-800 hover:bg-cyan-900">تسجيل التسليم</Button><Button size="sm" variant="outline" disabled={Boolean(openOperation)} onClick={() => onContractAction(record, "return")} className="border-cyan-200 text-cyan-900">تسجيل الاسترجاع</Button><Button size="sm" variant="outline" onClick={() => onContractAction(record, "settle")} className="border-emerald-200 text-emerald-800">تصفية العقد</Button><Button size="sm" variant="outline" onClick={() => onContractAction(record, "debt")} className="border-rose-200 text-rose-700">تحويل لمديونية</Button><Button size="sm" variant="outline" disabled={Boolean(openOperation)} onClick={() => onContractAction(record, "close")} className="border-slate-200 text-slate-700">إغلاق العقد</Button></div></div>
            </div>}
       </DialogContent>
     </Dialog>
@@ -1196,6 +1207,7 @@ export default function ContainerSystem() {
   }, [location])
   const requestedView = queryParams.get("view") as ViewKey | null
   const requestedCreate = queryParams.get("create") === "1"
+  const requestedPrepare = queryParams.get("prepare") === "1"
   const requestedCustomerId = Number(queryParams.get("customerId") ?? 0) || null
   const requestedContractId = Number(queryParams.get("contractId") ?? 0) || null
   const requestedRequestId = Number(queryParams.get("requestId") ?? 0) || null
@@ -1240,6 +1252,20 @@ export default function ContainerSystem() {
   const archiveMutation = useArchiveContainerSystemRecord()
   const snapshot = snapshotQuery.data
   const organization = (snapshot as typeof snapshot & { organization?: Record<string, unknown> } | undefined)?.organization
+  useEffect(() => {
+    if (!requestedPrepare || !requestedContractId || !snapshot?.records) return
+    const contract = snapshot.records.find(record =>
+      record.kind === "contract" &&
+      record.status !== "archived" &&
+      record.id === requestedContractId,
+    )
+    if (!contract) {
+      setNotice(`تعذر العثور على العقد رقم ${requestedContractId}`)
+      return
+    }
+    setView("contracts_list")
+    setDetailRecord(contract)
+  }, [requestedContractId, requestedPrepare, snapshot?.records])
   const records = useMemo(() => {
     const response = recordsQuery.data ?? []
     if (isCollection || search.trim()) return response

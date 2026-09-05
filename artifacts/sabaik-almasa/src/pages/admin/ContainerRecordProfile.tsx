@@ -4,6 +4,7 @@ import type { ReactNode } from "react"
 import { useQueryClient } from "@tanstack/react-query"
 import { useLocation, useParams } from "wouter"
 import { getGetContainerSystemQueryKey, getGetServiceRequestsQueryKey, useCreateContainerContractWorkflow, useCreateContainerSystemRecord, useGetContainerSystem, useGetServiceRequests } from "@workspace/api-client-react"
+import type { ServiceRequest } from "@workspace/api-client-react"
 import type { ContainerSystemRecord } from "@workspace/api-client-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -13,6 +14,7 @@ import { ContainerStatusImage } from "@/components/admin/ContainerStatusImage"
 import { getContainerOperationalStatus } from "@/lib/containerStatusVisuals"
 import { ContractWizard } from "./ContractWizard"
 import { useToast } from "@/hooks/use-toast"
+import { findOpenContainerOperation } from "@/lib/containerOperationState"
 
 const API_BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") || ""
 
@@ -101,9 +103,9 @@ async function createProfileWorkOrder(input: Record<string, unknown>) {
   return body as { idempotent?: boolean }
 }
 
-function OperationalQuickActions({ customerId, customerName, phone, email, location, contracts, containers, onRefresh }: {
+function OperationalQuickActions({ customerId, customerName, phone, email, location, contracts, containers, records, serviceRequests, onRefresh }: {
   customerId: number; customerName: string; phone: string; email: string; location: string
-  contracts: ContainerSystemRecord[]; containers: ContainerSystemRecord[]; onRefresh: () => void
+  contracts: ContainerSystemRecord[]; containers: ContainerSystemRecord[]; records: ContainerSystemRecord[]; serviceRequests: ServiceRequest[]; onRefresh: () => void
 }) {
   const [, navigate] = useLocation()
   const { toast } = useToast()
@@ -115,6 +117,7 @@ function OperationalQuickActions({ customerId, customerName, phone, email, locat
     text(contractPayload.containerCode ?? contractPayload.assetCode, "") === text(payloadOf(item).assetCode ?? payloadOf(item).containerCode ?? item.reference, "")
   )) ?? containers.find(item => item.status !== "archived")
   const ap = payloadOf(container)
+  const openOperation = findOpenContainerOperation(records, serviceRequests, contract?.id, container?.id)
   const run = async (kind: "pickup" | "empty") => {
     if (!contract || !container || !customerId) return
     setBusy(kind)
@@ -139,7 +142,7 @@ function OperationalQuickActions({ customerId, customerName, phone, email, locat
       setBusy("")
     }
   }
-  return <Card className="border-amber-200 bg-amber-50/60 shadow-sm"><CardContent className="flex flex-wrap items-center justify-between gap-3 p-4"><div><p className="text-sm font-black text-amber-950">إجراءات تشغيل سريعة</p><p className="mt-1 text-xs text-amber-900/70">مرتبطة بالعقد والحاوية ولا تغيّر القيود المالية.</p></div><div className="flex flex-wrap gap-2"><Button size="sm" disabled={!!busy || !contract || !container || !customerId} onClick={() => run("pickup")} className="gap-2 bg-amber-700 hover:bg-amber-800"><RotateCcw size={14} />{busy === "pickup" ? "جارٍ الإنشاء..." : "استرجاع وسحب الحاوية"}</Button><Button size="sm" variant="outline" disabled={!!busy || !contract || !container || !customerId} onClick={() => run("empty")} className="gap-2 border-amber-300 text-amber-900 hover:bg-white"><Trash2 size={14} />{busy === "empty" ? "جارٍ الإنشاء..." : "أمر تفريغ"}</Button>{contract && <Button size="sm" variant="outline" onClick={() => navigate(`/admin/container-system?view=overview&contractId=${contract.id}&prepare=1`)} className="gap-2 border-cyan-300 text-cyan-900 hover:bg-white"><LockKeyhole size={14} /> تجهيز العقد</Button>}</div>{(!contract || !container) && <p className="w-full text-xs font-semibold text-amber-800">يلزم عقد نشط وحاوية مخصصة لإظهار إجراءات التشغيل.</p>}</CardContent></Card>
+  return <Card className="border-amber-200 bg-amber-50/60 shadow-sm"><CardContent className="flex flex-wrap items-center justify-between gap-3 p-4"><div><p className="text-sm font-black text-amber-950">إجراءات تشغيل سريعة</p><p className="mt-1 text-xs text-amber-900/70">مرتبطة بالعقد والحاوية ولا تغيّر القيود المالية.</p></div><div className="flex flex-wrap gap-2"><Button size="sm" disabled={!!busy || Boolean(openOperation) || !contract || !container || !customerId} onClick={() => run("pickup")} className="gap-2 bg-amber-700 hover:bg-amber-800"><RotateCcw size={14} />{busy === "pickup" ? "جارٍ الإنشاء..." : "استرجاع وسحب الحاوية"}</Button><Button size="sm" variant="outline" disabled={!!busy || Boolean(openOperation) || !contract || !container || !customerId} onClick={() => run("empty")} className="gap-2 border-amber-300 text-amber-900 hover:bg-white"><Trash2 size={14} />{busy === "empty" ? "جارٍ الإنشاء..." : "أمر تفريغ"}</Button>{contract && <Button size="sm" variant="outline" onClick={() => navigate(`/admin/container-system?view=overview&contractId=${contract.id}&prepare=1`)} className="gap-2 border-cyan-300 text-cyan-900 hover:bg-white"><LockKeyhole size={14} /> تجهيز العقد</Button>}</div>{openOperation ? <p className="w-full text-xs font-semibold text-amber-800">أمر تشغيل قائم #{openOperation.id}: {openOperation.statusLabel} · {openOperation.assigned ? "تم الإسناد" : "غير مسند"}.</p> : (!contract || !container) && <p className="w-full text-xs font-semibold text-amber-800">يلزم عقد نشط وحاوية مخصصة لإظهار إجراءات التشغيل.</p>}</CardContent></Card>
 }
 
 function Stat({ label, value, tone = "text-slate-900" }: { label: string; value: string | number; tone?: string }) {
@@ -486,6 +489,8 @@ function CustomerProfile({ record, records }: { record: ContainerSystemRecord; r
       location={text(p.address ?? p.location ?? siteAddress(sites[0]), "يحدد لاحقاً")}
       contracts={contracts}
       containers={containers}
+      records={records}
+      serviceRequests={workOrders}
       onRefresh={refreshProfile}
     />
     <CompletionEvidence items={completionEvidence} />
@@ -634,6 +639,8 @@ function ContainerProfile({ record, records }: { record: ContainerSystemRecord; 
     location={text(p.location ?? activeContractPayload.location ?? activeContractPayload.address, "يحدد لاحقاً")}
     contracts={contracts}
     containers={[record]}
+    records={records}
+    serviceRequests={workOrders}
     onRefresh={() => void workOrdersQuery.refetch()}
   />
   ;(workOrderRecords as ContainerSystemRecord[] & { headerAction?: ReactNode }).headerAction = quickActions

@@ -11,3 +11,4 @@
 - [Hostinger FTP TLS validation](hostinger-ftp-tls-validation.md) — never bypass certificate validation or fall back to plaintext FTP when the configured alias has a TLS hostname mismatch.
 - [SEO noindex error policy](seo-noindex-error-policy.md) — only confirmed missing pages should become noindex; transient API failures must preserve indexability.
 - [Public chat attachments](public-chat-attachments.md) — anonymous image uploads are allowed only through validation and a strict per-IP rate limit.
+- [Container category registry](container-category-registry.md) — central category and size IDs must survive seed/backfill while legacy text remains readable.

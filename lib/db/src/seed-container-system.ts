@@ -968,12 +968,18 @@ const extendedDemo = [
     }
   }
 
+  const seededCategoryIds = new Map<string, number>();
   for (const [kind, status, payload] of [
     ...demo,
     ...linkedDemo,
     ...extendedDemo,
   ]) {
-    const payloadRecord = payload as Record<string, unknown>;
+    const payloadRecord = { ...(payload as Record<string, unknown>) };
+    if (kind === "category_size") {
+      const categoryName = String(payloadRecord.categoryName ?? "").trim();
+      const categoryRecordId = seededCategoryIds.get(categoryName);
+      if (categoryRecordId) payloadRecord.categoryRecordId = categoryRecordId;
+    }
     const reference = String(
       payloadRecord.reference ?? `${kind.toUpperCase().slice(0, 4)}-DEMO`,
     );
@@ -983,7 +989,7 @@ const extendedDemo = [
         kind,
         status,
         reference,
-        payload: JSON.stringify(payload),
+         payload: JSON.stringify(payloadRecord),
       })
       .returning()
       .get();
@@ -995,6 +1001,10 @@ const extendedDemo = [
         afterPayload: created.payload,
       })
       .run();
+    if (kind === "category") {
+      const categoryName = String(payloadRecord.name ?? "").trim();
+      if (categoryName) seededCategoryIds.set(categoryName, created.id);
+    }
   }
 }
 

@@ -55,6 +55,60 @@ function parsePayload(payload: string): Record<string, unknown> {
   }
 }
 
+async function normalizeCategoryReferences(kind: string, payload: Record<string, unknown>) {
+  if (!["container", "container_asset", "container_type", "category_size"].includes(kind)) return;
+
+  const records = await db.select().from(containerSystemRecordsTable);
+  const activeCategories = records.filter(record => record.kind === "category" && record.status !== "archived");
+  const activeSizes = records.filter(record => record.kind === "category_size" && record.status !== "archived");
+  const categoryId = Number(payload.categoryRecordId ?? 0);
+  let category = Number.isInteger(categoryId) && categoryId > 0
+    ? activeCategories.find(record => record.id === categoryId)
+    : undefined;
+
+  if (categoryId > 0 && !category) throw new Error("التصنيف المركزي غير موجود أو مؤرشف");
+  if (!category && String(payload.categoryName ?? "").trim()) {
+    const requestedName = String(payload.categoryName).trim().toLowerCase();
+    category = activeCategories.find(record => {
+      const categoryPayload = parsePayload(record.payload);
+      return String(categoryPayload.name ?? categoryPayload.title ?? "").trim().toLowerCase() === requestedName;
+    });
+    if (category) payload.categoryRecordId = category.id;
+  }
+
+  if (category) {
+    const categoryPayload = parsePayload(category.payload);
+    payload.categoryName = String(categoryPayload.name ?? categoryPayload.title ?? category.reference ?? "").trim();
+  }
+
+  if (kind === "category_size") {
+    if (!category) throw new Error("ربط الحجم بتصنيف مركزي مطلوب");
+    if (!String(payload.size ?? "").trim()) throw new Error("اسم الحجم مطلوب");
+    return;
+  }
+
+  const categorySizeId = Number(payload.categorySizeRecordId ?? 0);
+  if (categorySizeId <= 0) return;
+  const sizeRecord = activeSizes.find(record => record.id === categorySizeId);
+  if (!sizeRecord) throw new Error("الحجم المركزي غير موجود أو مؤرشف");
+  const sizePayload = parsePayload(sizeRecord.payload);
+  const sizeCategoryId = Number(sizePayload.categoryRecordId ?? 0);
+  if (category && sizeCategoryId > 0 && sizeCategoryId !== category.id) {
+    throw new Error("الحجم المركزي لا يتبع التصنيف المحدد");
+  }
+  if (!category && sizeCategoryId > 0) {
+    category = activeCategories.find(record => record.id === sizeCategoryId);
+    if (!category) throw new Error("تصنيف الحجم المركزي غير موجود أو مؤرشف");
+    payload.categoryRecordId = category.id;
+    const categoryPayload = parsePayload(category.payload);
+    payload.categoryName = String(categoryPayload.name ?? categoryPayload.title ?? category.reference ?? "").trim();
+  }
+  payload.size = String(sizePayload.size ?? sizePayload.name ?? "").trim();
+  if (!String(payload.typeName ?? "").trim() && payload.categoryName) {
+    payload.typeName = [payload.categoryName, payload.size].filter(Boolean).join(" — ");
+  }
+}
+
 function ensureDepositReconciliation(
   depositRecordId: number,
   depositReference: string,
@@ -622,6 +676,48 @@ async function hasOverlappingContract(payload: Record<string, unknown>, ignoredI
       Number.isFinite(currentStart) && Number.isFinite(currentEnd) &&
       start <= currentEnd && end >= currentStart;
   });
+}
+
+const terminalOperationStatuses = new Set(["completed", "cancelled", "rejected", "closed"]);
+
+function findOpenContainerOperation(
+  rows: typeof containerSystemRecordsTable.$inferSelect[],
+  requests: typeof serviceRequestsTable.$inferSelect[],
+  contractId: number,
+  containerId?: number,
+) {
+  const request = requests.find(item =>
+    !terminalOperationStatuses.has(String(item.status).toLowerCase()) &&
+    !terminalOperationStatuses.has(String(item.driverStatus).toLowerCase()) &&
+    (item.contractRecordId === contractId || (containerId && item.containerRecordId === containerId)),
+  );
+  if (request) {
+    return {
+      source: "service_request",
+      id: request.id,
+      status: request.driverStatus || request.status,
+      assignedDriverId: request.assignedDriverId,
+      assignedVehicleId: request.assignedVehicleId,
+    };
+  }
+  const workOrder = rows.find(row => {
+    if (row.kind !== "work_order" || row.status === "archived") return false;
+    const payload = parsePayload(row.payload);
+    const matches = Number(payload.contractRecordId ?? 0) === contractId ||
+      (containerId && Number(payload.containerRecordId ?? 0) === containerId);
+    const operationStatus = String(payload.driverStatus ?? payload.status ?? row.status).toLowerCase();
+    return Boolean(matches) && !terminalOperationStatuses.has(operationStatus) &&
+      !terminalOperationStatuses.has(String(row.status).toLowerCase());
+  });
+  if (!workOrder) return null;
+  const payload = parsePayload(workOrder.payload);
+  return {
+    source: "work_order",
+    id: workOrder.id,
+    status: String(payload.driverStatus ?? payload.status ?? workOrder.status),
+    assignedDriverId: Number(payload.assignedDriverId ?? 0) || null,
+    assignedVehicleId: Number(payload.assignedVehicleId ?? 0) || null,
+  };
 }
 
 async function syncMovement(payload: Record<string, unknown>, actorId: number | null) {
@@ -1498,7 +1594,7 @@ router.post("/admin/container-system/contracts/:id/lifecycle", requireContainerP
   if (!Number.isInteger(contractId) || contractId <= 0) {
     return res.status(400).json({ error: "رقم العقد غير صحيح" });
   }
-  if (!["deliver", "return", "approve", "reject"].includes(action)) {
+  if (!["deliver", "return", "approve", "reject", "close"].includes(action)) {
     return res.status(422).json({ error: "إجراء دورة العقد غير مدعوم" });
   }
   if (!canManage(adminReq, "contract")) {
@@ -1545,6 +1641,108 @@ router.post("/admin/container-system/contracts/:id/lifecycle", requireContainerP
           action: `contract_${action}`,
           beforePayload: contract.payload,
           afterPayload: JSON.stringify(nextPayload),
+          actorId: adminReq.adminId,
+        }).run();
+        return { contract: updatedContract, movement: null, idempotent: false };
+      }
+      const allRows = tx.select().from(containerSystemRecordsTable).all();
+      const linkedRequests = tx.select().from(serviceRequestsTable).all();
+      const containerId = Number(contractPayload.containerRecordId ?? 0) || undefined;
+      if (["return", "close"].includes(action)) {
+        const openOperation = findOpenContainerOperation(allRows, linkedRequests, contractId, containerId);
+        if (openOperation) {
+          throw new Error(`لا يمكن تنفيذ الإجراء؛ يوجد أمر تشغيل ${openOperation.id} حالته ${openOperation.status} ومكلف بالسائق ${openOperation.assignedDriverId ? "ومسند" : "غير مسند"}`);
+        }
+      }
+      if (action === "close") {
+        if (contract.status !== "returned") {
+          throw new Error("لا يمكن إغلاق العقد قبل استرجاع الحاوية وتسجيل التفريغ أو الإكمال التشغيلي");
+        }
+        const contractNumber = String(contractPayload.contractNumber ?? contract.reference).trim();
+        const collected = postedCollections(allRows)
+          .filter(row => {
+            const payload = parsePayload(row.payload);
+            return String(payload.contractNumber ?? "").trim() === contractNumber ||
+              Number(payload.contractRecordId ?? payload.contractId ?? 0) === contractId ||
+              (Array.isArray(payload.allocations) && payload.allocations.some((item: unknown) =>
+                Number((item as Record<string, unknown>).contractId) === contractId));
+          })
+          .reduce((sum, row) => {
+            const payload = parsePayload(row.payload);
+            const allocation = Array.isArray(payload.allocations)
+              ? payload.allocations.find((item: unknown) => Number((item as Record<string, unknown>).contractId) === contractId) as Record<string, unknown> | undefined
+              : undefined;
+            return sum + Number(allocation?.amount ?? payload.amount ?? 0);
+          }, 0);
+        const returned = allRows
+          .filter(row => row.kind === "payment_return" && row.status === "posted")
+          .filter(row => {
+            const payload = parsePayload(row.payload);
+            return Number(payload.contractRecordId ?? payload.contractId ?? 0) === contractId ||
+              String(payload.contractNumber ?? "").trim() === contractNumber;
+          })
+          .reduce((sum, row) => sum + Number(parsePayload(row.payload).amount ?? 0), 0);
+        const total = Number(contractPayload.total ?? contractPayload.amount ?? 0);
+        if (Math.max(total - collected + returned, 0) > 0.01) {
+          throw new Error(`لا يمكن إغلاق العقد قبل اكتمال التسوية المالية؛ المتبقي ${Math.max(total - collected + returned, 0).toFixed(2)} ر.س`);
+        }
+        const now = new Date().toISOString();
+        const nextContractPayload = {
+          ...contractPayload,
+          closedAt: now,
+          lifecycleAction: "close",
+          settlementStatus: "settled",
+          paid: collected - returned,
+          remaining: 0,
+        };
+        const updatedContract = tx.update(containerSystemRecordsTable).set({
+          status: "closed",
+          payload: JSON.stringify(nextContractPayload),
+          updatedAt: now,
+        }).where(eq(containerSystemRecordsTable.id, contractId)).returning().get();
+        for (const row of allRows) {
+          const payload = parsePayload(row.payload);
+          if (row.kind !== "container_assignment" || Number(payload.contractRecordId ?? 0) !== contractId) continue;
+          tx.update(containerSystemRecordsTable).set({
+            status: "closed",
+            payload: JSON.stringify({ ...payload, assignmentStatus: "closed", closedAt: now }),
+            updatedAt: now,
+          }).where(eq(containerSystemRecordsTable.id, row.id)).run();
+        }
+        if (containerId) {
+          const asset = allRows.find(row => row.id === containerId && ["container", "container_asset"].includes(row.kind));
+          if (asset) {
+            const assetPayload = parsePayload(asset.payload);
+            const nextAssetPayload = {
+              ...assetPayload,
+              status: "available",
+              assignmentRecordId: null,
+              assignedContractRecordId: null,
+              assignedSiteRecordId: null,
+              lastClosedContractId: contractId,
+              lastClosedAt: now,
+            };
+            tx.update(containerSystemRecordsTable).set({
+              status: "available",
+              payload: JSON.stringify(nextAssetPayload),
+              updatedAt: now,
+            }).where(eq(containerSystemRecordsTable.id, asset.id)).run();
+            tx.insert(containerSystemAuditTable).values({
+              recordId: asset.id,
+              kind: asset.kind,
+              action: "contract_close_asset_release",
+              beforePayload: asset.payload,
+              afterPayload: JSON.stringify(nextAssetPayload),
+              actorId: adminReq.adminId,
+            }).run();
+          }
+        }
+        tx.insert(containerSystemAuditTable).values({
+          recordId: contractId,
+          kind: "contract",
+          action: "contract_close",
+          beforePayload: contract.payload,
+          afterPayload: JSON.stringify(nextContractPayload),
           actorId: adminReq.adminId,
         }).run();
         return { contract: updatedContract, movement: null, idempotent: false };
@@ -1664,6 +1862,11 @@ router.post("/admin/container-system/records", async (req, res) => {
   }
   if (!canManage(adminReq, kind)) return res.status(403).json({ error: "ليس لديك صلاحية لهذه العملية" });
   if (!payload || typeof payload !== "object") return res.status(400).json({ error: "بيانات السجل غير صالحة" });
+  try {
+    await normalizeCategoryReferences(kind, payload);
+  } catch (error) {
+    return res.status(422).json({ error: error instanceof Error ? error.message : "بيانات التصنيف المركزي غير صحيحة" });
+  }
   const requestOperationKey = String(req.get("Idempotency-Key") ?? payload.operationKey ?? "").trim();
   if (idempotentKinds.has(kind) && requestOperationKey) {
     if (requestOperationKey.length < 8 || requestOperationKey.length > 160) {
@@ -1957,6 +2160,11 @@ router.patch("/admin/container-system/records/:id", async (req, res) => {
   }
   const body = req.body as { status?: string; payload?: Record<string, unknown> };
   const nextPayload = body.payload ? { ...parsePayload(current.payload), ...body.payload } : parsePayload(current.payload);
+  try {
+    await normalizeCategoryReferences(current.kind, nextPayload);
+  } catch (error) {
+    return res.status(422).json({ error: error instanceof Error ? error.message : "بيانات التصنيف المركزي غير صحيحة" });
+  }
   try {
     validateFinancialLifecycle(
       current.kind,
