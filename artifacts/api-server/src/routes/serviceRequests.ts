@@ -152,6 +152,10 @@ function isAssetlessContractWorkOrder(order: unknown) {
   return String(operationType ?? "").trim() === "CLEANING_CONTRACT";
 }
 
+function isCleaningContractRequest(request: Pick<typeof serviceRequestsTable.$inferSelect, "serviceType">) {
+  return /عقود?\s*(?:النظافة|تنظيف)/u.test(String(request.serviceType ?? "").trim());
+}
+
 async function prepareContainerCompletion(request: typeof serviceRequestsTable.$inferSelect) {
   if (!isContainerWork(request)) return null;
   const contract = await db.select().from(containerSystemRecordsTable)
@@ -874,6 +878,9 @@ router.patch("/service-requests/:id/assignment", requireAdmin, requireSectionPer
   const [request] = await db.select().from(serviceRequestsTable)
     .where(eq(serviceRequestsTable.id, id));
   if (!request) return res.status(404).json({ error: "الطلب غير موجود" });
+  if (isCleaningContractRequest(request)) {
+    return res.status(404).json({ error: "عقد النظافة لا يحتاج إلى إسناد أو أمر تشغيل" });
+  }
   if (["completed", "rejected"].includes(request.driverStatus)) {
     return res.status(409).json({ error: "لا يمكن إعادة إسناد أمر عمل مغلق" });
   }
@@ -951,6 +958,7 @@ router.get("/driver/work-orders", requireAdmin, requireDriver, async (req, res) 
     .filter(id => id > 0));
   return res.json([
     ...requests
+      .filter(request => !isCleaningContractRequest(request))
       .filter(request => !supersededLegacyIds.has(request.id))
       .map(request => ({ ...request, driverProofPhotoUrl: refreshPrivateUploadUrl(request.driverProofPhotoUrl) })),
     ...operational,
@@ -974,6 +982,7 @@ router.get("/admin/work-orders", requireAdmin, requireSectionPermission("work_or
     .filter(id => id > 0));
   const allOrders = [
     ...requests
+      .filter(request => !isCleaningContractRequest(request))
       .filter(request => !supersededLegacyIds.has(request.id))
       .map(request => ({ ...request, driverProofPhotoUrl: refreshPrivateUploadUrl(request.driverProofPhotoUrl) })),
     ...operational,
@@ -1081,6 +1090,9 @@ router.patch("/driver/work-orders/:id", requireAdmin, requireDriver, async (req,
       eq(serviceRequestsTable.assignedDriverId, adminRequest.adminId),
     ));
   if (!request) return res.status(404).json({ error: "أمر العمل غير موجود" });
+  if (isCleaningContractRequest(request)) {
+    return res.status(404).json({ error: "عقد النظافة لا يحتاج إلى إسناد أو أمر تشغيل" });
+  }
   if (request.driverStatus === nextStatus) {
     return res.json(request);
   }
