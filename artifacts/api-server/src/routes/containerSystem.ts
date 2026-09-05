@@ -229,6 +229,15 @@ function normalizeInvoicePayload(payload: Record<string, unknown>) {
   return next;
 }
 
+function financialAmountForRecord(kind: string, payload: Record<string, unknown>): number {
+  if (kind === "invoice") {
+    const total = Number(payload.total ?? 0);
+    if (Number.isFinite(total) && total > 0) return total;
+  }
+  const amount = Number(payload.amount ?? payload.total ?? 0);
+  return Number.isFinite(amount) ? amount : 0;
+}
+
 const MOVEMENT_STATUS_BY_TYPE: Record<string, string> = {
   delivery: "rented",
   deliver: "rented",
@@ -1064,6 +1073,7 @@ router.post("/admin/container-system/contracts/workflow", requireContainerPermis
             amount: subtotal,
             subtotal,
             taxRate,
+            taxEnabled,
             taxAmount,
             total,
             paid: 0,
@@ -1887,7 +1897,7 @@ router.post("/admin/container-system/records", async (req, res) => {
         invoiceRecordId: Number(payload.invoiceRecordId) || null,
         customerName: payload.customerName ?? "",
         customerRecordId: Number(payload.customerRecordId) || null,
-          amount: Number(payload.amount ?? payload.total ?? 0),
+           amount: financialAmountForRecord(kind, payload),
            direction: ["expense", "payment_return", "purchase", "purchase_return", "bank_fee"].includes(kind) ? "debit" : ["invoice", "invoice_return"].includes(kind) ? "debit" : "credit",
         date: payload.date ?? new Date().toISOString().slice(0, 10),
         ...(Array.isArray(payload.allocations) ? { allocations: payload.allocations } : {}),
@@ -1899,7 +1909,7 @@ router.post("/admin/container-system/records", async (req, res) => {
          sourceKind: kind,
          sourceId: created.id,
          reference: created.reference,
-         amount: Number(payload.amount ?? payload.total ?? 0),
+          amount: financialAmountForRecord(kind, payload),
          date: String(payload.date ?? new Date().toISOString().slice(0, 10)),
          operationKey: requestOperationKey,
          createdBy: adminReq.adminId,
@@ -2084,7 +2094,7 @@ router.patch("/admin/container-system/records/:id", async (req, res) => {
             invoiceRecordId: Number(nextPayload.invoiceRecordId) || null,
             customerName: nextPayload.customerName ?? "",
             customerRecordId: Number(nextPayload.customerRecordId) || null,
-            amount: Number(nextPayload.amount ?? nextPayload.total ?? 0),
+             amount: financialAmountForRecord(current.kind, nextPayload),
              direction: ["expense", "payment_return", "purchase", "purchase_return", "bank_fee"].includes(current.kind) ? "debit" : "credit",
             date: nextPayload.date ?? new Date().toISOString().slice(0, 10),
           }),
@@ -2096,7 +2106,7 @@ router.patch("/admin/container-system/records/:id", async (req, res) => {
           sourceKind: current.kind,
           sourceId: id,
           reference: current.reference,
-          amount: Number(nextPayload.amount ?? nextPayload.total ?? 0),
+          amount: financialAmountForRecord(current.kind, nextPayload),
           date: String(nextPayload.date ?? new Date().toISOString().slice(0, 10)),
           operationKey: current.operationKey,
           createdBy: current.createdBy,
@@ -2128,7 +2138,7 @@ router.patch("/admin/container-system/records/:id", async (req, res) => {
     return next;
   });
   if (financialLifecycleKinds.has(current.kind) && current.status === "posted" && nextStatus === "cancelled") {
-    const amount = Number(nextPayload.amount ?? nextPayload.total ?? 0);
+    const amount = financialAmountForRecord(current.kind, nextPayload);
     if (amount > 0) {
       reverseInFinancialCore({
         sourceKind: current.kind,
