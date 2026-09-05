@@ -1,4 +1,4 @@
-import { ArrowRight, BriefcaseBusiness, CalendarDays, CheckCircle2, ChevronDown, ClipboardList, FileText, MapPin, Phone, Printer, ReceiptText, Truck, UserRound, Wallet, Wrench, RotateCcw, Trash2, LockKeyhole, Building2, Clock3, CircleDollarSign, ExternalLink, Activity } from "lucide-react"
+import { ArrowRight, BriefcaseBusiness, CalendarDays, CheckCircle2, ChevronDown, ClipboardList, FileText, MapPin, Phone, PhoneCall, Printer, ReceiptText, Truck, UserRound, Wallet, Wrench, RotateCcw, Trash2, LockKeyhole, Building2, Clock3, CircleDollarSign, ExternalLink, Activity, Mail, Navigation } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
 import type { ReactNode } from "react"
 import { useQueryClient } from "@tanstack/react-query"
@@ -375,6 +375,15 @@ function CustomerProfile({ record, records }: { record: ContainerSystemRecord; r
   }, [paymentInvoice, action])
   const sites = records.filter(item => item.kind === "customer_site" && item.status !== "archived" && customerSiteBelongsTo(item, record))
   const customerAddress = text(p.address ?? p.location, "") || siteAddress(sites[0]) || (p.city ? text(p.city) : "")
+  const customerPhone = text(p.phone ?? p.mobile, "")
+  const customerEmail = text(p.email, "")
+  const commercialRegistration = text(p.commercialRegistration ?? p.crNumber, "")
+  const taxNumber = text(p.taxNumber ?? p.vatNumber, "")
+  const primarySitePayload = payloadOf(sites[0])
+  const latitude = primarySitePayload.latitude ?? primarySitePayload.lat ?? p.latitude ?? p.lat
+  const longitude = primarySitePayload.longitude ?? primarySitePayload.lng ?? p.longitude ?? p.lng
+  const mapQuery = latitude && longitude ? `${latitude},${longitude}` : customerAddress
+  const mapsHref = mapQuery ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(String(mapQuery))}` : ""
   const assignments = related.filter(item => item.kind === "container_assignment" || contractIds.has(Number(payloadOf(item).contractRecordId)))
   const appointments = related.filter(item => item.kind === "appointment" || contractIds.has(Number(payloadOf(item).contractRecordId)))
   const containers = records.filter(item => ["container", "container_asset"].includes(item.kind) && (
@@ -666,6 +675,32 @@ function CustomerProfile({ record, records }: { record: ContainerSystemRecord; r
          </div>
        </CardContent>
      </Card>
+
+      <Card className="border-slate-200/80 bg-white shadow-sm">
+        <CardContent className="p-5 sm:p-6">
+          <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2">
+                <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-cyan-50 text-cyan-800"><UserRound size={18} /></div>
+                <div>
+                 <p className="text-base font-black text-slate-900">البيانات النظامية والوصول السريع</p>
+                  <p className="mt-1 text-xs text-slate-500">بيانات غير ظاهرة في رأس الملف، مع إجراءات الاتصال والوصول للموقع.</p>
+                </div>
+              </div>
+              <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                <div className="rounded-2xl border border-slate-100 bg-slate-50/70 p-3"><p className="text-[10px] font-bold text-slate-400">السجل التجاري</p><p className={`mt-1 text-sm font-black ${commercialRegistration ? "text-slate-900" : "text-slate-400"}`} dir="ltr">{commercialRegistration || "غير مضاف"}</p></div>
+                <div className="rounded-2xl border border-slate-100 bg-slate-50/70 p-3"><p className="text-[10px] font-bold text-slate-400">الرقم الضريبي</p><p className={`mt-1 break-all text-sm font-black ${taxNumber ? "text-slate-900" : "text-slate-400"}`} dir="ltr">{taxNumber || "غير مضاف"}</p></div>
+                <div className="rounded-2xl border border-slate-100 bg-slate-50/70 p-3"><p className="text-[10px] font-bold text-slate-400">البريد الإلكتروني</p><p className={`mt-1 break-all text-sm font-black ${customerEmail ? "text-slate-900" : "text-slate-400"}`} dir="ltr">{customerEmail || "غير مضاف"}</p></div>
+              </div>
+            </div>
+            <div className="flex shrink-0 flex-wrap gap-2 xl:w-56 xl:flex-col">
+              {customerPhone && <a href={`tel:${customerPhone}`} data-testid="button-call-customer" className="inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-800 px-4 py-2.5 text-sm font-black text-white transition hover:bg-cyan-900"><PhoneCall size={16} /> اتصال بالعميل</a>}
+              {customerEmail && <a href={`mailto:${customerEmail}`} data-testid="button-email-customer" className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-black text-slate-700 transition hover:bg-slate-50"><Mail size={16} /> إرسال بريد</a>}
+              {mapsHref && <a href={mapsHref} target="_blank" rel="noopener noreferrer" data-testid="button-directions-customer" className="inline-flex items-center justify-center gap-2 rounded-xl border border-cyan-200 bg-cyan-50 px-4 py-2.5 text-sm font-black text-cyan-800 transition hover:bg-cyan-100"><Navigation size={16} /> فتح الاتجاهات</a>}
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
      <Card className="border-slate-200/80 bg-white shadow-sm">
        <CardContent className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between">
@@ -1005,7 +1040,7 @@ export function ContainerRecordProfile({ mode }: { mode: ProfileMode }) {
   const headerAddress = mode === "customer"
     ? text(p.address ?? p.location, "") || siteAddress(customerSites[0])
     : text(p.address ?? p.location ?? p.branchName, "")
-  if (String(mode) === "customer") return <div dir="rtl" className="container-system space-y-5"><CustomerProfile record={record} records={records} /><Card className="border-slate-200/80 shadow-sm"><CardHeader className="border-b border-slate-100 px-5 py-4"><CardTitle className="text-base">البيانات الأساسية</CardTitle></CardHeader><CardContent className="p-5"><FieldGrid record={record} /></CardContent></Card></div>
+  if (String(mode) === "customer") return <div dir="rtl" className="container-system space-y-5"><CustomerProfile record={record} records={records} /></div>
    return <div dir="rtl" className="container-system space-y-5"><Card className="overflow-hidden border-0 bg-[#123d4e] text-white shadow-[0_14px_40px_rgba(18,61,78,.18)]"><CardContent className="p-4 sm:p-6"><div className="flex flex-col gap-5 sm:flex-row sm:items-center">{mode === "container" ? <div className="order-2 flex h-28 w-full shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-white sm:order-1 sm:h-28 sm:w-56"><ContainerStatusImage status={getContainerOperationalStatus(record.status, p)} code={title} className="h-full w-full" numberClassName="top-[45.5%]" /></div> : <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-amber-400 text-slate-900"><Icon size={30} /></div>}<div className="order-1 min-w-0 flex-1 sm:order-2"><p className="text-xs font-bold text-cyan-200">{mode === "customer" ? "ملف عميل" : mode === "employee" ? "ملف موظف" : "ملف أصل حاوية"}</p><h1 className="mt-1 text-2xl font-black" dir={mode === "container" ? "ltr" : undefined}>{title}</h1><div className="mt-3 flex flex-wrap gap-3 text-xs text-cyan-100/75">{mode !== "container" && <><span className="flex items-center gap-1"><Phone size={13} /> {text(p.phone ?? p.customerPhone, "لا يوجد هاتف")}</span><span className="flex items-center gap-1"><MapPin size={13} /> {text(headerAddress, "لا يوجد عنوان")}</span>{mode === "customer" && customerSites.length > 0 && <span className="flex items-center gap-1"><MapPin size={13} /> {customerSites.length} {customerSites.length === 1 ? "موقع مسجل" : "مواقع مسجلة"}</span>}</>} {mode === "container" && <span>{text(p.typeName ?? p.containerType, "نوع الحاوية غير محدد")} · {text(p.size ?? p.capacity, "الحجم غير محدد")}</span>}<span className="flex items-center gap-1"><CalendarDays size={13} /> آخر تحديث {formatRecordDate(record.updatedAt)}</span></div></div><div className="flex shrink-0 flex-wrap items-center gap-2">{mode === "container" && <><Button variant="outline" onClick={() => window.print()} className="gap-2 border-white/20 bg-white/10 text-white hover:bg-white/20 hover:text-white"><Printer size={15} /> طباعة الملف</Button><Button variant="ghost" onClick={goBack} className="gap-2 text-cyan-100 hover:bg-white/10 hover:text-white"><ArrowRight size={15} /> العودة</Button></>}{mode !== "container" && <Badge className="border-white/10 bg-white/10 text-cyan-50">{profileStatus(p.status ?? record.status)}</Badge>}</div>{mode === "container" && <RecordStatus status={getContainerOperationalStatus(record.status, p)} />}</div></CardContent></Card>{mode !== "container" && <Card className="border-slate-200/80 shadow-sm"><CardHeader className="border-b border-slate-100 px-5 py-4"><CardTitle className="text-base">البيانات الأساسية</CardTitle></CardHeader><CardContent className="p-5"><FieldGrid record={record} /></CardContent></Card>}{mode === "customer" ? <CustomerProfile record={record} records={records} /> : mode === "employee" ? <EmployeeProfile record={record} records={records} /> : <ContainerProfile record={record} records={records} />}</div>
 }
 
