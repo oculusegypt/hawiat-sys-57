@@ -5,7 +5,7 @@ import AdminPackages from "./Packages"
 import {
   AlertCircle, Archive, ArrowDownLeft, ArrowLeftRight, ArrowUpRight, BellRing, BookOpenCheck, Box, CalendarDays, CarFront, CheckCircle2, CircleDollarSign,
   ChevronDown, ChevronLeft, ClipboardList, Coins, FileCheck2, FileDown, FilePenLine, FileText, FolderSearch, Gauge, HandCoins, Landmark, LayoutDashboard, ReceiptText, Trash2, Truck,
-  ExternalLink, Link2, Loader2, MapPin, Plus, RefreshCw, Search, Settings2, ShieldCheck, SlidersHorizontal, UserCog, UserRound, Users, Wallet, WalletCards, Wrench, X,
+  ExternalLink, Link2, Loader2, MapPin, Phone, Plus, RefreshCw, Search, Settings2, ShieldCheck, SlidersHorizontal, UserCog, UserRound, Users, Wallet, WalletCards, Wrench, X,
 } from "lucide-react"
 import {
   getGetContainerSystemAuditQueryKey,
@@ -227,7 +227,7 @@ const viewLabel = (view: ViewKey) =>
   : view === "audit" ? "سجل التدقيق"
   : view === "rental" ? "تسجيل إيجار حاوية"
   : view === "vouchers" ? "سندات القبض والصرف"
-  : view === "operations" ? "التبديل والتفريغ"
+  : view === "operations" ? "سجل الحركات التشغيلية"
   : view === "customer_payments" ? "سداد العملاء"
   : view === "settlements" ? "تسوية العقود وكشف الحساب"
   : view === "bookings" ? "المواعيد والحجوزات"
@@ -427,10 +427,10 @@ function SkeletonLine({ className = "" }: { className?: string }) {
   return <div className={`animate-pulse rounded-lg bg-slate-100 ${className}`} aria-hidden="true" />
 }
 
-function MetricCard({ label, value, icon: Icon, tone, hint }: { label: string; value: string | number; icon: typeof Box; tone: string; hint: string }) {
+function MetricCard({ label, value, icon: Icon, tone, hint, testId }: { label: string; value: string | number; icon: typeof Box; tone: string; hint: string; testId?: string }) {
   const iconSurface = tone === "bg-amber-500" ? "bg-amber-50 text-amber-700" : tone === "bg-emerald-600" ? "bg-emerald-50 text-emerald-700" : tone === "bg-rose-500" ? "bg-rose-50 text-rose-700" : "bg-cyan-50 text-cyan-800"
   return (
-    <Card className="overflow-hidden border-slate-200/80 bg-white shadow-[0_8px_28px_rgba(15,44,58,.06)] transition-transform duration-200 hover:-translate-y-0.5" data-testid={`card-metric-${label}`}>
+    <Card className="overflow-hidden border-slate-200/80 bg-white shadow-[0_8px_28px_rgba(15,44,58,.06)] transition-transform duration-200 hover:-translate-y-0.5" data-testid={testId ?? `card-metric-${label}`}>
       <CardContent className="relative p-5">
         <div className={`absolute inset-y-0 right-0 w-1 ${tone}`} />
         <div className="flex items-start justify-between gap-3">
@@ -600,6 +600,568 @@ function RecordRow({ record, kind, records, serviceRequests = [], onDetails, onE
         {kind !== "container_movement" && <Button variant="ghost" size="sm" onClick={onEdit} className="h-8 gap-1 text-xs text-slate-500 hover:bg-cyan-50 hover:text-cyan-800" data-testid={`button-edit-record-${record.id}`}><FilePenLine size={14} /> <span className="hidden md:inline">تعديل</span></Button>}
         <Button variant="ghost" size="icon" onClick={onArchive} className="h-8 w-8 text-slate-400 hover:bg-rose-50 hover:text-rose-600" title="أرشفة السجل" data-testid={`button-archive-record-${record.id}`}><Archive size={14} /></Button>
       </div>
+    </div>
+  )
+}
+
+type ContractFilter = "all" | "active" | "in_progress" | "completed" | "expired"
+
+type ContractViewData = {
+  number: string
+  customer: string
+  phone: string
+  site: string
+  service: string
+  duration: string
+  value: number
+  rawStatus: string
+  filterStatus: Exclude<ContractFilter, "all">
+}
+
+function contractData(record: ContainerSystemRecord, records: ContainerSystemRecord[]): ContractViewData {
+  const payload = record.payload as Record<string, unknown>
+  const customerId = Number(payload.customerRecordId ?? payload.customerId ?? 0)
+  const siteId = Number(payload.siteRecordId ?? payload.customerSiteId ?? 0)
+  const customer = records.find(item => item.id === customerId && item.kind === "customer")
+  const site = records.find(item => item.id === siteId && item.kind === "customer_site")
+  const customerPayload = customer?.payload as Record<string, unknown> | undefined
+  const sitePayload = site?.payload as Record<string, unknown> | undefined
+  const start = String(payload.startDate ?? payload.fromDate ?? payload.contractStartDate ?? "").slice(0, 10)
+  const end = String(payload.endDate ?? payload.toDate ?? payload.contractEndDate ?? "").slice(0, 10)
+  const rawStatus = String(payload.lifecycleStatus ?? payload.contractStatus ?? record.status ?? "pending").trim()
+  const normalizedStatus = rawStatus.toLowerCase()
+  const isExpired = Boolean(end && end < new Date().toISOString().slice(0, 10)) && !/complete|return|settle|closed|مكتمل|منته/.test(normalizedStatus)
+  const filterStatus: Exclude<ContractFilter, "all"> =
+    isExpired || /expired|منته|منتهي|منتهية|متأخر|overdue/.test(normalizedStatus) ? "expired"
+      : /complete|completed|returned|return|settled|closed|مكتمل|مغلَق|مغلق|منته/.test(normalizedStatus) ? "completed"
+        : /progress|transit|deliver|rented|with_customer|awaiting_return|inspection|busy|قيد التنفيذ|في الطريق|لدى العميل|بانتظار|تحت الفحص|في مهمة/.test(normalizedStatus) ? "in_progress"
+          : "active"
+  const valueCandidates = [payload.total, payload.totalAmount, payload.contractValue, payload.amount, payload.cost]
+  const value = valueCandidates.map(Number).find(candidate => Number.isFinite(candidate) && candidate > 0) ?? amountOf(record)
+  return {
+    number: String(payload.contractNumber ?? payload.number ?? payload.code ?? record.reference ?? `CON-${record.id}`),
+    customer: String(payload.customerName ?? payload.clientName ?? customerPayload?.name ?? customerPayload?.customerName ?? customer?.reference ?? "عميل غير محدد"),
+    phone: String(payload.customerPhone ?? payload.phone ?? payload.mobile ?? customerPayload?.phone ?? customerPayload?.mobile ?? "—"),
+    site: String(payload.location ?? payload.serviceAddress ?? payload.siteAddress ?? sitePayload?.address ?? sitePayload?.name ?? payload.address ?? "الموقع غير محدد"),
+    service: String(payload.serviceType ?? payload.contractType ?? payload.typeName ?? payload.description ?? "خدمات حاويات"),
+    duration: String(payload.duration ?? (start && end ? `${start}  ←  ${end}` : start || end || "المدة غير محددة")),
+    value,
+    rawStatus,
+    filterStatus,
+  }
+}
+
+function ContractsWorkspace({
+  records,
+  allRecords,
+  loading,
+  onAdd,
+  onDetails,
+  onEdit,
+  onArchive,
+}: {
+  records: ContainerSystemRecord[]
+  allRecords: ContainerSystemRecord[]
+  loading: boolean
+  onAdd: () => void
+  onDetails: (record: ContainerSystemRecord) => void
+  onEdit: (record: ContainerSystemRecord) => void
+  onArchive: (record: ContainerSystemRecord) => void
+}) {
+  const [filter, setFilter] = useState<ContractFilter>("all")
+  const activeRecords = records.filter(record => record.kind === "contract" && record.status !== "archived")
+  const rows = activeRecords.map(record => ({ record, data: contractData(record, allRecords) }))
+  const visibleRows = filter === "all" ? rows : rows.filter(row => row.data.filterStatus === filter)
+  const counts = {
+    all: rows.length,
+    active: rows.filter(row => row.data.filterStatus === "active").length,
+    in_progress: rows.filter(row => row.data.filterStatus === "in_progress").length,
+    completed: rows.filter(row => row.data.filterStatus === "completed").length,
+    expired: rows.filter(row => row.data.filterStatus === "expired").length,
+  }
+  const money = (value: number) => value > 0
+    ? `${value.toLocaleString("ar-SA", { maximumFractionDigits: 2 })} ر.س`
+    : "غير محدد"
+  const filterItems: Array<{ key: ContractFilter; label: string }> = [
+    { key: "all", label: "كل العقود" },
+    { key: "active", label: "نشطة" },
+    { key: "in_progress", label: "قيد التنفيذ" },
+    { key: "completed", label: "منتهية" },
+    { key: "expired", label: "منتهية المدة" },
+  ]
+
+  return (
+    <div className="space-y-4" data-testid="contracts-workspace">
+      <div className="relative overflow-hidden rounded-2xl border border-cyan-100 bg-[linear-gradient(115deg,#eff9f8_0%,#ffffff_58%,#fff9e9_100%)] px-4 py-4 sm:px-5">
+        <div className="absolute -left-10 -top-16 h-36 w-36 rounded-full border border-cyan-200/50" />
+        <div className="relative flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.16em] text-cyan-800"><FileCheck2 size={15} /> سجل التشغيل والتحصيل</div>
+            <h3 className="mt-2 text-lg font-black text-slate-900">مركز العقود</h3>
+            <p className="mt-1 max-w-2xl text-xs leading-6 text-slate-500">كل ما يحتاجه فريق التشغيل في صف واحد: العميل، الموقع، نطاق الخدمة، القيمة وحالة التنفيذ.</p>
+          </div>
+          <Button onClick={onAdd} className="relative w-full gap-2 bg-cyan-800 shadow-sm hover:bg-cyan-900 sm:w-auto" data-testid="button-add-contract-workspace"><Plus size={16} /> إضافة عقد</Button>
+        </div>
+        <div className="relative mt-4 flex flex-wrap gap-2" role="tablist" aria-label="فلاتر حالة العقود">
+          {filterItems.map(item => (
+            <button
+              key={item.key}
+              type="button"
+              role="tab"
+              aria-selected={filter === item.key}
+              onClick={() => setFilter(item.key)}
+              className={`rounded-xl border px-3 py-2 text-[11px] font-black transition ${filter === item.key ? "border-cyan-800 bg-cyan-800 text-white shadow-sm" : "border-slate-200 bg-white/85 text-slate-600 hover:border-cyan-300 hover:text-cyan-900"}`}
+              data-testid={`filter-contract-${item.key}`}
+            >
+              {item.label} <span className={filter === item.key ? "text-cyan-100" : "text-slate-400"}>({counts[item.key]})</span>
+            </button>
+          ))}
+        </div>
+      </div>
+      {loading ? (
+        <Card className="border-slate-200/80 shadow-sm">
+          <CardContent className="space-y-3 p-4 sm:p-5">
+            {[1, 2, 3].map(index => <SkeletonLine key={index} className="h-40 w-full rounded-2xl" />)}
+          </CardContent>
+        </Card>
+      ) : visibleRows.length === 0 ? (
+        <div className="flex min-h-64 flex-col items-center justify-center rounded-2xl border border-dashed border-cyan-200 bg-cyan-50/35 px-6 text-center" data-testid="empty-state-contract-filter">
+          <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-cyan-100 text-cyan-800"><FileCheck2 size={25} /></div>
+          <h3 className="mt-4 font-black text-slate-800">{rows.length === 0 ? "لا توجد عقود مسجلة بعد" : "لا توجد عقود بهذا التصنيف"}</h3>
+          <p className="mt-1 max-w-sm text-sm leading-6 text-slate-500">{rows.length === 0 ? "أضف أول عقد لبدء متابعة التسليم والتحصيل من مركز العقود." : "جرّب تصنيفاً آخر أو امسح الفلتر لعرض كامل سجل العقود."}</p>
+          <div className="mt-4 flex flex-wrap justify-center gap-2">
+            {filter !== "all" && <Button type="button" variant="outline" onClick={() => setFilter("all")} className="gap-2 border-cyan-200 text-cyan-800" data-testid="button-clear-contract-filter"><X size={15} /> مسح الفلتر</Button>}
+            <Button type="button" onClick={onAdd} className="gap-2 bg-cyan-800 hover:bg-cyan-900" data-testid="button-empty-add-contract"><Plus size={15} /> إضافة عقد</Button>
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-3" data-testid="list-contracts">
+          {visibleRows.map(({ record, data }) => (
+            <div key={record.id} className="group relative overflow-hidden rounded-2xl border border-slate-200 bg-white p-4 shadow-[0_8px_24px_rgba(18,56,75,.05)] transition hover:-translate-y-0.5 hover:border-cyan-300 hover:shadow-[0_14px_32px_rgba(18,56,75,.09)] sm:p-5" data-testid={`card-contract-${record.id}`}>
+              <div className={`absolute inset-y-0 right-0 w-1 ${data.filterStatus === "expired" ? "bg-rose-500" : data.filterStatus === "completed" ? "bg-emerald-500" : data.filterStatus === "in_progress" ? "bg-amber-500" : "bg-cyan-700"}`} />
+              <div className="flex flex-col gap-4 xl:flex-row xl:items-center">
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button type="button" onClick={() => onDetails(record)} className="font-mono text-base font-black text-cyan-900 hover:underline" dir="ltr" data-testid={`text-contract-number-${record.id}`}>{data.number}</button>
+                    <RecordStatus status={data.rawStatus} />
+                    <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[10px] font-bold text-slate-500">{data.service}</span>
+                  </div>
+                  <div className="mt-4 grid gap-2 text-xs text-slate-700 sm:grid-cols-2 lg:grid-cols-3">
+                    <div className="flex min-w-0 items-center gap-2 rounded-xl bg-slate-50 px-3 py-2.5"><UserRound size={15} className="shrink-0 text-cyan-700" /><span className="min-w-0 truncate"><b className="text-[10px] text-slate-400">العميل</b><span className="mx-1 text-slate-300">·</span><span className="font-bold" data-testid={`text-contract-customer-${record.id}`}>{data.customer}</span></span></div>
+                    <a href={data.phone === "—" ? undefined : `tel:${data.phone}`} onClick={event => data.phone === "—" && event.preventDefault()} className={`flex min-w-0 items-center gap-2 rounded-xl bg-slate-50 px-3 py-2.5 ${data.phone === "—" ? "cursor-default" : "hover:bg-cyan-50 hover:text-cyan-900"}`} dir="ltr" data-testid={`link-contract-phone-${record.id}`}><Phone size={14} className="shrink-0 text-cyan-700" /><span className="truncate">{data.phone}</span></a>
+                    <div className="flex min-w-0 items-center gap-2 rounded-xl bg-slate-50 px-3 py-2.5"><MapPin size={15} className="shrink-0 text-amber-600" /><span className="min-w-0 truncate"><b className="text-[10px] text-slate-400">الموقع</b><span className="mx-1 text-slate-300">·</span><span data-testid={`text-contract-site-${record.id}`}>{data.site}</span></span></div>
+                    <div className="flex min-w-0 items-center gap-2 rounded-xl bg-slate-50 px-3 py-2.5"><ClipboardList size={15} className="shrink-0 text-slate-500" /><span className="min-w-0 truncate"><b className="text-[10px] text-slate-400">الخدمة</b><span className="mx-1 text-slate-300">·</span>{data.service}</span></div>
+                    <div className="flex min-w-0 items-center gap-2 rounded-xl bg-slate-50 px-3 py-2.5"><CalendarDays size={15} className="shrink-0 text-slate-500" /><span className="min-w-0 truncate" dir="ltr">{data.duration}</span></div>
+                    <div className="flex min-w-0 items-center gap-2 rounded-xl bg-emerald-50 px-3 py-2.5 font-black text-emerald-800"><CircleDollarSign size={15} className="shrink-0" /><span data-testid={`text-contract-value-${record.id}`}>{money(data.value)}</span></div>
+                  </div>
+                </div>
+                <div className="flex items-end justify-between gap-3 border-t border-slate-100 pt-3 xl:min-w-[205px] xl:flex-col xl:items-stretch xl:border-t-0 xl:border-r xl:pl-0 xl:pr-4 xl:pt-0">
+                  <div className="text-right">
+                    <p className="text-[10px] font-bold text-slate-400">آخر تحديث</p>
+                    <p className="mt-1 text-xs font-bold text-slate-600" data-testid={`text-contract-updated-${record.id}`}>{formatRecordDate(record.updatedAt)}</p>
+                  </div>
+                  <div className="flex items-center justify-end gap-1">
+                    <Button variant="outline" size="sm" onClick={() => onDetails(record)} className="h-9 gap-1.5 border-cyan-200 text-xs text-cyan-800 hover:bg-cyan-50" data-testid={`button-details-contract-${record.id}`}><FileText size={14} /> التفاصيل</Button>
+                    <Button variant="ghost" size="icon" onClick={() => onEdit(record)} className="h-9 w-9 text-slate-500 hover:bg-cyan-50 hover:text-cyan-800" title="تعديل العقد" data-testid={`button-edit-contract-${record.id}`}><FilePenLine size={14} /></Button>
+                    <Button variant="ghost" size="icon" onClick={() => onArchive(record)} className="h-9 w-9 text-slate-400 hover:bg-rose-50 hover:text-rose-600" title="أرشفة العقد" data-testid={`button-archive-contract-${record.id}`}><Archive size={14} /></Button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+type CustomerFilter = "all" | "active" | "pending" | "inactive"
+
+type CustomerViewData = {
+  name: string
+  reference: string
+  phone: string
+  city: string
+  commercialId: string
+  taxId: string
+  status: string
+  filterStatus: Exclude<CustomerFilter, "all">
+  sites: number
+  contracts: number
+  invoices: number
+  payments: number
+  billed: number
+  paid: number
+}
+
+function customerData(record: ContainerSystemRecord, allRecords: ContainerSystemRecord[]): CustomerViewData {
+  const payload = record.payload as Record<string, unknown>
+  const customerName = String(payload.name ?? payload.customerName ?? payload.clientName ?? record.reference ?? `عميل ${record.id}`).trim()
+  const related = allRecords.filter(item => {
+    if (item.status === "archived") return false
+    const itemPayload = item.payload as Record<string, unknown>
+    const relatedId = Number(itemPayload.customerRecordId ?? itemPayload.customerId ?? 0)
+    const relatedName = String(itemPayload.customerName ?? itemPayload.clientName ?? "").trim()
+    return (relatedId > 0 && relatedId === record.id) || (relatedName !== "" && relatedName === customerName)
+  })
+  const sites = related.filter(item => item.kind === "customer_site").length
+  const contracts = related.filter(item => item.kind === "contract")
+  const invoices = related.filter(item => item.kind === "invoice")
+  const payments = related.filter(item => ["payment", "receipt", "payment_return"].includes(item.kind))
+  const billed = invoices.reduce((sum, item) => {
+    const value = Number(item.payload.total ?? item.payload.totalAmount ?? item.payload.amount ?? 0)
+    return sum + (Number.isFinite(value) ? value : 0)
+  }, 0)
+  const paid = payments.reduce((sum, item) => sum + amountOf(item), 0) || invoices.reduce((sum, item) => {
+    const value = Number(item.payload.paid ?? item.payload.paidAmount ?? 0)
+    return sum + (Number.isFinite(value) ? value : 0)
+  }, 0)
+  const rawStatus = String(payload.status ?? record.status ?? "active").trim()
+  const normalizedStatus = rawStatus.toLowerCase()
+  const filterStatus: Exclude<CustomerFilter, "all"> =
+    /pending|قيد|انتظار/.test(normalizedStatus) ? "pending"
+      : /inactive|disabled|suspend|archived|غير نشط|موقوف/.test(normalizedStatus) ? "inactive"
+        : "active"
+  return {
+    name: customerName,
+    reference: String(payload.customerCode ?? payload.customerReference ?? payload.code ?? record.reference ?? `CUS-${String(record.id).padStart(5, "0")}`),
+    phone: String(payload.phone ?? payload.mobile ?? payload.customerPhone ?? payload.contactPhone ?? "").trim(),
+    city: String(payload.city ?? payload.region ?? payload.addressCity ?? payload.address ?? "المدينة غير محددة").trim(),
+    commercialId: String(payload.commercialRegistration ?? payload.commercialRegistrationNumber ?? payload.crNumber ?? payload.registrationNumber ?? "").trim(),
+    taxId: String(payload.taxNumber ?? payload.vatNumber ?? payload.taxId ?? "").trim(),
+    status: rawStatus,
+    filterStatus,
+    sites,
+    contracts: contracts.length,
+    invoices: invoices.length,
+    payments: payments.length,
+    billed,
+    paid,
+  }
+}
+
+function CustomersWorkspace({
+  records,
+  allRecords,
+  loading,
+  onAdd,
+  onDetails,
+  onEdit,
+  onArchive,
+}: {
+  records: ContainerSystemRecord[]
+  allRecords: ContainerSystemRecord[]
+  loading: boolean
+  onAdd: () => void
+  onDetails: (record: ContainerSystemRecord) => void
+  onEdit: (record: ContainerSystemRecord) => void
+  onArchive: (record: ContainerSystemRecord) => void
+}) {
+  const [filter, setFilter] = useState<CustomerFilter>("all")
+  const activeCustomers = allRecords.filter(record => record.kind === "customer" && record.status !== "archived")
+  const rows = records.filter(record => record.kind === "customer" && record.status !== "archived").map(record => ({ record, data: customerData(record, allRecords) }))
+  const summaryRows = activeCustomers.map(record => customerData(record, allRecords))
+  const visibleRows = filter === "all" ? rows : rows.filter(row => row.data.filterStatus === filter)
+  const counts = {
+    all: activeCustomers.length,
+    active: summaryRows.filter(row => row.filterStatus === "active").length,
+    pending: summaryRows.filter(row => row.filterStatus === "pending").length,
+    inactive: summaryRows.filter(row => row.filterStatus === "inactive").length,
+  }
+  const summary = {
+    contracts: summaryRows.reduce((sum, row) => sum + row.contracts, 0),
+    invoices: summaryRows.reduce((sum, row) => sum + row.invoices, 0),
+    payments: summaryRows.reduce((sum, row) => sum + row.payments, 0),
+    sites: summaryRows.reduce((sum, row) => sum + row.sites, 0),
+  }
+  const money = (value: number) => `${value.toLocaleString("ar-SA", { maximumFractionDigits: 2 })} ر.س`
+  const filterItems: Array<{ key: CustomerFilter; label: string }> = [
+    { key: "all", label: "كل العملاء" },
+    { key: "active", label: "نشطون" },
+    { key: "pending", label: "قيد المراجعة" },
+    { key: "inactive", label: "غير نشطين" },
+  ]
+  return (
+    <div className="space-y-4" data-testid="customers-workspace">
+      <div className="grid gap-3 grid-cols-2 xl:grid-cols-4">
+        <MetricCard label="العقود المرتبطة" value={summary.contracts} icon={FileText} tone="bg-cyan-600" hint="من جميع العملاء" />
+        <MetricCard label="الفواتير المرتبطة" value={summary.invoices} icon={ReceiptText} tone="bg-amber-500" hint="قيد المتابعة والتحصيل" />
+        <MetricCard label="عمليات التحصيل" value={summary.payments} icon={Coins} tone="bg-emerald-600" hint="دفعات وسندات مسجلة" />
+        <MetricCard label="مواقع العملاء" value={summary.sites} icon={MapPin} tone="bg-cyan-600" hint="مواقع مرتبطة بملفات العملاء" />
+      </div>
+      <Card className="overflow-hidden border-cyan-100 shadow-[0_10px_30px_rgba(15,44,58,.06)]">
+        <CardHeader className="border-b border-slate-100 bg-[linear-gradient(115deg,#eff9f8_0%,#ffffff_62%,#fff9e9_100%)] px-4 py-4 sm:px-5">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.16em] text-cyan-800"><Users size={15} /> سجل العملاء</div>
+              <CardTitle className="mt-2 text-lg text-slate-900">مركز العملاء</CardTitle>
+              <p className="mt-1 max-w-2xl text-xs leading-6 text-slate-500">ملف تشغيلي مختصر لكل عميل، مع علاقاته بالعقود والفواتير والمواقع والتحصيل.</p>
+            </div>
+            <Button onClick={onAdd} className="gap-2 bg-cyan-800 shadow-sm hover:bg-cyan-900" data-testid="button-add-customer-workspace"><Plus size={16} /> إضافة عميل</Button>
+          </div>
+          <div className="mt-4 flex flex-wrap gap-2" role="tablist" aria-label="فلاتر حالة العملاء">
+            {filterItems.map(item => (
+              <button key={item.key} type="button" role="tab" aria-selected={filter === item.key} onClick={() => setFilter(item.key)} className={`rounded-xl border px-3 py-2 text-[11px] font-black transition ${filter === item.key ? "border-cyan-800 bg-cyan-800 text-white shadow-sm" : "border-slate-200 bg-white/85 text-slate-600 hover:border-cyan-300 hover:text-cyan-900"}`} data-testid={`filter-customer-${item.key}`}>
+                {item.label} <span className={filter === item.key ? "text-cyan-100" : "text-slate-400"}>({counts[item.key]})</span>
+              </button>
+            ))}
+          </div>
+        </CardHeader>
+        <CardContent className="p-4 sm:p-5">
+          {loading ? (
+            <div className="space-y-3">{[1, 2, 3].map(index => <SkeletonLine key={index} className="h-44 w-full rounded-2xl" />)}</div>
+          ) : visibleRows.length === 0 ? (
+            <div className="flex min-h-64 flex-col items-center justify-center rounded-2xl border border-dashed border-cyan-200 bg-cyan-50/35 px-6 text-center" data-testid="empty-state-customer-filter">
+              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-cyan-100 text-cyan-800"><Users size={25} /></div>
+              <h3 className="mt-4 font-black text-slate-800">{rows.length === 0 ? "لا يوجد عملاء مسجلون بعد" : "لا يوجد عملاء بهذا التصنيف"}</h3>
+              <p className="mt-1 max-w-sm text-sm leading-6 text-slate-500">{rows.length === 0 ? "أضف أول عميل لربط المواقع والعقود والتحصيل في ملف واحد." : "جرّب تصنيفاً آخر أو امسح الفلتر لعرض كامل سجل العملاء."}</p>
+              <div className="mt-4 flex flex-wrap justify-center gap-2">
+                {filter !== "all" && <Button type="button" variant="outline" onClick={() => setFilter("all")} className="gap-2 border-cyan-200 text-cyan-800" data-testid="button-clear-customer-filter"><X size={15} /> مسح الفلتر</Button>}
+                <Button type="button" onClick={onAdd} className="gap-2 bg-cyan-800 hover:bg-cyan-900" data-testid="button-empty-add-customer"><Plus size={15} /> إضافة عميل</Button>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-3" data-testid="list-customers">
+              {visibleRows.map(({ record, data }) => {
+                const balance = data.billed > 0 ? Math.max(data.billed - data.paid, 0) : 0
+                return (
+                  <div key={record.id} className="group relative overflow-hidden rounded-2xl border border-slate-200 bg-white p-4 shadow-[0_8px_24px_rgba(18,56,75,.05)] transition hover:-translate-y-0.5 hover:border-cyan-300 hover:shadow-[0_14px_32px_rgba(18,56,75,.09)] sm:p-5" data-testid={`card-customer-${record.id}`}>
+                    <div className={`absolute inset-y-0 right-0 w-1 ${data.filterStatus === "inactive" ? "bg-slate-400" : data.filterStatus === "pending" ? "bg-amber-500" : "bg-cyan-700"}`} />
+                    <div className="flex flex-col gap-4 xl:flex-row xl:items-center">
+                      <div className="flex min-w-0 flex-1 items-start gap-3">
+                        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-cyan-50 text-cyan-800"><UserRound size={22} /></div>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <button type="button" onClick={() => onDetails(record)} className="truncate text-base font-black text-cyan-950 hover:underline" data-testid={`text-customer-name-${record.id}`}>{data.name}</button>
+                            <RecordStatus status={data.status} />
+                          </div>
+                          <p className="mt-1 font-mono text-[11px] text-slate-400" dir="ltr" data-testid={`text-customer-reference-${record.id}`}>{data.reference}</p>
+                          <div className="mt-3 grid gap-2 text-xs text-slate-700 sm:grid-cols-2 lg:grid-cols-3">
+                            <a href={data.phone ? `tel:${data.phone}` : undefined} onClick={event => !data.phone && event.preventDefault()} className={`flex min-w-0 items-center gap-2 rounded-xl bg-slate-50 px-3 py-2.5 ${data.phone ? "hover:bg-cyan-50 hover:text-cyan-900" : "cursor-default"}`} dir="ltr" data-testid={`link-customer-phone-${record.id}`}><Phone size={14} className="shrink-0 text-cyan-700" /><span className="truncate">{data.phone || "الجوال غير مسجل"}</span></a>
+                            <div className="flex min-w-0 items-center gap-2 rounded-xl bg-slate-50 px-3 py-2.5"><MapPin size={15} className="shrink-0 text-amber-600" /><span className="truncate" data-testid={`text-customer-city-${record.id}`}>{data.city}</span></div>
+                            <div className="flex min-w-0 items-center gap-2 rounded-xl bg-slate-50 px-3 py-2.5"><FileCheck2 size={15} className="shrink-0 text-slate-500" /><span className="truncate">{data.taxId ? `الرقم الضريبي · ${data.taxId}` : data.commercialId ? `سجل تجاري · ${data.commercialId}` : "بيانات التسجيل غير متوفرة"}</span></div>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 border-t border-slate-100 pt-3 text-xs sm:grid-cols-4 xl:min-w-[390px] xl:border-t-0 xl:border-r xl:pr-4 xl:pt-0">
+                        <div className="rounded-xl bg-slate-50 p-2.5"><p className="text-[10px] text-slate-400">المواقع</p><p className="mt-1 text-lg font-black text-slate-800" data-testid={`text-customer-sites-${record.id}`}>{data.sites}</p></div>
+                        <div className="rounded-xl bg-slate-50 p-2.5"><p className="text-[10px] text-slate-400">العقود</p><p className="mt-1 text-lg font-black text-cyan-800" data-testid={`text-customer-contracts-${record.id}`}>{data.contracts}</p></div>
+                        <div className="rounded-xl bg-slate-50 p-2.5"><p className="text-[10px] text-slate-400">الفواتير</p><p className="mt-1 text-lg font-black text-slate-800">{data.invoices}</p></div>
+                        <div className={`rounded-xl p-2.5 ${balance > 0 ? "bg-amber-50" : "bg-emerald-50"}`}><p className="text-[10px] text-slate-400">النشاط المالي</p><p className={`mt-1 text-xs font-black ${balance > 0 ? "text-amber-800" : "text-emerald-800"}`}>{balance > 0 ? `مستحق ${money(balance)}` : data.payments > 0 ? `${data.payments} عملية تحصيل` : "لا نشاط مسجل"}</p></div>
+                      </div>
+                      <div className="flex items-center justify-end gap-1 border-t border-slate-100 pt-3 xl:min-w-[215px] xl:border-t-0 xl:pt-0">
+                        <div className="ml-auto text-right xl:ml-0"><p className="text-[10px] font-bold text-slate-400">آخر تحديث</p><p className="mt-1 text-[11px] font-bold text-slate-600" data-testid={`text-customer-updated-${record.id}`}>{formatRecordDate(record.updatedAt)}</p></div>
+                        <Button variant="outline" size="sm" onClick={() => onDetails(record)} className="h-9 gap-1.5 border-cyan-200 text-xs text-cyan-800 hover:bg-cyan-50" data-testid={`button-details-customer-${record.id}`}><FileText size={14} /> التفاصيل</Button>
+                        <Button variant="ghost" size="icon" onClick={() => onEdit(record)} className="h-9 w-9 text-slate-500 hover:bg-cyan-50 hover:text-cyan-800" title="تعديل العميل" data-testid={`button-edit-customer-${record.id}`}><FilePenLine size={14} /></Button>
+                        <Button variant="ghost" size="icon" onClick={() => onArchive(record)} className="h-9 w-9 text-slate-400 hover:bg-rose-50 hover:text-rose-600" title="أرشفة العميل" data-testid={`button-archive-customer-${record.id}`}><Archive size={14} /></Button>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  )
+}
+
+type MovementFilter = "all" | "delivery" | "return" | "in_progress" | "completed"
+
+type MovementViewData = {
+  movementType: "delivery" | "return" | "other"
+  movementLabel: string
+  reference: string
+  occurredAt: string
+  container: string
+  contract: string
+  customer: string
+  location: string
+  driver: string
+  operation: string
+  rawStatus: string
+  statusLabel: string
+  state: "in_progress" | "completed" | "other"
+}
+
+function movementData(record: ContainerSystemRecord, allRecords: ContainerSystemRecord[], serviceRequests: ServiceRequest[]): MovementViewData {
+  const payload = record.payload as Record<string, unknown>
+  const contractId = Number(payload.contractRecordId ?? payload.contractId ?? 0)
+  const containerId = Number(payload.containerRecordId ?? payload.containerId ?? 0)
+  const contractNumber = String(payload.contractNumber ?? "").trim()
+  const containerCode = String(payload.containerCode ?? payload.assetCode ?? payload.container ?? "").trim()
+  const contract = allRecords.find(item => item.kind === "contract" && item.status !== "archived" && (
+    (contractId > 0 && item.id === contractId) ||
+    (contractNumber !== "" && String((item.payload as Record<string, unknown>).contractNumber ?? item.reference ?? "").trim() === contractNumber)
+  ))
+  const contractPayload = contract?.payload as Record<string, unknown> | undefined
+  const container = allRecords.find(item => ["container", "container_asset"].includes(item.kind) && item.status !== "archived" && (
+    (containerId > 0 && item.id === containerId) ||
+    (containerCode !== "" && String((item.payload as Record<string, unknown>).assetCode ?? (item.payload as Record<string, unknown>).containerCode ?? "").trim() === containerCode)
+  ))
+  const customerId = Number(payload.customerRecordId ?? contractPayload?.customerRecordId ?? 0)
+  const customerName = String(payload.customerName ?? contractPayload?.customerName ?? contractPayload?.clientName ?? "").trim()
+  const customer = allRecords.find(item => item.kind === "customer" && item.status !== "archived" && (
+    (customerId > 0 && item.id === customerId) ||
+    (customerName !== "" && String((item.payload as Record<string, unknown>).name ?? (item.payload as Record<string, unknown>).customerName ?? "").trim() === customerName)
+  ))
+  const customerPayload = customer?.payload as Record<string, unknown> | undefined
+  const rawType = String(payload.movementType ?? payload.action ?? payload.operationType ?? payload.type ?? "").trim()
+  const normalizedType = rawType.toLowerCase()
+  const movementType: MovementViewData["movementType"] = /deliver|delivery|تسليم/.test(normalizedType) ? "delivery" : /return|returned|استرجاع|إرجاع/.test(normalizedType) ? "return" : "other"
+  const rawStatus = String(payload.status ?? record.status ?? "pending").trim()
+  const normalizedStatus = rawStatus.toLowerCase()
+  const state: MovementViewData["state"] = /progress|pending|scheduled|transit|awaiting|قيد|انتظار|مجدول|الطريق/.test(normalizedStatus) ? "in_progress" : /complete|completed|posted|done|مكتمل|مرحّل|منجز/.test(normalizedStatus) ? "completed" : "other"
+  const requestId = Number(payload.requestId ?? contractPayload?.requestId ?? 0)
+  const request = serviceRequests.find(item => item.id === requestId)
+  const operationId = String(payload.workOrderNumber ?? payload.operationNumber ?? payload.orderNumber ?? payload.operationId ?? "").trim()
+  const operation = operationId || (request ? `طلب خدمة #${request.id}` : "")
+  return {
+    movementType,
+    movementLabel: movementType === "delivery" ? "تسليم الحاوية" : movementType === "return" ? "استرجاع الحاوية" : contractReadableValue(rawType || rawStatus),
+    reference: String(payload.movementNumber ?? payload.reference ?? record.reference ?? `MOV-${record.id}`),
+    occurredAt: String(payload.movementDate ?? payload.occurredAt ?? payload.date ?? payload.timestamp ?? record.createdAt ?? ""),
+    container: containerCode || String((container?.payload as Record<string, unknown> | undefined)?.assetCode ?? (container?.payload as Record<string, unknown> | undefined)?.containerCode ?? container?.reference ?? "غير مرتبط"),
+    contract: contractNumber || String(contractPayload?.contractNumber ?? contract?.reference ?? "غير مرتبط"),
+    customer: customerName || String(customerPayload?.name ?? customerPayload?.customerName ?? customer?.reference ?? "غير محدد"),
+    location: String(payload.location ?? payload.siteAddress ?? contractPayload?.location ?? request?.location ?? "الموقع غير محدد"),
+    driver: String(payload.driverName ?? payload.driver ?? payload.assignedDriver ?? request?.assignedDriverName ?? "").trim(),
+    operation,
+    rawStatus,
+    statusLabel: state === "in_progress" ? "قيد التنفيذ" : state === "completed" ? "مكتملة / مرحّلة" : contractReadableValue(rawStatus),
+    state,
+  }
+}
+
+function MovementsWorkspace({
+  records,
+  allRecords,
+  serviceRequests,
+  loading,
+  onAdd,
+  onDetails,
+  onArchive,
+}: {
+  records: ContainerSystemRecord[]
+  allRecords: ContainerSystemRecord[]
+  serviceRequests: ServiceRequest[]
+  loading: boolean
+  onAdd: () => void
+  onDetails: (record: ContainerSystemRecord) => void
+  onArchive: (record: ContainerSystemRecord) => void
+}) {
+  const [filter, setFilter] = useState<MovementFilter>("all")
+  const [search, setSearch] = useState("")
+  const activeRecords = records.filter(record => record.kind === "container_movement" && record.status !== "archived")
+  const rows = activeRecords.map(record => ({ record, data: movementData(record, allRecords, serviceRequests) }))
+  const today = new Date().toISOString().slice(0, 10)
+  const normalizedSearch = search.trim().toLowerCase()
+  const visibleRows = rows.filter(row => {
+    const haystack = [
+      row.data.reference,
+      row.data.movementLabel,
+      row.data.container,
+      row.data.contract,
+      row.data.customer,
+      row.data.location,
+      row.data.driver,
+      row.data.operation,
+      row.data.rawStatus,
+    ].join(" ").toLowerCase()
+    if (normalizedSearch && !haystack.includes(normalizedSearch)) return false
+    if (filter === "all") return true
+    if (filter === "delivery" || filter === "return") return row.data.movementType === filter
+    return row.data.state === filter
+  })
+  const counts = {
+    all: rows.length,
+    delivery: rows.filter(row => row.data.movementType === "delivery").length,
+    return: rows.filter(row => row.data.movementType === "return").length,
+    in_progress: rows.filter(row => row.data.state === "in_progress").length,
+    completed: rows.filter(row => row.data.state === "completed").length,
+    today: rows.filter(row => row.data.occurredAt.slice(0, 10) === today).length,
+  }
+  const filterItems: Array<{ key: MovementFilter; label: string }> = [
+    { key: "all", label: "كل الحركات" },
+    { key: "delivery", label: "تسليم" },
+    { key: "return", label: "استرجاع" },
+    { key: "in_progress", label: "قيد التنفيذ" },
+    { key: "completed", label: "مكتملة / مرحّلة" },
+  ]
+  const movementTone = (type: MovementViewData["movementType"]) => type === "delivery"
+    ? { surface: "bg-cyan-50 text-cyan-800", bar: "bg-cyan-700", icon: ArrowUpRight }
+    : type === "return"
+      ? { surface: "bg-amber-50 text-amber-800", bar: "bg-amber-500", icon: ArrowDownLeft }
+      : { surface: "bg-slate-100 text-slate-700", bar: "bg-slate-400", icon: ArrowLeftRight }
+  return (
+    <div className="space-y-4" data-testid="movements-workspace">
+      <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+        <MetricCard label="إجمالي الحركات" value={counts.all} icon={ArrowLeftRight} tone="bg-cyan-600" hint="حركات غير مؤرشفة" testId="metric-movements-total" />
+        <MetricCard label="حركات التسليم" value={counts.delivery} icon={ArrowUpRight} tone="bg-cyan-600" hint="تسليم أصول للعملاء" testId="metric-movements-delivery" />
+        <MetricCard label="حركات الاسترجاع" value={counts.return} icon={ArrowDownLeft} tone="bg-amber-500" hint="عودة الأصول للمستودع" testId="metric-movements-return" />
+        <MetricCard label="حركات اليوم" value={counts.today} icon={CheckCircle2} tone="bg-emerald-600" hint={`${counts.in_progress} قيد التنفيذ الآن`} testId="metric-movements-today" />
+      </div>
+      <Card className="overflow-hidden border-cyan-100 shadow-[0_10px_30px_rgba(15,44,58,.06)]">
+        <CardHeader className="border-b border-slate-100 bg-[linear-gradient(115deg,#eff9f8_0%,#ffffff_62%,#fff9e9_100%)] px-4 py-4 sm:px-5">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.16em] text-cyan-800"><ArrowLeftRight size={15} /> غرفة المتابعة الميدانية</div>
+              <CardTitle className="mt-2 text-lg text-slate-900">سجل الحركات التشغيلية</CardTitle>
+              <p className="mt-1 max-w-2xl text-xs leading-6 text-slate-500">كل حركة تثبت تسليم أو استرجاع أو نقل الحاوية، مع العقد والعميل والموقع وأثر التنفيذ.</p>
+            </div>
+            <Button onClick={onAdd} className="gap-2 bg-cyan-800 shadow-sm hover:bg-cyan-900" data-testid="button-add-movement-workspace"><Plus size={16} /> تسجيل حركة</Button>
+          </div>
+          <div className="relative mt-4 max-w-2xl">
+            <Search size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <Input value={search} onChange={event => setSearch(event.target.value)} placeholder="ابحث برقم الحركة أو الحاوية أو العقد أو العميل أو الموقع" className="h-10 border-slate-200 bg-white pr-9" data-testid="input-search-movements" />
+            {search && <button type="button" onClick={() => setSearch("")} className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700" data-testid="button-clear-movement-search"><X size={15} /></button>}
+          </div>
+          <div className="mt-4 flex flex-wrap gap-2" role="tablist" aria-label="فلاتر الحركات التشغيلية">
+            {filterItems.map(item => <button key={item.key} type="button" role="tab" aria-selected={filter === item.key} onClick={() => setFilter(item.key)} className={`rounded-xl border px-3 py-2 text-[11px] font-black transition ${filter === item.key ? "border-cyan-800 bg-cyan-800 text-white shadow-sm" : "border-slate-200 bg-white/85 text-slate-600 hover:border-cyan-300 hover:text-cyan-900"}`} data-testid={`filter-movement-${item.key}`}>{item.label} <span className={filter === item.key ? "text-cyan-100" : "text-slate-400"}>({counts[item.key]})</span></button>)}
+          </div>
+        </CardHeader>
+        <CardContent className="p-4 sm:p-5">
+          {loading ? <div className="space-y-3">{[1, 2, 3].map(index => <SkeletonLine key={index} className="h-44 w-full rounded-2xl" />)}</div> : visibleRows.length === 0 ? (
+            <div className="flex min-h-64 flex-col items-center justify-center rounded-2xl border border-dashed border-cyan-200 bg-cyan-50/35 px-6 text-center" data-testid="empty-state-movement-filter">
+              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-cyan-100 text-cyan-800"><ArrowLeftRight size={25} /></div>
+              <h3 className="mt-4 font-black text-slate-800">{rows.length === 0 ? "لا توجد حركات تشغيلية مسجلة بعد" : "لا توجد حركات بهذا التصنيف"}</h3>
+              <p className="mt-1 max-w-sm text-sm leading-6 text-slate-500">{rows.length === 0 ? "سجّل أول حركة لتظهر سلسلة التسليم والاسترجاع أمام فريق التشغيل." : "جرّب تصنيفاً آخر أو امسح الفلتر لعرض سجل الحركات كاملاً."}</p>
+              <div className="mt-4 flex flex-wrap justify-center gap-2">{filter !== "all" && <Button type="button" variant="outline" onClick={() => setFilter("all")} className="gap-2 border-cyan-200 text-cyan-800" data-testid="button-clear-movement-filter"><X size={15} /> مسح الفلتر</Button>}<Button type="button" onClick={onAdd} className="gap-2 bg-cyan-800 hover:bg-cyan-900" data-testid="button-empty-add-movement"><Plus size={15} /> تسجيل حركة</Button></div>
+            </div>
+          ) : (
+            <div className="space-y-3" data-testid="list-movements">
+              {visibleRows.map(({ record, data }) => {
+                const tone = movementTone(data.movementType)
+                const Icon = tone.icon
+                return <div key={record.id} className="relative overflow-hidden rounded-2xl border border-slate-200 bg-white p-4 shadow-[0_8px_24px_rgba(18,56,75,.05)] transition hover:-translate-y-0.5 hover:border-cyan-300 hover:shadow-[0_14px_32px_rgba(18,56,75,.09)] sm:p-5" data-testid={`card-movement-${record.id}`}>
+                  <div className={`absolute inset-y-0 right-0 w-1 ${tone.bar}`} />
+                  <div className="flex flex-col gap-4 xl:flex-row xl:items-center">
+                    <div className="flex min-w-0 flex-1 items-start gap-3">
+                      <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl ${tone.surface}`}><Icon size={22} /></div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2"><button type="button" onClick={() => onDetails(record)} className="font-mono text-base font-black text-cyan-950 hover:underline" dir="ltr" data-testid={`text-movement-reference-${record.id}`}>{data.reference}</button><Badge variant="outline" className={`${tone.surface} border-transparent`} data-testid={`status-movement-type-${record.id}`}>{data.movementLabel}</Badge><RecordStatus status={data.rawStatus} /></div>
+                        <div className="mt-4 grid gap-2 text-xs text-slate-700 sm:grid-cols-2 lg:grid-cols-3">
+                          <div className="flex min-w-0 items-center gap-2 rounded-xl bg-slate-50 px-3 py-2.5"><CalendarDays size={15} className="shrink-0 text-cyan-700" /><span className="truncate" dir="ltr" data-testid={`text-movement-date-${record.id}`}>{formatRecordDate(data.occurredAt)}</span></div>
+                          <div className="flex min-w-0 items-center gap-2 rounded-xl bg-slate-50 px-3 py-2.5"><Box size={15} className="shrink-0 text-cyan-700" /><span className="truncate"><b className="text-[10px] text-slate-400">الأصل</b><span className="mx-1 text-slate-300">·</span><span dir="ltr" data-testid={`text-movement-container-${record.id}`}>{data.container}</span></span></div>
+                          <div className="flex min-w-0 items-center gap-2 rounded-xl bg-slate-50 px-3 py-2.5"><FileText size={15} className="shrink-0 text-slate-500" /><span className="truncate"><b className="text-[10px] text-slate-400">العقد</b><span className="mx-1 text-slate-300">·</span><span dir="ltr" data-testid={`text-movement-contract-${record.id}`}>{data.contract}</span></span></div>
+                          <div className="flex min-w-0 items-center gap-2 rounded-xl bg-slate-50 px-3 py-2.5"><UserRound size={15} className="shrink-0 text-slate-500" /><span className="truncate"><b className="text-[10px] text-slate-400">العميل</b><span className="mx-1 text-slate-300">·</span><span data-testid={`text-movement-customer-${record.id}`}>{data.customer}</span></span></div>
+                          <div className="flex min-w-0 items-center gap-2 rounded-xl bg-slate-50 px-3 py-2.5"><MapPin size={15} className="shrink-0 text-amber-600" /><span className="truncate"><b className="text-[10px] text-slate-400">الموقع</b><span className="mx-1 text-slate-300">·</span><span data-testid={`text-movement-location-${record.id}`}>{data.location}</span></span></div>
+                          {(data.driver || data.operation) && <div className="flex min-w-0 items-center gap-2 rounded-xl bg-slate-50 px-3 py-2.5"><ClipboardList size={15} className="shrink-0 text-slate-500" /><span className="truncate" data-testid={`text-movement-assignment-${record.id}`}>{data.driver ? `السائق · ${data.driver}` : `أمر التشغيل · ${data.operation}`}</span></div>}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between gap-3 border-t border-slate-100 pt-3 xl:min-w-[215px] xl:border-t-0 xl:border-r xl:pr-4 xl:pt-0">
+                      <div className="text-right"><p className="text-[10px] font-bold text-slate-400">الحالة وآخر تحديث</p><p className={`mt-1 text-xs font-black ${data.state === "in_progress" ? "text-amber-700" : data.state === "completed" ? "text-emerald-700" : "text-slate-700"}`} data-testid={`text-movement-status-${record.id}`}>{data.statusLabel}</p><p className="mt-1 text-[10px] text-slate-400" data-testid={`text-movement-updated-${record.id}`}>{formatRecordDate(record.updatedAt)}</p></div>
+                      <div className="flex items-center gap-1"><Button variant="outline" size="sm" onClick={() => onDetails(record)} className="h-9 gap-1.5 border-cyan-200 text-xs text-cyan-800 hover:bg-cyan-50" data-testid={`button-details-movement-${record.id}`}><FileText size={14} /> التفاصيل</Button><Button variant="ghost" size="icon" onClick={() => onArchive(record)} className="h-9 w-9 text-slate-400 hover:bg-rose-50 hover:text-rose-600" title="أرشفة الحركة" data-testid={`button-archive-movement-${record.id}`}><Archive size={14} /></Button></div>
+                    </div>
+                  </div>
+                </div>
+              })}
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   )
 }
@@ -1043,9 +1605,191 @@ function coordinatesFromLocation(location: string) {
   return Number.isFinite(lat) && Number.isFinite(lng) && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180 ? { lat, lng } : null
 }
 
+function contractReadableValue(value: unknown) {
+  const key = String(value ?? "").trim()
+  const labels: Record<string, string> = {
+    monthly: "شهري", daily: "يومي", weekly: "أسبوعي", yearly: "سنوي",
+    monthly_contract: "عقد شهري", daily_contract: "عقد يومي", weekly_contract: "عقد أسبوعي", yearly_contract: "عقد سنوي",
+    pickup: "استرجاع حاوية", delivery: "تسليم حاوية", inspection: "فحص وتجهيز حاوية",
+    return: "استرجاع", deliver: "تسليم", approve: "اعتماد", reject: "رفض",
+    draft: "مسودة", pending_approval: "بانتظار الاعتماد", issued: "صادر",
+    active: "نشط", approved: "معتمد", reserved: "محجوز", rented: "مؤجر",
+    in_progress: "قيد التنفيذ", delivered: "تم التسليم", returned: "تم الاسترجاع",
+    awaiting_return: "بانتظار الاسترجاع", completed: "مكتمل", settled: "مصفى",
+    closed: "مغلق", expired: "منتهي المدة", cancelled: "ملغى",
+  }
+  return labels[key] ?? labels[key.toLowerCase()] ?? formatStatus(key)
+}
+
+function ContractRecordDetails({
+  record,
+  allRecords,
+  serviceRequests,
+  open,
+  onOpenChange,
+  onContractAction,
+}: {
+  record: ContainerSystemRecord
+  allRecords: ContainerSystemRecord[]
+  serviceRequests: ServiceRequest[]
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  onContractAction: (record: ContainerSystemRecord, action: string) => void
+}) {
+  const [, navigate] = useLocation()
+  const payload = record.payload as Record<string, unknown>
+  const customerId = Number(payload.customerRecordId ?? payload.customerId ?? 0)
+  const siteId = Number(payload.siteRecordId ?? payload.customerSiteId ?? 0)
+  const containerId = Number(payload.containerRecordId ?? payload.assetRecordId ?? 0)
+  const linkedCustomer = allRecords.find(item => item.kind === "customer" && item.status !== "archived" && (
+    (customerId > 0 && item.id === customerId) ||
+    (String(payload.customerName ?? payload.clientName ?? "").trim() !== "" &&
+      String((item.payload as Record<string, unknown>).name ?? (item.payload as Record<string, unknown>).customerName ?? "").trim() === String(payload.customerName ?? payload.clientName).trim())
+  ))
+  const customerPayload = linkedCustomer?.payload as Record<string, unknown> | undefined
+  const linkedSite = allRecords.find(item => item.kind === "customer_site" && item.status !== "archived" && (
+    (siteId > 0 && item.id === siteId) ||
+    (customerId > 0 && Number((item.payload as Record<string, unknown>).customerRecordId ?? 0) === customerId &&
+      String(payload.siteName ?? payload.location ?? "").trim() !== "" &&
+      String((item.payload as Record<string, unknown>).name ?? (item.payload as Record<string, unknown>).address ?? "").includes(String(payload.siteName ?? payload.location).trim()))
+  ))
+  const sitePayload = linkedSite?.payload as Record<string, unknown> | undefined
+  const linkedContainer = allRecords.find(item => ["container", "container_asset"].includes(item.kind) && item.status !== "archived" && (
+    (containerId > 0 && item.id === containerId) ||
+    (String(payload.containerCode ?? "").trim() !== "" &&
+      String((item.payload as Record<string, unknown>).assetCode ?? (item.payload as Record<string, unknown>).containerCode ?? "").trim() === String(payload.containerCode).trim())
+  ))
+  const containerPayload = linkedContainer?.payload as Record<string, unknown> | undefined
+  const customerName = String(payload.customerName ?? payload.clientName ?? customerPayload?.name ?? customerPayload?.customerName ?? linkedCustomer?.reference ?? "عميل غير محدد")
+  const customerPhone = String(payload.customerPhone ?? payload.phone ?? payload.mobile ?? customerPayload?.phone ?? customerPayload?.mobile ?? "").trim()
+  const location = String(payload.location ?? payload.serviceAddress ?? payload.siteAddress ?? sitePayload?.address ?? sitePayload?.location ?? sitePayload?.name ?? "").trim()
+  const latitude = Number(payload.latitude ?? payload.lat ?? sitePayload?.latitude ?? sitePayload?.lat)
+  const longitude = Number(payload.longitude ?? payload.lng ?? payload.lon ?? sitePayload?.longitude ?? sitePayload?.lng ?? sitePayload?.lon)
+  const coordinates = Number.isFinite(latitude) && Number.isFinite(longitude) ? { lat: latitude, lng: longitude } : coordinatesFromLocation(location)
+  const contractNumber = String(payload.contractNumber ?? payload.number ?? record.reference ?? `CON-${record.id}`)
+  const serviceType = String(payload.serviceType ?? payload.contractType ?? payload.typeName ?? payload.description ?? "").trim()
+  const serviceLabel = serviceType ? contractReadableValue(serviceType) : ""
+  const startDate = String(payload.startDate ?? payload.fromDate ?? payload.contractStartDate ?? "").slice(0, 10)
+  const endDate = String(payload.endDate ?? payload.toDate ?? payload.contractEndDate ?? "").slice(0, 10)
+  const duration = String(payload.duration ?? "").trim() || (startDate && endDate ? `${startDate}  ←  ${endDate}` : startDate || endDate)
+  const frequency = String(payload.billingFrequency ?? payload.paymentFrequency ?? payload.frequency ?? "").trim()
+  const rawStatus = String(payload.lifecycleStatus ?? payload.contractStatus ?? record.status ?? "pending").trim()
+  const baseAmountValue = [payload.baseAmount, payload.subtotal, payload.contractAmount, payload.amount].map(Number).find(value => Number.isFinite(value) && value >= 0)
+  const taxAmountValue = [payload.taxAmount, payload.vatAmount, payload.taxValue, payload.vat].map(Number).find(value => Number.isFinite(value) && value >= 0)
+  const totalValue = [payload.total, payload.totalAmount, payload.grandTotal].map(Number).find(value => Number.isFinite(value) && value >= 0)
+  const baseAmount = baseAmountValue ?? (totalValue === undefined ? amountOf(record) : undefined)
+  const totalAmount = totalValue ?? (baseAmount !== undefined && taxAmountValue !== undefined ? baseAmount + taxAmountValue : undefined)
+  const paidAmount = [payload.paid, payload.paidAmount, payload.collectedAmount].map(Number).find(value => Number.isFinite(value) && value >= 0)
+  const remainingAmount = totalAmount !== undefined && paidAmount !== undefined ? Math.max(totalAmount - paidAmount, 0) : undefined
+  const hasMoney = [baseAmount, taxAmountValue, totalAmount, paidAmount, remainingAmount].some(value => value !== undefined && value > 0)
+  const money = (value: number | undefined) => value === undefined ? "—" : `${value.toLocaleString("ar-SA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ر.س`
+  const contractInvoices = allRecords.filter(item => item.kind === "invoice" && item.status !== "archived" && (
+    Number((item.payload as Record<string, unknown>).contractRecordId ?? 0) === record.id ||
+    String((item.payload as Record<string, unknown>).contractNumber ?? "").trim() === contractNumber.trim()
+  ))
+  const linkedRequest = serviceRequests.find(request => Number((request as ServiceRequest & { contractRecordId?: number }).contractRecordId ?? 0) === record.id || request.id === Number(payload.requestId ?? 0))
+  const proofPhotoUrl = String(payload.driverProofPhotoUrl ?? payload.proofPhotoUrl ?? linkedRequest?.driverProofPhotoUrl ?? "").trim()
+  const openOperation = findOpenContainerOperation(allRecords, serviceRequests, record.id, containerId || null)
+  const invoiceMoney = (value: unknown) => {
+    const numeric = Number(value)
+    return Number.isFinite(numeric) && numeric > 0 ? money(numeric) : "—"
+  }
+  const openCustomerProfile = () => {
+    if (!linkedCustomer) return
+    onOpenChange(false)
+    navigate(`/admin/container-system/profile/customer/${linkedCustomer.id}`)
+  }
+  const actionButtons = [
+    ...( ["draft", "pending_approval", "issued"].includes(record.status) ? [
+      { action: "approve", label: "اعتماد العقد", className: "bg-emerald-700 hover:bg-emerald-800" },
+      { action: "reject", label: "رفض العقد", className: "border-rose-200 text-rose-700", variant: "outline" as const },
+    ] : []),
+    { action: "deliver", label: "تسجيل التسليم", className: "bg-cyan-800 hover:bg-cyan-900" },
+    { action: "return", label: "تسجيل الاسترجاع", className: "border-cyan-200 text-cyan-900", variant: "outline" as const, disabled: Boolean(openOperation) },
+    { action: "settle", label: "تصفية العقد", className: "border-emerald-200 text-emerald-800", variant: "outline" as const },
+    { action: "debt", label: "تحويل لمديونية", className: "border-rose-200 text-rose-700", variant: "outline" as const },
+    { action: "close", label: "إغلاق العقد", className: "border-slate-200 text-slate-700", variant: "outline" as const, disabled: Boolean(openOperation) },
+  ]
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent dir="rtl" className="max-h-[94vh] max-w-5xl overflow-y-auto border-cyan-100 bg-[#f8fbfb] p-0">
+        <div className="border-b border-cyan-100 bg-[linear-gradient(115deg,#123d4e_0%,#18576a_72%,#1c6570_100%)] px-5 py-5 text-white sm:px-7">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-cyan-200">سجل العقد · مركز التشغيل والتحصيل</p>
+              <DialogTitle className="mt-2 font-mono text-2xl font-black tracking-tight text-white" dir="ltr" data-testid={`text-contract-detail-number-${record.id}`}>{contractNumber}</DialogTitle>
+              <DialogDescription className="mt-2 text-xs text-cyan-100/75">آخر تحديث {formatRecordDate(record.updatedAt)}</DialogDescription>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge variant="outline" className="border-white/25 bg-white/10 text-white" data-testid={`status-contract-detail-${record.id}`}>{contractReadableValue(rawStatus)}</Badge>
+              <Button size="sm" onClick={() => { onOpenChange(false); navigate(`/admin/container-system/contract/${record.id}/print`) }} className="gap-1.5 bg-amber-400 text-slate-900 hover:bg-amber-300" data-testid={`button-open-contract-a4-${record.id}`}><FileText size={14} /> فتح العقد A4</Button>
+            </div>
+          </div>
+        </div>
+        <div className="space-y-4 p-4 sm:p-6">
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4" data-testid={`summary-contract-${record.id}`}>
+            <div className="rounded-xl border border-cyan-100 bg-white p-3"><p className="text-[10px] font-bold text-slate-400">العميل</p><p className="mt-1 truncate text-sm font-black text-slate-900" data-testid={`text-detail-contract-customer-${record.id}`}>{customerName}</p>{linkedCustomer && <button type="button" onClick={openCustomerProfile} className="mt-1 text-[11px] font-bold text-cyan-800 hover:underline" data-testid={`button-open-contract-customer-${record.id}`}>فتح ملف العميل</button>}</div>
+            <div className="rounded-xl border border-cyan-100 bg-white p-3"><p className="text-[10px] font-bold text-slate-400">الجوال</p><p className="mt-1 text-sm font-black text-slate-800" dir="ltr" data-testid={`text-detail-contract-phone-${record.id}`}>{customerPhone || "غير مسجل"}</p></div>
+            <div className="rounded-xl border border-cyan-100 bg-white p-3"><p className="text-[10px] font-bold text-slate-400">موقع الخدمة</p><p className="mt-1 truncate text-sm font-black text-slate-800" data-testid={`text-detail-contract-site-${record.id}`}>{location || "غير محدد"}</p></div>
+            <div className="rounded-xl border border-cyan-100 bg-white p-3"><p className="text-[10px] font-bold text-slate-400">أصل الحاوية</p><p className="mt-1 truncate font-mono text-sm font-black text-slate-800" dir="ltr" data-testid={`text-detail-contract-container-${record.id}`}>{String(payload.containerCode ?? containerPayload?.assetCode ?? containerPayload?.containerCode ?? linkedContainer?.reference ?? "غير مرتبط")}</p></div>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {duration && <div className="rounded-2xl border border-slate-200 bg-white p-4" data-testid={`card-detail-contract-duration-${record.id}`}><p className="text-[10px] font-black text-slate-400">مدة العقد</p><p className="mt-2 text-sm font-black text-slate-900" dir={startDate && endDate ? "ltr" : undefined}>{duration}</p></div>}
+            {serviceLabel && <div className="rounded-2xl border border-slate-200 bg-white p-4" data-testid={`card-detail-contract-service-${record.id}`}><p className="text-[10px] font-black text-slate-400">نوع الخدمة</p><p className="mt-2 text-sm font-black text-slate-900">{serviceLabel}</p></div>}
+            {frequency && <div className="rounded-2xl border border-slate-200 bg-white p-4" data-testid={`card-detail-contract-frequency-${record.id}`}><p className="text-[10px] font-black text-slate-400">الدورية</p><p className="mt-2 text-sm font-black text-slate-900">{contractReadableValue(frequency)}</p></div>}
+            {hasMoney && <div className="rounded-2xl border border-emerald-100 bg-emerald-50/70 p-4" data-testid={`card-detail-contract-value-${record.id}`}><p className="text-[10px] font-black text-emerald-700">قيمة العقد</p><p className="mt-2 text-lg font-black text-emerald-900">{money(totalAmount ?? baseAmount)}</p></div>}
+          </div>
+          {hasMoney && <div className="rounded-2xl border border-emerald-100 bg-white p-4" data-testid={`financial-summary-contract-${record.id}`}>
+            <div className="mb-3 flex items-center gap-2"><CircleDollarSign size={17} className="text-emerald-700" /><h4 className="text-sm font-black text-slate-900">ملخص القيمة والتحصيل</h4></div>
+            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+              {baseAmount !== undefined && <div className="rounded-xl bg-slate-50 p-3"><p className="text-[10px] font-bold text-slate-400">المبلغ الأساسي</p><p className="mt-1 text-sm font-black text-slate-800" data-testid={`text-contract-base-amount-${record.id}`}>{money(baseAmount)}</p></div>}
+              {taxAmountValue !== undefined && <div className="rounded-xl bg-slate-50 p-3"><p className="text-[10px] font-bold text-slate-400">الضريبة</p><p className="mt-1 text-sm font-black text-slate-800" data-testid={`text-contract-tax-amount-${record.id}`}>{money(taxAmountValue)}</p></div>}
+              {totalAmount !== undefined && <div className="rounded-xl bg-cyan-50 p-3"><p className="text-[10px] font-bold text-cyan-700">الإجمالي</p><p className="mt-1 text-sm font-black text-cyan-900" data-testid={`text-contract-total-amount-${record.id}`}>{money(totalAmount)}</p></div>}
+              {remainingAmount !== undefined && <div className="rounded-xl bg-amber-50 p-3"><p className="text-[10px] font-bold text-amber-700">المتبقي</p><p className="mt-1 text-sm font-black text-amber-900" data-testid={`text-contract-remaining-amount-${record.id}`}>{money(remainingAmount)}</p></div>}
+            </div>
+          </div>}
+          {coordinates && (linkedSite || location) && <div className="rounded-2xl border border-blue-100 bg-blue-50/55 p-4" data-testid={`section-contract-site-map-${record.id}`}>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div><h4 className="flex items-center gap-2 text-sm font-black text-blue-950"><MapPin size={17} className="text-blue-700" /> موقع العميل</h4><p className="mt-1 text-xs text-blue-900/65">{location || "الموقع المرتبط بالعقد"}</p></div>
+              <a href={`https://www.google.com/maps/search/?api=1&query=${coordinates.lat},${coordinates.lng}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs font-bold text-blue-700 hover:underline" data-testid={`link-contract-map-${record.id}`}>فتح الخريطة <ExternalLink size={13} /></a>
+            </div>
+            <div className="mt-3 grid gap-3 lg:grid-cols-[1fr_1.2fr]"><div className="rounded-xl bg-white p-3 text-sm font-bold text-slate-800"><p className="text-[10px] font-bold text-slate-400">الإحداثيات</p><p className="mt-1 font-mono text-xs" dir="ltr">{coordinates.lat}, {coordinates.lng}</p></div><iframe title="موقع العميل المرتبط بالعقد" src={`https://www.google.com/maps?q=${coordinates.lat},${coordinates.lng}&output=embed`} className="h-32 w-full rounded-xl border-0" loading="lazy" referrerPolicy="no-referrer-when-downgrade" /></div>
+          </div>}
+          <div className="rounded-2xl border border-cyan-100 bg-cyan-50/45 p-4" data-testid={`section-contract-invoices-${record.id}`}>
+            <div className="flex items-center justify-between gap-3"><div><h4 className="flex items-center gap-2 text-sm font-black text-cyan-950"><ReceiptText size={17} /> الفواتير المرتبطة</h4><p className="mt-1 text-[11px] text-cyan-900/65">الفواتير المسجلة على رقم العقد دون عرض البيانات الخام.</p></div><Badge variant="outline" className="border-cyan-200 bg-white text-cyan-800">{contractInvoices.length} فاتورة</Badge></div>
+            {contractInvoices.length === 0 ? <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 text-xs font-bold text-amber-800">لا توجد فاتورة مرتبطة بهذا العقد حالياً.</p> : <div className="mt-3 grid gap-2">{contractInvoices.map(invoice => {
+              const invoicePayload = invoice.payload as Record<string, unknown>
+              const total = Number(invoicePayload.total ?? invoicePayload.amount ?? 0)
+              const paid = Number(invoicePayload.paid ?? invoicePayload.paidAmount ?? 0)
+              const status = String(invoicePayload.invoiceStatus ?? invoice.status ?? "issued")
+              return <button type="button" key={invoice.id} onClick={() => { onOpenChange(false); navigate(`/admin/container-system/invoice/${invoice.id}/details`) }} className="flex w-full flex-col gap-2 rounded-xl border border-transparent bg-white p-3 text-right transition hover:border-cyan-200 hover:bg-cyan-50/70 sm:grid sm:grid-cols-[1.2fr_1fr_1fr_1fr_auto] sm:items-center" data-testid={`button-open-contract-invoice-${invoice.id}`}>
+                <span className="font-mono font-black text-cyan-800" dir="ltr">{String(invoicePayload.invoiceNumber ?? invoice.reference ?? `INV-${invoice.id}`)}</span>
+                <span><small className="block text-[10px] text-slate-400">الفترة</small>{String(invoicePayload.billingPeriod ?? invoicePayload.date ?? "غير محددة")}</span>
+                <span><small className="block text-[10px] text-slate-400">الإجمالي</small>{invoiceMoney(total)}</span>
+                <span><small className="block text-[10px] text-slate-400">المتبقي</small><b className="text-rose-700">{Number.isFinite(total) && total > 0 ? invoiceMoney(Math.max(total - paid, 0)) : "—"}</b></span>
+                <RecordStatus status={status} />
+              </button>
+            })}</div>}
+          </div>
+          {proofPhotoUrl && <div className="rounded-2xl border border-emerald-100 bg-emerald-50/55 p-4" data-testid={`section-contract-proof-${record.id}`}>
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2"><div><h4 className="flex items-center gap-2 text-sm font-black text-emerald-950"><FileCheck2 size={17} /> صورة إثبات التنفيذ</h4><p className="mt-1 text-[11px] text-emerald-900/65">الصورة المرفوعة عند إكمال التسليم أو الاسترجاع.</p></div><a href={proofPhotoUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs font-bold text-emerald-700 hover:underline" data-testid={`link-contract-proof-${record.id}`}>فتح الصورة <ExternalLink size={13} /></a></div>
+            <img src={proofPhotoUrl} alt="صورة إثبات تنفيذ العقد" className="max-h-80 w-full rounded-xl border border-emerald-100 bg-white object-contain" loading="lazy" data-testid={`img-contract-proof-${record.id}`} />
+          </div>}
+          <div className="rounded-2xl border border-amber-100 bg-amber-50/65 p-4" data-testid={`section-contract-lifecycle-${record.id}`}>
+            <div className="mb-3 flex items-start gap-2"><CalendarDays size={18} className="mt-0.5 text-amber-700" /><div><h4 className="text-sm font-black text-amber-950">دورة العقد</h4><p className="mt-1 text-[11px] text-amber-900/70">الإجراء التالي يبقى مرتبطاً بأثر التشغيل والتحصيل.</p></div></div>
+            {openOperation && <p className="mb-3 rounded-xl border border-amber-200 bg-white px-3 py-2 text-xs font-bold text-amber-900">أمر تشغيل قائم #{openOperation.id}: {openOperation.statusLabel} · {openOperation.assigned ? "تم الإسناد" : "غير مسند"}. ستبقى أزرار الاسترجاع والإغلاق معطلة حتى إكماله.</p>}
+            <div className="flex flex-wrap gap-2">{actionButtons.map(button => <Button key={button.action} size="sm" variant={button.variant} disabled={button.disabled} onClick={() => onContractAction(record, button.action)} className={button.className} data-testid={`button-contract-action-${button.action}-${record.id}`}>{button.label}</Button>)}</div>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 function RecordDetails({ record, allRecords, serviceRequests = [], open, onOpenChange, onContractAction }: { record?: ContainerSystemRecord | null; allRecords: ContainerSystemRecord[]; serviceRequests?: ServiceRequest[]; open: boolean; onOpenChange: (open: boolean) => void; onContractAction: (record: ContainerSystemRecord, action: string) => void }) {
   const [, navigate] = useLocation()
   if (!record) return null
+  if (record.kind === "contract") return <ContractRecordDetails record={record} allRecords={allRecords} serviceRequests={serviceRequests} open={open} onOpenChange={onOpenChange} onContractAction={onContractAction} />
   const isContainer = ["container", "container_asset"].includes(record.kind)
   const isPaymentRecord = ["payment", "receipt", "payment_return", "ledger_entry"].includes(record.kind)
   const sourcePayment = record.kind === "ledger_entry"
@@ -1781,7 +2525,7 @@ export default function ContainerSystem() {
           <ContainerSidebar view={view} onSelect={nextView => { setView(nextView); setSearch(""); if (nextView !== "reports") setReportId(null) }} />
         </aside>
         <main className="order-1 min-w-0 space-y-5 lg:order-2">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><p className="text-xs font-bold text-cyan-700">نظام الحاويات الكامل / {viewLabel(view)}</p><h2 className="mt-1 text-xl font-black text-slate-900">{viewLabel(view)}</h2></div>{(isCollection || view === "container_search") && <div className="relative w-full sm:w-80"><Search size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" /><Input value={search} onChange={event => setSearch(event.target.value)} placeholder="رقم الحاوية أو اسم العميل أو الجوال" className="h-10 border-slate-200 bg-white pr-9" data-testid="input-search-container-records" />{search && <button type="button" onClick={() => setSearch("")} className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700" data-testid="button-clear-container-search"><X size={15} /></button>}</div>}</div>
+           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><p className="text-xs font-bold text-cyan-700">نظام الحاويات الكامل / {view === "contracts_list" ? "مركز العقود" : view === "customer" ? "مركز العملاء" : viewLabel(view)}</p><h2 className="mt-1 text-xl font-black text-slate-900">{view === "contracts_list" ? "مركز العقود" : view === "customer" ? "مركز العملاء" : viewLabel(view)}</h2>{view === "contracts_list" && <p className="mt-1 text-xs leading-6 text-slate-500">قراءة سريعة لحالة كل عقد والعميل والموقع وقيمة الخدمة لاتخاذ الإجراء التالي.</p>}{view === "customer" && <p className="mt-1 text-xs leading-6 text-slate-500">ملفات العملاء وعلاقاتهم التشغيلية والمالية في شاشة واحدة واضحة.</p>}{view === "operations" && <p className="mt-1 text-xs leading-6 text-slate-500">متابعة التسليم والاسترجاع ونقل الحاويات من لحظة الإسناد حتى إغلاق الحركة.</p>}</div>{(isCollection || view === "container_search") && <div className="relative w-full sm:w-80"><Search size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" /><Input value={search} onChange={event => setSearch(event.target.value)} placeholder={view === "contracts_list" ? "ابحث برقم العقد أو العميل أو الموقع أو الجوال" : view === "customer" ? "ابحث باسم العميل أو المرجع أو الجوال أو المدينة" : view === "operations" ? "ابحث برقم الحركة أو الحاوية أو العقد أو العميل" : "رقم الحاوية أو اسم العميل أو الجوال"} className="h-10 border-slate-200 bg-white pr-9" data-testid="input-search-container-records" />{search && <button type="button" onClick={() => setSearch("")} className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700" data-testid="button-clear-container-search"><X size={15} /></button>}</div>}</div>
           {notice && <div className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-800" role="status" data-testid="status-container-success"><CheckCircle2 size={17} /> {notice}</div>}
           {error ? <Card className="border-rose-200 bg-rose-50/50"><CardContent className="flex flex-col items-center gap-3 p-12 text-center"><AlertCircle size={27} className="text-rose-500" /><h3 className="font-bold text-rose-900">تعذر تحميل بيانات النظام</h3><p className="text-sm text-rose-700">تحقق من الاتصال ثم حاول مرة أخرى.</p><Button onClick={() => { snapshotQuery.refetch(); recordsQuery.refetch() }} variant="outline" className="gap-2 border-rose-200 bg-white text-rose-800" data-testid="button-retry-container-system"><RefreshCw size={15} /> إعادة المحاولة</Button></CardContent></Card>
                : view === "overview" ? <Overview snapshot={snapshot} records={records} onAdd={openCreate} onOpen={setDetailRecord} onAssign={record => { setDetailRecord(null); setAssignmentContainerId(record.id); setAssignmentWizardOpen(true) }} />
@@ -1796,6 +2540,12 @@ export default function ContainerSystem() {
               : view === "bookings" ? <DispatchCalendar records={snapshot?.records ?? records} onOpenAppointment={openRecordDetails} />
               : view === "invoice"
                 ? <InvoiceWorkspace records={records} onAdd={() => openCreate("invoice")} onDetails={record => navigate(`/admin/container-system/invoice/${record.id}/details`)} onEdit={openEdit} onArchive={archiveRecord} />
+               : view === "contracts_list"
+                 ? <ContractsWorkspace records={records} allRecords={snapshot?.records ?? records} loading={loading} onAdd={() => openCreate("contract")} onDetails={openRecordDetails} onEdit={openEdit} onArchive={archiveRecord} />
+              : view === "customer"
+                  ? <CustomersWorkspace records={records} allRecords={snapshot?.records ?? records} loading={loading} onAdd={() => openCreate("customer")} onDetails={openRecordDetails} onEdit={openEdit} onArchive={archiveRecord} />
+              : view === "operations"
+                ? <MovementsWorkspace records={records} allRecords={snapshot?.records ?? records} serviceRequests={serviceRequestsQuery.data ?? []} loading={loading} onAdd={() => openCreate("container_movement")} onDetails={openRecordDetails} onArchive={archiveRecord} />
               : view === "container"
                ? <ContainerPOS records={records} onAdd={() => openCreate("container")} onDetails={openRecordDetails} onEdit={openEdit} onDelete={deleteContainerRecord} />
                  : <RecordsPanel kind={collectionKind ?? "customer"} records={records} allRecords={snapshot?.records ?? records} serviceRequests={serviceRequestsQuery.data ?? []} loading={loading} onAdd={() => openCreate(collectionKind ?? "customer")} onDetails={openRecordDetails} onEdit={openEdit} onArchive={archiveRecord} />}
