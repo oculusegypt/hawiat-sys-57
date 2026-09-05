@@ -849,7 +849,7 @@ function recordDisplayName(record: ContainerSystemRecord | undefined, fallback: 
 }
 
 function coordinatesFromLocation(location: string) {
-  const match = location.match(/(?:إحداثيات GPS|GPS)\s*:\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)/i)
+  const match = location.match(/(?:إحداثيات\s*GPS\s*تقريبية|إحداثيات\s*تقريبية|إحداثيات\s*GPS|GPS\s*تقريبية|GPS)\s*[:：]\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)/i)
   if (!match) return null
   const lat = Number(match[1])
   const lng = Number(match[2])
@@ -938,6 +938,12 @@ function RecordDetails({ record, allRecords, serviceRequests = [], open, onOpenC
   )
   const requestLocation = linkedRequest?.location ?? String(latestContractPayload.location ?? linkedSite?.payload.address ?? linkedSite?.payload.location ?? "")
   const requestCoordinates = coordinatesFromLocation(requestLocation)
+  const proofPhotoUrl = String(
+    detailPayload.driverProofPhotoUrl ??
+      detailPayload.proofPhotoUrl ??
+      linkedRequest?.driverProofPhotoUrl ??
+      "",
+  ).trim()
   const relatedCustomers = allRecords.filter(item => item.kind === "customer" && (
     String(latestContractPayload.customerRecordId ?? "") === String(item.id) ||
     (latestContractPayload.customerName && String(item.payload.name ?? item.payload.customerName ?? "") === String(latestContractPayload.customerName))
@@ -1061,6 +1067,20 @@ function RecordDetails({ record, allRecords, serviceRequests = [], open, onOpenC
             {!isContainer && <div className="rounded-xl bg-slate-50 p-3"><p className="text-[11px] text-slate-500">الحالة</p><div className="mt-1"><RecordStatus status={String(record.payload.status ?? record.status)} /></div></div>}
            {!isPaymentRecord && displayEntries.map(([label, value]) => <div key={label} className="rounded-xl border border-slate-100 bg-white p-3"><p className="text-[11px] text-slate-500">{label}</p><p className="mt-1 break-words text-sm font-bold text-slate-800">{value}</p></div>)}
         </div>
+          {proofPhotoUrl && (
+            <div className="mt-4 rounded-2xl border border-emerald-100 bg-emerald-50/50 p-4">
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <h4 className="text-sm font-black text-emerald-950">صورة إثبات التنفيذ</h4>
+                  <p className="mt-1 text-[11px] text-emerald-800/70">الصورة التي رفعها السائق عند إكمال التسليم أو الاسترجاع.</p>
+                </div>
+                <a href={proofPhotoUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs font-bold text-emerald-700 hover:underline">
+                  فتح الصورة <ExternalLink size={13} />
+                </a>
+              </div>
+              <img src={proofPhotoUrl} alt="صورة إثبات تنفيذ حركة الحاوية" className="max-h-96 w-full rounded-xl border border-emerald-100 bg-white object-contain" loading="lazy" />
+            </div>
+          )}
          {isPaymentRecord && <div className="rounded-2xl border border-slate-200 bg-slate-50/60 p-4">
            <h4 className="mb-3 text-sm font-black text-slate-900">تفاصيل السداد</h4>
            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">

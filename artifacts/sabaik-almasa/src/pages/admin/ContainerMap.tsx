@@ -44,7 +44,7 @@ type CategoryFilter = "all" | Category
 type Coordinates = {
   lat: number
   lng: number
-  source: "location" | "driver"
+  source: "location" | "approximate" | "driver"
 }
 
 type EnrichedRequest = ServiceRequest & {
@@ -132,15 +132,19 @@ const STATUS_FILTERS: Array<{ value: StatusFilter; label: string }> = [
 function parseCoordinates(location: string, request: ServiceRequest): Coordinates | null {
   const locationText = String(location ?? "")
   const gpsMatch = locationText.match(
-    /(?:إحداثيات\s*GPS|GPS|الإحداثيات)\s*[:：]?\s*\(?\s*(-?\d+(?:\.\d+)?)\s*[,،]\s*(-?\d+(?:\.\d+)?)\s*\)?/i,
+    /((?:إحداثيات\s*GPS\s*تقريبية|إحداثيات\s*تقريبية|إحداثيات\s*GPS|GPS\s*تقريبية|GPS|الإحداثيات))\s*[:：]?\s*\(?\s*(-?\d+(?:\.\d+)?)\s*[,،]\s*(-?\d+(?:\.\d+)?)\s*\)?/i,
   )
 
   if (gpsMatch) {
-    const lat = Number(gpsMatch[1])
-    const lng = Number(gpsMatch[2])
+    const lat = Number(gpsMatch[2])
+    const lng = Number(gpsMatch[3])
     const isSaudiCoordinate = lat >= 16 && lat <= 33 && lng >= 34 && lng <= 56
     if (Number.isFinite(lat) && Number.isFinite(lng) && isSaudiCoordinate) {
-      return { lat, lng, source: "location" }
+      return {
+        lat,
+        lng,
+        source: /تقريبية/i.test(gpsMatch[1]) ? "approximate" : "location",
+      }
     }
   }
 
@@ -176,7 +180,7 @@ function classifyRequest(request: ServiceRequest): Category {
 
 function extractZone(location: string): string {
   const zone = String(location ?? "")
-    .replace(/\(?\s*(?:إحداثيات\s*GPS|GPS)\s*[:：]?\s*-?\d+(?:\.\d+)?\s*[,،]\s*-?\d+(?:\.\d+)?\s*\)?/gi, "")
+    .replace(/\(?\s*(?:إحداثيات\s*GPS\s*تقريبية|إحداثيات\s*تقريبية|إحداثيات\s*GPS|GPS\s*تقريبية|GPS)\s*[:：]?\s*-?\d+(?:\.\d+)?\s*[,،]\s*-?\d+(?:\.\d+)?\s*\)?/gi, "")
     .replace(/\b(?:lat|lng|latitude|longitude)\s*[:=]\s*-?\d+(?:\.\d+)?/gi, "")
     .replace(/[،,|؛;]+/g, " ")
     .replace(/\s+/g, " ")
@@ -242,7 +246,12 @@ function requestMarker(request: EnrichedRequest): L.DivIcon {
     color: "#64748b",
   }
   const category = CATEGORY_META[request.category]
-  const positionLabel = request.coordinates?.source === "driver" ? "موقع السائق" : "موقع الطلب"
+  const positionLabel =
+    request.coordinates?.source === "driver"
+      ? "موقع السائق"
+      : request.coordinates?.source === "approximate"
+        ? "إحداثيات تقريبية"
+        : "موقع الطلب"
   return L.divIcon({
     className: "cleanflow-request-marker",
     iconSize: [54, 54],
@@ -451,7 +460,7 @@ export default function ContainerMap() {
             <div><b>العميل:</b> ${escapeHtml(request.clientName)}</div>
             <div><b>التصنيف:</b> ${escapeHtml(category.label)}</div>
             <div><b>الموقع:</b> ${escapeHtml(request.zone)}</div>
-            <div><b>المصدر:</b> ${escapeHtml(request.coordinates.source === "driver" ? "موقع السائق" : "إحداثيات الطلب")}</div>
+            <div><b>المصدر:</b> ${escapeHtml(request.coordinates.source === "driver" ? "موقع السائق" : request.coordinates.source === "approximate" ? "إحداثيات تقريبية" : "إحداثيات الطلب")}</div>
           </div>
         </div>`,
         { closeButton: true },
@@ -599,7 +608,7 @@ export default function ContainerMap() {
                 <Route className="h-4 w-4 text-teal-600" />
                 التوزيع الجغرافي للطلبات
               </h2>
-              <p className="mt-1 text-[11px] text-slate-400">النقاط مبنية على إحداثيات الطلب أو آخر موقع للسائق</p>
+              <p className="mt-1 text-[11px] text-slate-400">النقاط مبنية على إحداثيات الطلب أو تقدير تقري أو آخر موقع للسائق</p>
             </div>
             <div className="flex flex-wrap gap-2 text-[10px] font-bold">
               {Object.entries(STATUS_META).map(([status, meta]) => (
