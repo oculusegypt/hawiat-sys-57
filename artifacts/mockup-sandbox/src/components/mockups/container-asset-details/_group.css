@@ -1,0 +1,13 @@
+@import url("https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&family=Tajawal:wght@400;500;700;800&display=swap");
+
+:root {
+  --app-font-sans: "Tajawal", "Cairo", sans-serif;
+}
+
+@layer base {
+  body {
+    font-family: var(--app-font-sans);
+    background: #f8fafc;
+    color: #0f172a;
+  }
+}

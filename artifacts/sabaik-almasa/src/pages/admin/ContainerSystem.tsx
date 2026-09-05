@@ -1926,16 +1926,42 @@ function RecordDetails({ record, allRecords, serviceRequests = [], open, onOpenC
        }
       return [detailLabel(key), String(value)] as const
     })
+  const relatedRecordValue = (value: unknown, fallback = "غير مرتبط") => {
+    const id = Number(value ?? 0)
+    if (!id) return fallback
+    const related = allRecords.find(item => item.id === id)
+    return related ? recordDisplayName(related, `#${id}`) : `#${id}`
+  }
+  const containerDetailEntries: Array<[string, unknown]> = [
+    ["المعرّف الداخلي", containerPayload.assetKey ?? containerPayload.assetId],
+    ["نوع الحاوية المركزي", containerPayload.containerTypeId ?? containerPayload.centralTypeId],
+    ["التصنيف", containerPayload.category ?? containerPayload.classification],
+    ["وصف النوع", containerPayload.description ?? containerPayload.typeDescription],
+    ["الحجم", containerPayload.size ?? containerPayload.containerSize],
+    ["السعة", containerPayload.capacity],
+    ["الطول", containerPayload.length],
+    ["العرض", containerPayload.width],
+    ["الارتفاع", containerPayload.height],
+    ["الموقع الحالي", containerPayload.location],
+    ["آخر فحص", containerPayload.lastInspection],
+    ["سجل التخصيص", relatedRecordValue(containerPayload.assignmentRecordId)],
+    ["سجل العقد", relatedRecordValue(containerPayload.assignedContractRecordId ?? latestContract?.id)],
+    ["سجل الموقع", relatedRecordValue(containerPayload.assignedSiteRecordId ?? latestContractPayload.siteRecordId)],
+  ] as Array<[string, unknown]>
+  const visibleContainerDetailEntries = containerDetailEntries.filter(([, value]) => value !== "" && value !== null && value !== undefined)
+  const containerNarrative = String(containerPayload.notes ?? containerPayload.serviceNotes ?? "").trim()
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent dir="rtl" className="max-h-[94vh] max-w-5xl overflow-y-auto border-cyan-100">
-        <DialogHeader className="text-right">
+        <DialogContent dir="rtl" className="max-h-[94vh] max-w-6xl overflow-hidden border-0 bg-slate-50 p-0 shadow-2xl [&>button]:z-20 [&>button]:text-white">
+          <DialogHeader className="bg-slate-950 px-5 py-6 text-right text-white sm:px-7">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <DialogTitle className="text-xl text-slate-900">{isContainer ? "تفاصيل أصل الحاوية" : KIND_LABELS[record.kind as RecordKind] ?? "تفاصيل السجل"}</DialogTitle>
-              <DialogDescription>{isContainer ? `بيانات التشغيل والمتابعة للحاوية ${containerCode}` : record.reference || `سجل رقم ${record.id}`} · آخر تحديث {formatRecordDate(record.updatedAt)}</DialogDescription>
+                <p className="mb-2 text-[10px] font-black uppercase tracking-[0.24em] text-cyan-300">{isContainer ? "Asset operations / live profile" : "Record details"}</p>
+                <DialogTitle className="text-2xl font-black tracking-tight text-white">{isContainer ? `حاوية ${containerCode}` : KIND_LABELS[record.kind as RecordKind] ?? "تفاصيل السجل"}</DialogTitle>
+                <DialogDescription className="mt-1 text-xs text-slate-300">{isContainer ? `بيانات التشغيل والمتابعة · آخر تحديث ${formatRecordDate(record.updatedAt)}` : record.reference || `سجل رقم ${record.id}`} </DialogDescription>
             </div>
-            <div className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                {isContainer && <RecordStatus status={containerStatus} />}
               {record.kind === "customer" && <Button size="sm" variant="outline" onClick={() => { onOpenChange(false); navigate(`/admin/container-system/profile/customer/${record.id}`) }} className="gap-1.5 border-cyan-200 text-cyan-800"><UserRound size={14} /> فتح ملف العميل</Button>}
               {["employee", "driver"].includes(record.kind) && <Button size="sm" variant="outline" onClick={() => { onOpenChange(false); navigate(`/admin/container-system/profile/employee/${record.id}`) }} className="gap-1.5 border-cyan-200 text-cyan-800"><UserCog size={14} /> فتح ملف الموظف</Button>}
               {record.kind === "contract" && <Button size="sm" onClick={() => { onOpenChange(false); navigate(`/admin/container-system/contract/${record.id}/print`) }} className="gap-1.5 bg-cyan-800 hover:bg-cyan-900"><FileText size={14} /> فتح العقد A4</Button>}
@@ -1943,6 +1969,7 @@ function RecordDetails({ record, allRecords, serviceRequests = [], open, onOpenC
             </div>
           </div>
         </DialogHeader>
+          <div className="max-h-[calc(94vh-132px)] overflow-y-auto bg-slate-50 p-4 sm:p-6">
         {["invoice", "payment", "receipt", "invoice_return", "payment_return", "ledger_entry", "contract"].includes(record.kind) && (
           <div className="mb-4 rounded-2xl border border-cyan-100 bg-cyan-50/50 p-4">
             <div className="flex flex-wrap items-start justify-between gap-3">
@@ -1958,47 +1985,59 @@ function RecordDetails({ record, allRecords, serviceRequests = [], open, onOpenC
           </div>
         )}
         {isContainer && (
-          <div className="rounded-2xl border border-cyan-100 bg-gradient-to-l from-cyan-50 to-white p-4 shadow-sm">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
-              <ContainerStatusImage status={containerStatus} code={containerCode} className="h-28 w-full shrink-0 sm:h-28 sm:w-56" />
-              <div className="min-w-0 flex-1">
-                <p className="text-xs font-bold text-cyan-700">رقم الأصل</p>
-                <p className="mt-1 text-2xl font-black tracking-tight text-slate-900" dir="ltr">{containerCode}</p>
-                <p className="mt-1 text-sm text-slate-600">{String(containerPayload.typeName ?? containerPayload.containerType ?? "نوع الحاوية غير محدد")}</p>
-                <div className="mt-3 flex flex-wrap items-center gap-2">
-                  <span className="text-xs font-bold text-slate-500">الحالة التشغيلية الحالية:</span>
-                  <RecordStatus status={containerStatus} />
+          <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
+            <div className="grid gap-5 bg-gradient-to-l from-slate-900 via-slate-900 to-cyan-950 p-5 sm:p-6 lg:grid-cols-[1fr_240px] lg:items-center">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 text-xs font-bold text-cyan-300"><Box size={14} /> رقم الأصل</div>
+                <p className="mt-2 text-3xl font-black tracking-tight text-white" dir="ltr">{containerCode}</p>
+                <p className="mt-2 text-sm font-bold text-slate-300">{String(containerPayload.typeName ?? containerPayload.containerType ?? "نوع الحاوية غير محدد")}</p>
+                <div className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                  <div className="rounded-2xl border border-white/10 bg-white/10 p-3"><p className="text-[10px] font-bold text-slate-400">الموقع الحالي</p><p className="mt-1 truncate text-sm font-black text-white">{String(containerPayload.location ?? "غير محدد")}</p></div>
+                  <div className="rounded-2xl border border-white/10 bg-white/10 p-3"><p className="text-[10px] font-bold text-slate-400">آخر فحص</p><p className="mt-1 text-sm font-black text-white">{String(containerPayload.lastInspection ?? "غير مسجل")}</p></div>
+                  <div className="rounded-2xl border border-white/10 bg-white/10 p-3"><p className="text-[10px] font-bold text-slate-400">العقود والتخصيصات</p><p className="mt-1 text-xl font-black text-cyan-300">{containerContracts}</p></div>
+                  <div className="rounded-2xl border border-white/10 bg-white/10 p-3"><p className="text-[10px] font-bold text-slate-400">الحركات التشغيلية</p><p className="mt-1 text-xl font-black text-cyan-300">{containerMovements}</p></div>
                 </div>
               </div>
-            </div>
-            <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
-              <div className="rounded-xl bg-white/80 p-3"><p className="text-[10px] font-bold text-slate-500">الموقع الحالي</p><p className="mt-1 truncate text-sm font-black text-slate-800">{String(containerPayload.location ?? "غير محدد")}</p></div>
-              <div className="rounded-xl bg-white/80 p-3"><p className="text-[10px] font-bold text-slate-500">آخر فحص</p><p className="mt-1 text-sm font-black text-slate-800">{String(containerPayload.lastInspection ?? "غير مسجل")}</p></div>
-              <div className="rounded-xl bg-white/80 p-3"><p className="text-[10px] font-bold text-slate-500">العقود والتخصيصات</p><p className="mt-1 text-lg font-black text-cyan-800">{containerContracts}</p></div>
-              <div className="rounded-xl bg-white/80 p-3"><p className="text-[10px] font-bold text-slate-500">الحركات التشغيلية</p><p className="mt-1 text-lg font-black text-cyan-800">{containerMovements}</p></div>
+              <div className="flex min-h-32 items-center justify-center rounded-3xl border border-white/10 bg-white/10 p-3">
+                <ContainerStatusImage status={containerStatus} code={containerCode} className="h-32 w-full max-w-[220px]" />
+              </div>
             </div>
           </div>
         )}
         {isContainer && (
-          <div className="grid gap-4 lg:grid-cols-[1.1fr_.9fr]">
-            <div className="rounded-2xl border border-blue-100 bg-blue-50/50 p-4">
-              <div className="mb-3 flex items-center justify-between gap-3">
-                <div><h4 className="text-sm font-black text-blue-950">موقع الحاوية عند العميل</h4><p className="mt-1 text-[11px] text-blue-800/70">الموقع المحدد في طلب التأجير والعقد المرتبط.</p></div>
-                {requestCoordinates && <a href={`https://www.google.com/maps/search/?api=1&query=${requestCoordinates.lat},${requestCoordinates.lng}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs font-bold text-blue-700 hover:underline"><ExternalLink size={13} /> فتح الخريطة</a>}
+          <div className="grid gap-4 xl:grid-cols-[1.18fr_.82fr]">
+            <section className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
+              <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-5 py-4">
+                <div className="flex items-center gap-3"><span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-cyan-50 text-cyan-700"><MapPin size={18} /></span><div><h4 className="text-sm font-black text-slate-900">موقع الحاوية عند العميل</h4><p className="mt-1 text-[11px] text-slate-500">الموقع المحدد في طلب التأجير والعقد المرتبط.</p></div></div>
+                {requestCoordinates && <a href={`https://www.google.com/maps/search/?api=1&query=${requestCoordinates.lat},${requestCoordinates.lng}`} target="_blank" rel="noopener noreferrer" className="inline-flex shrink-0 items-center gap-1.5 rounded-xl border border-cyan-100 bg-cyan-50 px-3 py-2 text-xs font-black text-cyan-800 hover:bg-cyan-100"><ExternalLink size={13} /> فتح الخريطة</a>}
               </div>
-              <p className="mb-3 rounded-xl bg-white px-3 py-2 text-sm font-bold text-slate-800">{requestLocation || "لم يتم تسجيل موقع مرتبط بالطلب"}</p>
-              {requestCoordinates ? <iframe title="موقع العميل المرتبط بالحاوية" src={`https://www.google.com/maps?q=${requestCoordinates.lat},${requestCoordinates.lng}&output=embed`} className="h-56 w-full rounded-xl border-0" loading="lazy" referrerPolicy="no-referrer-when-downgrade" /> : <div className="flex h-40 items-center justify-center rounded-xl border border-dashed border-blue-200 bg-white text-center text-xs text-slate-500"><MapPin size={18} className="ml-2 text-blue-500" /> لا توجد إحداثيات GPS محفوظة لهذا الطلب</div>}
-            </div>
-            <div className="rounded-2xl border border-amber-100 bg-amber-50/50 p-4">
-              <h4 className="mb-3 text-sm font-black text-amber-950">العميل والتشغيل المرتبط</h4>
-              <div className="space-y-2 text-sm">
-                <div className="rounded-xl bg-white p-3"><p className="text-[10px] font-bold text-slate-500">العميل المستأجر</p><p className="mt-1 font-black text-slate-900">{linkedCustomerName}</p></div>
-                <div className="rounded-xl bg-white p-3"><p className="text-[10px] font-bold text-slate-500">العقد المرتبط</p><p className="mt-1 font-black text-slate-900">{String(latestContractPayload.contractNumber ?? "لا يوجد عقد مرتبط")}</p></div>
-                <div className="rounded-xl bg-white p-3"><p className="text-[10px] font-bold text-slate-500">موقع العميل</p><p className="mt-1 font-black text-slate-900">{recordDisplayName(linkedSite, requestLocation || "غير محدد")}</p></div>
-                <div className="rounded-xl bg-white p-3"><p className="text-[10px] font-bold text-slate-500">الطلب المرتبط</p><p className="mt-1 font-black text-slate-900">{linkedRequest ? `طلب رقم ${linkedRequest.id}` : "لا يوجد طلب مرتبط"}</p></div>
+              <div className="p-4">
+                <p className="mb-3 rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3 text-sm font-black text-slate-800">{requestLocation || "لم يتم تسجيل موقع مرتبط بالطلب"}</p>
+                {requestCoordinates ? <iframe title="موقع العميل المرتبط بالحاوية" src={`https://www.google.com/maps?q=${requestCoordinates.lat},${requestCoordinates.lng}&output=embed`} className="h-56 w-full rounded-2xl border-0" loading="lazy" referrerPolicy="no-referrer-when-downgrade" /> : <div className="flex h-40 items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-slate-50 text-center text-xs text-slate-500"><MapPin size={18} className="ml-2 text-cyan-600" /> لا توجد إحداثيات GPS محفوظة لهذا الطلب</div>}
               </div>
-            </div>
+            </section>
+            <section className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
+              <div className="flex items-center gap-3 border-b border-slate-100 px-5 py-4"><span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-amber-50 text-amber-700"><UserRound size={18} /></span><div><h4 className="text-sm font-black text-slate-900">العميل والتشغيل المرتبط</h4><p className="mt-1 text-[11px] text-slate-500">الجهات المرتبطة بهذا الأصل الآن.</p></div></div>
+              <div className="grid gap-2 p-4 sm:grid-cols-2 xl:grid-cols-1">
+                <div className="rounded-2xl bg-slate-50 p-3"><p className="text-[10px] font-bold text-slate-400">العميل المستأجر</p><p className="mt-1 font-black text-slate-900">{linkedCustomerName}</p></div>
+                <div className="rounded-2xl bg-slate-50 p-3"><p className="text-[10px] font-bold text-slate-400">العقد المرتبط</p><p className="mt-1 font-black text-slate-900">{String(latestContractPayload.contractNumber ?? "لا يوجد عقد مرتبط")}</p></div>
+                <div className="rounded-2xl bg-slate-50 p-3"><p className="text-[10px] font-bold text-slate-400">موقع العميل</p><p className="mt-1 font-black text-slate-900">{recordDisplayName(linkedSite, requestLocation || "غير محدد")}</p></div>
+                <div className="rounded-2xl bg-slate-50 p-3"><p className="text-[10px] font-bold text-slate-400">الطلب المرتبط</p><p className="mt-1 font-black text-slate-900">{linkedRequest ? `طلب رقم ${linkedRequest.id}` : "لا يوجد طلب مرتبط"}</p></div>
+              </div>
+            </section>
           </div>
+        )}
+        {isContainer && (
+          <section className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
+            <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-5 py-4">
+              <div className="flex items-center gap-3"><span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-slate-100 text-slate-700"><ClipboardList size={18} /></span><div><h4 className="text-sm font-black text-slate-900">مواصفات الأصل وسجلّه</h4><p className="mt-1 text-[11px] text-slate-500">بيانات تعريفية موحدة بدون حقول مكررة أو تسميات عامة.</p></div></div>
+              <span className="rounded-full bg-slate-100 px-3 py-1 text-[10px] font-black text-slate-500">{visibleContainerDetailEntries.length} بيانات</span>
+            </div>
+            <div className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-4">
+              {visibleContainerDetailEntries.map(([label, value]) => <div key={label} className="rounded-2xl border border-slate-100 bg-slate-50/70 p-3"><p className="text-[10px] font-bold text-slate-400">{label}</p><p className="mt-1 break-words text-sm font-black text-slate-800">{String(value)}</p></div>)}
+            </div>
+            {containerNarrative && <div className="mx-4 mb-4 rounded-2xl border border-cyan-100 bg-cyan-50/50 p-4"><div className="flex items-center gap-2 text-xs font-black text-cyan-900"><FileText size={14} /> وصف وتشغيل الأصل</div><p className="mt-2 whitespace-pre-line text-sm leading-7 text-slate-700">{containerNarrative}</p></div>}
+          </section>
         )}
          {isPaymentRecord && <div className="mb-4 rounded-2xl border border-emerald-100 bg-gradient-to-l from-emerald-50 to-white p-4">
            <div className="flex items-start justify-between gap-3">
@@ -2014,7 +2053,7 @@ function RecordDetails({ record, allRecords, serviceRequests = [], open, onOpenC
          </div>}
          <div className="grid gap-3 sm:grid-cols-2">
             {!isContainer && <div className="rounded-xl bg-slate-50 p-3"><p className="text-[11px] text-slate-500">الحالة</p><div className="mt-1"><RecordStatus status={String(record.payload.status ?? record.status)} /></div></div>}
-            {!isPaymentRecord && displayEntries.map(([label, value], index) => <div key={`${label}-${index}`} className="rounded-xl border border-slate-100 bg-white p-3"><p className="text-[11px] text-slate-500">{label}</p><p className="mt-1 break-words text-sm font-bold text-slate-800">{value}</p></div>)}
+             {!isPaymentRecord && !isContainer && displayEntries.map(([label, value], index) => <div key={`${label}-${index}`} className="rounded-xl border border-slate-100 bg-white p-3"><p className="text-[11px] text-slate-500">{label}</p><p className="mt-1 break-words text-sm font-bold text-slate-800">{value}</p></div>)}
         </div>
           {proofPhotoUrl && (
             <div className="mt-4 rounded-2xl border border-emerald-100 bg-emerald-50/50 p-4">
@@ -2057,7 +2096,8 @@ function RecordDetails({ record, allRecords, serviceRequests = [], open, onOpenC
              </div>
               <div className="rounded-2xl border border-amber-100 bg-amber-50/60 p-4"><h4 className="mb-3 text-sm font-black text-amber-950">دورة العقد</h4>{openOperation && <p className="mb-3 rounded-xl border border-amber-200 bg-white px-3 py-2 text-xs font-bold text-amber-900">أمر تشغيل قائم #{openOperation.id}: {openOperation.statusLabel} · {openOperation.assigned ? "تم الإسناد" : "غير مسند"}. ستبقى أزرار الاسترجاع والإغلاق معطلة حتى إكماله.</p>}<div className="flex flex-wrap gap-2">{["draft", "pending_approval", "issued"].includes(record.status) && <><Button size="sm" onClick={() => onContractAction(record, "approve")} className="bg-emerald-700 hover:bg-emerald-800">اعتماد العقد</Button><Button size="sm" variant="outline" onClick={() => onContractAction(record, "reject")} className="border-rose-200 text-rose-700">رفض العقد</Button></>}<Button size="sm" onClick={() => onContractAction(record, "deliver")} className="bg-cyan-800 hover:bg-cyan-900">تسجيل التسليم</Button><Button size="sm" variant="outline" disabled={Boolean(openOperation)} onClick={() => onContractAction(record, "return")} className="border-cyan-200 text-cyan-900">تسجيل الاسترجاع</Button><Button size="sm" variant="outline" onClick={() => onContractAction(record, "settle")} className="border-emerald-200 text-emerald-800">تصفية العقد</Button><Button size="sm" variant="outline" onClick={() => onContractAction(record, "debt")} className="border-rose-200 text-rose-700">تحويل لمديونية</Button><Button size="sm" variant="outline" disabled={Boolean(openOperation)} onClick={() => onContractAction(record, "close")} className="border-slate-200 text-slate-700">إغلاق العقد</Button></div></div>
            </div>}
-      </DialogContent>
+          </div>
+        </DialogContent>
     </Dialog>
   )
 }
