@@ -125,7 +125,7 @@ for (const type of activeTypes) {
     lineTotal: unitPrice,
     total: unitPrice,
     isTemplate: true,
-    notes: type.category === "waste" ? "يتطلب السجل التجاري والرقم الضريبي للعميل عند إنشاء العقد." : "",
+    notes: "",
     containerTypeId: type.id,
     typeName: type.name,
     containerType: type.name,

@@ -561,6 +561,27 @@ async function validateContractPayload(payload: Record<string, unknown>, ignored
     if (site && Number(parsePayload(site.payload).customerRecordId) !== customerRecordId) {
       throw new Error("موقع العقد لا يتبع العميل المحدد");
     }
+    const customerPayload = parsePayload(customer.payload);
+    const firstNonEmpty = (...values: unknown[]) => values
+      .map(value => String(value ?? "").trim())
+      .find(Boolean) ?? "";
+    const commercialRegistration = firstNonEmpty(
+      payload.customerCommercialRegistration,
+      payload.commercialRegistration,
+      customerPayload.commercialRegistration,
+      customerPayload.commercialRegistrationNumber,
+      customerPayload.crNumber,
+      customerPayload.registrationNumber,
+    );
+    const taxNumber = firstNonEmpty(
+      payload.customerTaxNumber,
+      payload.taxNumber,
+      customerPayload.taxNumber,
+      customerPayload.vatNumber,
+      customerPayload.taxId,
+    );
+    if (!commercialRegistration) throw new Error("السجل التجاري للعميل مطلوب عند إنشاء العقد");
+    if (!taxNumber) throw new Error("الرقم الضريبي للعميل مطلوب عند إنشاء العقد");
   }
   if (await hasOverlappingContract(payload, ignoredId)) {
     throw new Error("الحاوية مرتبطة بعقد آخر خلال نفس الفترة");
@@ -1232,12 +1253,12 @@ router.post("/admin/container-system/contracts/workflow", requireContainerPermis
           .where(eq(containerSystemRecordsTable.id, customerId))
           .run();
       }
-      if (contractContainerType?.category === "waste") {
-        if (!customerCommercialRegistration || !customerTaxNumber) throw new Error("السجل التجاري والرقم الضريبي مطلوبان لعميل عقود النفايات");
-        contractPayload.customerCommercialRegistration = customerCommercialRegistration;
-        contractPayload.commercialRegistration = customerCommercialRegistration;
-        contractPayload.customerTaxNumber = customerTaxNumber;
-      }
+      if (!customerCommercialRegistration) throw new Error("السجل التجاري للعميل مطلوب عند إنشاء العقد");
+      if (!customerTaxNumber) throw new Error("الرقم الضريبي للعميل مطلوب عند إنشاء العقد");
+      contractPayload.customerCommercialRegistration = customerCommercialRegistration;
+      contractPayload.commercialRegistration = customerCommercialRegistration;
+      contractPayload.customerTaxNumber = customerTaxNumber;
+      contractPayload.taxNumber = customerTaxNumber;
       if (!isAssetlessContract && asset) {
         const assetAvailability = canonicalAssetStatus(assetPayload.status ?? asset.status, asset.status);
         if (!["available", "reserved", "active"].includes(assetAvailability)) throw new Error("الحاوية ليست متاحة للتخصيص");

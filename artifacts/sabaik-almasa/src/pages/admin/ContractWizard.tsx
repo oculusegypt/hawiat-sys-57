@@ -70,6 +70,17 @@ type FormState = {
   clauses: string[]
 }
 
+const BUSINESS_IDENTIFIER_REQUIREMENT_NOTE = "يتطلب السجل التجاري والرقم الضريبي للعميل عند إنشاء العقد."
+
+function withoutBusinessIdentifierRequirementNote(value: unknown) {
+  return String(value ?? "")
+    .split(/\r?\n/)
+    .map(line => line.trim())
+    .filter(line => line && line !== BUSINESS_IDENTIFIER_REQUIREMENT_NOTE)
+    .join("\n")
+    .trim()
+}
+
 const DEFAULT_CLAUSES = [
   "يلتزم الطرف الأول بتوفير الحاوية وتسليمها إلى الموقع المحدد في العقد، وتنفيذ خدمات النقل والتفريغ المتفق عليها.",
   "يلتزم الطرف الثاني بالمحافظة على الحاوية وعدم نقلها أو استخدامها لغير الغرض المتفق عليه دون موافقة الطرف الأول.",
@@ -406,8 +417,7 @@ export function ContractWizard({ open, records, initialCustomerId = null, initia
   const selectedContainerType = containerTypes.find(item => String(item.id) === form.containerTypeId)
   const selectedRentalLine = rentalLines.find(record => String(record.id) === form.rentalLineId)
   const isAssetlessContract = selectedContainerType?.category === "contract"
-  const isWasteContract = selectedContainerType?.category === "waste"
-  const showBusinessIdentifiers = isWasteContract || isAssetlessContract
+  const showBusinessIdentifiers = Boolean(form.customerRecordId)
   const containerSize = String(containerPayload?.size ?? containerPayload?.containerSize ?? containerPayload?.capacity ?? containerPayload?.typeName ?? "")
   const categoryOptions = selectedContainerType ? [selectedContainerType.category] : []
   const amount = Number(form.amount || 0)
@@ -513,7 +523,7 @@ export function ContractWizard({ open, records, initialCustomerId = null, initia
       trips: String(selectedLinePayload.quantity ?? current.trips),
       unitPrice: String(selectedLinePayload.unitPrice ?? (selectedType?.pricePerDay ?? current.unitPrice)),
       billingFrequency: billingFrequencyFromValue(String(selectedLinePayload.billingFrequency ?? current.billingFrequency)),
-      notes: String(selectedLinePayload.notes ?? selectedLinePayload.description ?? current.notes),
+      notes: withoutBusinessIdentifierRequirementNote(selectedLinePayload.notes ?? selectedLinePayload.description ?? current.notes),
       clauses: clausesFromLine(selectedLine, selectedType?.category, selectedType?.name),
     }))
   }
@@ -529,7 +539,7 @@ export function ContractWizard({ open, records, initialCustomerId = null, initia
       trips: String(linePayload.quantity ?? current.trips),
       unitPrice: String(linePayload.unitPrice ?? current.unitPrice),
       billingFrequency: billingFrequencyFromValue(String(linePayload.billingFrequency ?? current.billingFrequency)),
-      notes: current.notes || String(linePayload.notes ?? linePayload.description ?? ""),
+      notes: current.notes || withoutBusinessIdentifierRequirementNote(linePayload.notes ?? linePayload.description ?? ""),
       classification: String(linePayload.category ?? selectedContainerType?.category ?? current.classification),
       clauses: clausesFromLine(line, selectedContainerType?.category, selectedContainerType?.name),
     }))
@@ -568,8 +578,8 @@ export function ContractWizard({ open, records, initialCustomerId = null, initia
     if (targetStep === 1 && !form.location.trim()) return "اختر موقع العميل المسجل أو أدخل الموقع يدويًا عند عدم توفر موقع مسجل"
     if (targetStep === 1 && !form.containerTypeId) return "اختر نوع الحاوية المركزي قبل المتابعة"
     if (targetStep === 1 && !isAssetlessContract && !container) return "اختر أصلاً متاحاً من النوع المحدد قبل المتابعة"
-    if (targetStep === 1 && isWasteContract && !form.customerCommercialRegistration.trim()) return "السجل التجاري للعميل مطلوب لعقود النفايات"
-    if (targetStep === 1 && isWasteContract && !form.customerTaxNumber.trim()) return "الرقم الضريبي للعميل مطلوب لعقود النفايات"
+    if (targetStep === 1 && !form.customerCommercialRegistration.trim()) return "السجل التجاري للعميل مطلوب عند إنشاء العقد"
+    if (targetStep === 1 && !form.customerTaxNumber.trim()) return "الرقم الضريبي للعميل مطلوب عند إنشاء العقد"
     if (targetStep === 1 && !form.startDate) return "تاريخ بداية العقد مطلوب"
     if (targetStep === 1 && !form.endDate) return "تاريخ نهاية العقد مطلوب"
     if (targetStep === 1 && form.endDate < form.startDate) return "نهاية العقد يجب أن تكون بعد بدايته"
@@ -625,7 +635,7 @@ export function ContractWizard({ open, records, initialCustomerId = null, initia
       taxInclusive,
       taxEnabled: true,
       status: "active",
-      notes: form.notes.trim(),
+      notes: withoutBusinessIdentifierRequirementNote(form.notes),
       contractType: form.contractType,
       propertyNumber: form.propertyNumber.trim(),
       planNumber: form.planNumber.trim(),
@@ -692,7 +702,7 @@ export function ContractWizard({ open, records, initialCustomerId = null, initia
                 <div><Label htmlFor="contract-start">بداية العقد</Label><Input id="contract-start" type="date" value={form.startDate} onChange={event => update("startDate", event.target.value)} className="mt-2" dir="ltr" /></div>
                 <div><Label htmlFor="contract-end">نهاية العقد</Label><Input id="contract-end" type="date" value={form.endDate} onChange={event => update("endDate", event.target.value)} className="mt-2" dir="ltr" /></div>
               </div>
-              {showBusinessIdentifiers && <div className="grid gap-4 rounded-2xl border border-amber-100 bg-amber-50 p-4 sm:grid-cols-2"><div><Label htmlFor="customer-commercial-registration">السجل التجاري للعميل</Label><Input id="customer-commercial-registration" value={form.customerCommercialRegistration} onChange={event => update("customerCommercialRegistration", event.target.value)} placeholder="مثال: 1010123456" className="mt-2 bg-white" dir="ltr" /></div><div><Label htmlFor="customer-tax-number">الرقم الضريبي للعميل</Label><Input id="customer-tax-number" value={form.customerTaxNumber} onChange={event => update("customerTaxNumber", event.target.value)} placeholder="مثال: 310123456700003" className="mt-2 bg-white" dir="ltr" /></div><p className="text-[11px] leading-5 text-amber-900 sm:col-span-2">{isWasteContract ? "يتم حفظ هذه البيانات مع العقد والفاتورة، وتصبح إلزامية لعقود النفايات." : "يمكن حفظ هذه البيانات مع عقد النظافة والفاتورة عند توفرها."}</p></div>}
+               {showBusinessIdentifiers && <div className="grid gap-4 rounded-2xl border border-amber-100 bg-amber-50 p-4 sm:grid-cols-2"><div><Label htmlFor="customer-commercial-registration">السجل التجاري للعميل <span className="text-rose-600">*</span></Label><Input id="customer-commercial-registration" value={form.customerCommercialRegistration} onChange={event => update("customerCommercialRegistration", event.target.value)} placeholder="مثال: 1010123456" className="mt-2 bg-white" dir="ltr" required /></div><div><Label htmlFor="customer-tax-number">الرقم الضريبي للعميل <span className="text-rose-600">*</span></Label><Input id="customer-tax-number" value={form.customerTaxNumber} onChange={event => update("customerTaxNumber", event.target.value)} placeholder="مثال: 310123456700003" className="mt-2 bg-white" dir="ltr" required /></div><p className="text-[11px] leading-5 text-amber-900 sm:col-span-2">يتم حفظ السجل التجاري والرقم الضريبي مع العقد وبيانات العميل، ويجب إدخالهما قبل إصدار أي عقد.</p></div>}
               {container && <div className="rounded-2xl border border-cyan-100 bg-cyan-50 p-4 text-sm text-cyan-950"><b>{labelOf(container)}</b><span className="mx-2 text-cyan-500">·</span>{String(containerPayload?.typeName ?? "نوع غير محدد")}<span className="mx-2 text-cyan-500">·</span>الحالة الحالية: <Badge variant="outline" className="border-cyan-200 bg-white text-cyan-800">{recordStatusLabel(container.status)}</Badge></div>}
             </section>}
 
