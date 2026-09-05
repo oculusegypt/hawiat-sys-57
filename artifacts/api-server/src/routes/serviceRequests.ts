@@ -153,7 +153,7 @@ function isAssetlessContractWorkOrder(order: unknown) {
 }
 
 function isCleaningContractRequest(request: Pick<typeof serviceRequestsTable.$inferSelect, "serviceType">) {
-  return /عقود?\s*(?:النظافة|تنظيف)/u.test(String(request.serviceType ?? "").trim());
+  return /(?:عقد|عقود)\s*(?:ال)?(?:نظافة|تنظيف)/u.test(String(request.serviceType ?? "").trim());
 }
 
 async function prepareContainerCompletion(request: typeof serviceRequestsTable.$inferSelect) {
