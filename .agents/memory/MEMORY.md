@@ -13,3 +13,4 @@
 - [Public chat attachments](public-chat-attachments.md) — anonymous image uploads are allowed only through validation and a strict per-IP rate limit.
 - [Container category registry](container-category-registry.md) — central category and size IDs must survive seed/backfill while legacy text remains readable.
 - [Contract line central types](contract-line-central-types.md) — rental templates use central package IDs; contract creation snapshots the selected line into the same transaction and invoice.
+- [Demo asset seed legacy keys](seed-demo-assets-legacy-keys.md) — legacy seed fallbacks must never match records with an empty demo key.

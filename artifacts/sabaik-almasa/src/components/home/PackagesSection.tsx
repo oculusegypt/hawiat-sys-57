@@ -1,20 +1,27 @@
 import { motion, AnimatePresence } from "framer-motion"
+import { useEffect, useState } from "react"
 import { useGetContainers } from "@workspace/api-client-react"
 import type { Container } from "@workspace/api-client-react"
 import { useServiceRequest } from "@/context/ServiceRequestContext"
 import { useSiteSettings } from "@/context/SiteSettingsContext"
 import { PackageCard } from "@/components/home/packages/PackageCard"
+import { CategoryTabs } from "@/components/home/packages/CategoryTabs"
 
 export function PackagesSection({ initialCategory = "all" }: { initialCategory?: string }) {
   const { data: apiData, isLoading, isError, refetch } = useGetContainers()
   const { openModal } = useServiceRequest()
   const { companyName, homepageContent } = useSiteSettings()
+  const [activeCategory, setActiveCategory] = useState(initialCategory)
   const copy = homepageContent.sections?.packages
+
+  useEffect(() => {
+    setActiveCategory(initialCategory)
+  }, [initialCategory])
 
   const all: Container[] = (apiData ?? [])
     .filter((c) => c.isActive)
     .sort((a, b) => a.order - b.order)
-  const filtered = initialCategory === "all" ? all : all.filter((container) => container.category === initialCategory)
+  const filtered = activeCategory === "all" ? all : all.filter((container) => container.category === activeCategory)
 
   return (
     <section id="containers" className="py-24 bg-gray-50">
@@ -44,10 +51,12 @@ export function PackagesSection({ initialCategory = "all" }: { initialCategory?:
           </p>
         </motion.div>
 
+        <CategoryTabs activeTab={activeCategory} onSelectTab={setActiveCategory} />
+
         {/* Cards Grid */}
         <AnimatePresence mode="wait">
           <motion.div
-            key={initialCategory}
+            key={activeCategory}
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -10 }}

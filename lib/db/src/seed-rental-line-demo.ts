@@ -41,50 +41,63 @@ for (const customer of records.filter(record => record.kind === "customer" && re
 let createdAssets = 0;
 let createdLines = 0;
 
-for (const [index, type] of activeTypes.filter(item => item.category === "waste").entries()) {
-  const assetCode = `WST-${String(index + 1).padStart(3, "0")}`;
-  const payload = {
-    demoSeedKey: `waste-asset-${type.id}`,
-    assetCode,
-    typeName: type.name,
-    containerTypeId: type.id,
-    containerType: type.name,
-    category: type.category,
-    categoryName: categoryName(type.category),
-    size: type.size,
-    containerSize: type.size,
-    capacity: type.capacity,
-    pricePerDay: type.pricePerDay,
-    dailyRate: type.pricePerDay,
-    priceText: type.priceText,
-    location: "مستودع الرياض",
-    status: "available",
-    lastInspection: now.slice(0, 10),
-  };
-  const existing = records.find(record =>
-    ["container", "container_asset"].includes(record.kind) &&
-    String(parsePayload(record.payload).demoSeedKey ?? "") === payload.demoSeedKey,
-  );
-  if (existing) {
-    db.update(containerSystemRecordsTable)
-      .set({ status: "active", payload: JSON.stringify({ ...parsePayload(existing.payload), ...payload }), updatedAt: now })
-      .where(eq(containerSystemRecordsTable.id, existing.id))
-      .run();
-    continue;
+for (const type of activeTypes.filter(item => item.category === "waste")) {
+  const isCompactor = type.name.includes("مكبس");
+  const codePrefix = isCompactor ? "CMP" : "WST";
+  for (let index = 0; index < 10; index += 1) {
+    const assetCode = `${codePrefix}-${String(index + 1).padStart(3, "0")}`;
+    const demoSeedKey = `waste-asset-${type.id}-${index + 1}`;
+    const legacySeedKey = index === 0 ? `waste-asset-${type.id}` : "";
+    const payload = {
+      demoSeedKey,
+      assetCode,
+      typeName: type.name,
+      containerTypeId: type.id,
+      containerType: type.name,
+      category: type.category,
+      categoryName: categoryName(type.category),
+      size: type.size,
+      containerSize: type.size,
+      capacity: type.capacity,
+      pricePerDay: type.pricePerDay,
+      dailyRate: type.pricePerDay,
+      priceText: type.priceText,
+      location: "مستودع الرياض",
+      status: "available",
+      lastInspection: now.slice(0, 10),
+    };
+    const existing = records.find(record => {
+      if (!["container", "container_asset"].includes(record.kind)) return false;
+      const recordPayload = parsePayload(record.payload);
+      const seedKey = String(recordPayload.demoSeedKey ?? "");
+      return seedKey === demoSeedKey || Boolean(legacySeedKey) && seedKey === legacySeedKey;
+    });
+    if (existing) {
+      db.update(containerSystemRecordsTable)
+        .set({
+          status: "active",
+          reference: assetCode,
+          payload: JSON.stringify({ ...parsePayload(existing.payload), ...payload }),
+          updatedAt: now,
+        })
+        .where(eq(containerSystemRecordsTable.id, existing.id))
+        .run();
+      continue;
+    }
+    const created = db.insert(containerSystemRecordsTable).values({
+      kind: "container",
+      status: "active",
+      reference: assetCode,
+      payload: JSON.stringify(payload),
+    }).returning().get();
+    db.insert(containerSystemAuditTable).values({
+      recordId: created.id,
+      kind: "container",
+      action: "seed_demo",
+      afterPayload: created.payload,
+    }).run();
+    createdAssets += 1;
   }
-  const created = db.insert(containerSystemRecordsTable).values({
-    kind: "container",
-    status: "active",
-    reference: assetCode,
-    payload: JSON.stringify(payload),
-  }).returning().get();
-  db.insert(containerSystemAuditTable).values({
-    recordId: created.id,
-    kind: "container",
-    action: "seed_demo",
-    afterPayload: created.payload,
-  }).run();
-  createdAssets += 1;
 }
 
 for (const type of activeTypes) {

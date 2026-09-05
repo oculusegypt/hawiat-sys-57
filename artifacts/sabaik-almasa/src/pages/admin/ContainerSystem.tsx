@@ -289,6 +289,23 @@ function numericSummary(summary: Record<string, unknown> | undefined, keys: stri
   return fallback
 }
 
+type AssetCategory = "all" | "debris" | "waste" | "contract"
+
+const ASSET_CATEGORY_TABS: Array<{ key: AssetCategory; label: string }> = [
+  { key: "all", label: "كل الأصول" },
+  { key: "debris", label: "حاويات الأنقاض" },
+  { key: "waste", label: "حاويات النفايات والمكابس" },
+  { key: "contract", label: "عقود النظافة" },
+]
+
+function assetCategoryOf(record: ContainerSystemRecord): Exclude<AssetCategory, "all"> {
+  const payload = record.payload as Record<string, unknown>
+  const value = String(payload.category ?? payload.categoryName ?? payload.classification ?? payload.typeName ?? "").trim().toLowerCase()
+  if (/waste|نفايات|مكبس/.test(value)) return "waste"
+  if (/contract|نظافة|بلدي/.test(value)) return "contract"
+  return "debris"
+}
+
 function ContainerAvailabilityBoard({
   records,
   onOpen,
@@ -299,6 +316,7 @@ function ContainerAvailabilityBoard({
   onAssign: (record: ContainerSystemRecord) => void
 }) {
   const [filter, setFilter] = useState<"all" | "available" | "rented" | "maintenance" | "other">("all")
+  const [category, setCategory] = useState<AssetCategory>("all")
   const containers = records.filter(record =>
     ["container", "container_asset"].includes(record.kind) && record.status !== "archived",
   )
@@ -311,7 +329,8 @@ function ContainerAvailabilityBoard({
     maintenance: { label: "في الصيانة", tone: "border-amber-200 bg-amber-50 text-amber-800", dot: "bg-amber-500" },
     other: { label: "حالة تحتاج مراجعة", tone: "border-slate-200 bg-slate-100 text-slate-700", dot: "bg-slate-500" },
   } as const
-  const visible = filter === "all" ? containers : containers.filter(record => classify(record) === filter)
+  const categoryContainers = category === "all" ? containers : containers.filter(record => assetCategoryOf(record) === category)
+  const visible = filter === "all" ? categoryContainers : categoryContainers.filter(record => classify(record) === filter)
   const daysRemaining = (record: ContainerSystemRecord) => {
     const value = record.payload.rentalEndDate ?? record.payload.endDate ?? record.payload.returnDate ?? record.payload.emptyingDate
     if (!value) return null
@@ -320,10 +339,10 @@ function ContainerAvailabilityBoard({
     return Math.ceil((time - Date.now()) / 86400000)
   }
   const counts = {
-    available: containers.filter(record => classify(record) === "available").length,
-    rented: containers.filter(record => classify(record) === "rented").length,
-    maintenance: containers.filter(record => classify(record) === "maintenance").length,
-    other: containers.filter(record => classify(record) === "other").length,
+    available: categoryContainers.filter(record => classify(record) === "available").length,
+    rented: categoryContainers.filter(record => classify(record) === "rented").length,
+    maintenance: categoryContainers.filter(record => classify(record) === "maintenance").length,
+    other: categoryContainers.filter(record => classify(record) === "other").length,
   }
   return (
     <Card className="border-slate-200/80 shadow-[0_8px_28px_rgba(15,44,58,.05)]">
@@ -336,10 +355,26 @@ function ContainerAvailabilityBoard({
           <div className="flex flex-wrap gap-1.5 text-[11px] font-bold">
             {(["all", "available", "rented", "maintenance", "other"] as const).map(key => (
               <button key={key} type="button" onClick={() => setFilter(key)} className={`rounded-full border px-3 py-1.5 transition ${filter === key ? "border-cyan-700 bg-cyan-800 text-white" : "border-slate-200 bg-white text-slate-600 hover:border-cyan-300"}`}>
-                {key === "all" ? `الكل (${containers.length})` : `${labels[key].label} (${counts[key]})`}
+                {key === "all" ? `الكل (${categoryContainers.length})` : `${labels[key].label} (${counts[key]})`}
               </button>
             ))}
           </div>
+        </div>
+        <div className="flex flex-wrap gap-2" role="tablist" aria-label="فئات أصول الحاويات">
+          {ASSET_CATEGORY_TABS.map(tab => {
+            const count = tab.key === "all" ? containers.length : containers.filter(record => assetCategoryOf(record) === tab.key).length
+            return <button
+              key={tab.key}
+              type="button"
+              role="tab"
+              aria-selected={category === tab.key}
+              onClick={() => { setCategory(tab.key); setFilter("all") }}
+              className={`rounded-xl border px-3 py-2 text-[11px] font-black transition ${category === tab.key ? "border-cyan-800 bg-cyan-800 text-white shadow-sm" : "border-slate-200 bg-white text-slate-600 hover:border-cyan-300 hover:text-cyan-900"}`}
+              data-testid={`tab-availability-category-${tab.key}`}
+            >
+              {tab.label} <span className={category === tab.key ? "text-cyan-100" : "text-slate-400"}>({count})</span>
+            </button>
+          })}
         </div>
       </CardHeader>
       <CardContent className="p-4">
@@ -758,14 +793,32 @@ function RecordsPanel({ kind, records, allRecords = records, serviceRequests = [
 }
 
 function ContainerPOS({ records, onDetails, onEdit, onDelete, onAdd }: { records: ContainerSystemRecord[]; onDetails: (record: ContainerSystemRecord) => void; onEdit: (record: ContainerSystemRecord) => void; onDelete: (record: ContainerSystemRecord) => void; onAdd: () => void }) {
+  const [category, setCategory] = useState<AssetCategory>("all")
+  const visibleRecords = category === "all" ? records : records.filter(record => assetCategoryOf(record) === category)
   return (
     <Card className="border-slate-200/80 shadow-[0_8px_28px_rgba(15,44,58,.05)]">
       <CardHeader className="border-b border-slate-100 px-4 py-4 sm:px-5">
         <div className="flex items-center justify-between gap-3"><div><CardTitle className="text-base">مخزون الحاويات الفعلية</CardTitle><p className="mt-1 text-xs text-slate-500">عرض تشغيلي سريع لكل أصل وموقعه وحالته الحالية</p></div><Button onClick={onAdd} className="gap-2 bg-cyan-800 hover:bg-cyan-900"><Plus size={16} /> حاوية جديدة</Button></div>
+        <div className="flex flex-wrap gap-2 pt-3" role="tablist" aria-label="فئات مخزون الأصول">
+          {ASSET_CATEGORY_TABS.map(tab => {
+            const count = tab.key === "all" ? records.length : records.filter(record => assetCategoryOf(record) === tab.key).length
+            return <button
+              key={tab.key}
+              type="button"
+              role="tab"
+              aria-selected={category === tab.key}
+              onClick={() => setCategory(tab.key)}
+              className={`rounded-xl border px-3 py-2 text-[11px] font-black transition ${category === tab.key ? "border-cyan-800 bg-cyan-800 text-white shadow-sm" : "border-slate-200 bg-white text-slate-600 hover:border-cyan-300 hover:text-cyan-900"}`}
+              data-testid={`tab-container-category-${tab.key}`}
+            >
+              {tab.label} <span className={category === tab.key ? "text-cyan-100" : "text-slate-400"}>({count})</span>
+            </button>
+          })}
+        </div>
       </CardHeader>
       <CardContent className="p-4">
-        {records.length === 0 ? <EmptyState kind="container" onAdd={onAdd} /> : <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-          {records.map((record, index) => {
+        {records.length === 0 ? <EmptyState kind="container" onAdd={onAdd} /> : visibleRecords.length === 0 ? <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/70 p-10 text-center text-sm text-slate-500">عقود النظافة لا ترتبط بأصل حاوية، ولا توجد أصول ضمن هذه الفئة.</div> : <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          {visibleRecords.map((record) => {
             const payload = record.payload as Record<string, unknown>
             const code = String(payload.assetCode ?? payload.code ?? record.reference ?? `حاوية ${record.id}`)
             const customer = String(payload.customerName ?? payload.contractCustomer ?? "متاحة في المستودع")

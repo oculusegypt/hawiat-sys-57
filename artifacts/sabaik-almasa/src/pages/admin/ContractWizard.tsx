@@ -290,15 +290,23 @@ export function ContractWizard({ open, records, initialCustomerId = null, initia
     [form.containerTypeId, records],
   )
   const rentalLines = useMemo(
-    () => records.filter(record => {
-      if (record.kind !== "contract_line" || record.status === "archived") return false
-      const payload = payloadOf(record)
-      if (!form.containerTypeId) return false
-      const lineType = containerTypes.find(item => String(item.id) === String(payload.containerTypeId ?? payload.containerTypeRecordId ?? ""))
-       const lineCategory = contractCategoryKey(String(payload.category ?? payload.categoryName ?? payload.classification ?? lineType?.category ?? ""))
-      const selectedCategory = contractCategoryKey(containerTypes.find(item => String(item.id) === form.containerTypeId)?.category)
-      return Boolean(selectedCategory) && lineCategory === selectedCategory
-    }),
+    () => {
+      if (!form.containerTypeId) return []
+      const selectedType = containerTypes.find(item => String(item.id) === form.containerTypeId)
+      const selectedCategory = contractCategoryKey(selectedType?.category)
+      const lines = records.filter(record => record.kind === "contract_line" && record.status !== "archived")
+      const exactLines = lines.filter(record => {
+        const payload = payloadOf(record)
+        return String(payload.containerTypeId ?? payload.containerTypeRecordId ?? "") === form.containerTypeId
+      })
+      if (exactLines.length > 0) return exactLines
+      return lines.filter(record => {
+        const payload = payloadOf(record)
+        const lineType = containerTypes.find(item => String(item.id) === String(payload.containerTypeId ?? payload.containerTypeRecordId ?? ""))
+        const lineCategory = contractCategoryKey(String(payload.category ?? payload.categoryName ?? payload.classification ?? lineType?.category ?? ""))
+        return Boolean(selectedCategory) && lineCategory === selectedCategory && !payload.containerTypeId && !payload.containerTypeRecordId
+      })
+    },
     [containerTypes, form.containerTypeId, records],
   )
   const sites = useMemo(
@@ -378,16 +386,13 @@ export function ContractWizard({ open, records, initialCustomerId = null, initia
     const selectedType = containerTypes.find(item => String(item.id) === value)
     const currentLine = records.find(record => record.kind === "contract_line" && String(record.id) === form.rentalLineId)
     const currentLineTypeId = currentLine ? String(payloadOf(currentLine).containerTypeId ?? payloadOf(currentLine).containerTypeRecordId ?? "") : ""
-    const currentLinePayload = currentLine ? payloadOf(currentLine) : {}
-    const currentLineType = containerTypes.find(item => String(item.id) === currentLineTypeId)
-     const currentLineCategory = contractCategoryKey(String(currentLinePayload.category ?? currentLinePayload.categoryName ?? currentLinePayload.classification ?? currentLineType?.category ?? ""))
     const currentContainer = records.find(record => ["container", "container_asset"].includes(record.kind) && String(record.id) === form.containerRecordId)
     const currentContainerTypeId = currentContainer ? String(payloadOf(currentContainer).containerTypeId ?? payloadOf(currentContainer).containerTypeRecordId ?? "") : ""
     setError("")
     setForm(current => ({
       ...current,
       containerTypeId: value,
-      rentalLineId: current.rentalLineId && currentLineCategory === contractCategoryKey(selectedType?.category) ? current.rentalLineId : "",
+       rentalLineId: current.rentalLineId && currentLineTypeId === value ? current.rentalLineId : "",
       containerRecordId: selectedType?.category === "contract" ? "" : current.containerRecordId && currentContainerTypeId === value ? current.containerRecordId : "",
       contractType: selectedType ? contractCategoryLabel(selectedType.category) : "",
       classification: selectedType?.category ?? current.classification,
