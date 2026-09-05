@@ -524,7 +524,7 @@ async function hasDuplicateAssetCode(containerCode: string, ignoredId?: number) 
   );
 }
 
-async function validateContractPayload(payload: Record<string, unknown>, ignoredId?: number, allowGeneratedSite = false) {
+async function validateContractPayload(payload: Record<string, unknown>, ignoredId?: number, allowGeneratedSite = false, allowAssetless = false) {
   const startDate = String(payload.startDate ?? "").trim();
   const endDate = String(payload.endDate ?? "").trim();
   const amount = Number(payload.amount ?? 0);
@@ -536,7 +536,7 @@ async function validateContractPayload(payload: Record<string, unknown>, ignored
   }
   if (!Number.isFinite(amount) || amount < 0) throw new Error("قيمة العقد يجب أن تكون رقمًا موجبًا");
   const containerCode = String(payload.containerCode ?? "").trim();
-  if (["active", "issued", "scheduled", "delivered"].includes(lifecycleStatus) && !containerCode) {
+  if (!allowAssetless && ["active", "issued", "scheduled", "delivered"].includes(lifecycleStatus) && !containerCode) {
     throw new Error("العقد التشغيلي يجب أن يرتبط بحاوية");
   }
   if (containerCode && !(await findAssetByCode(containerCode))) {
@@ -1109,22 +1109,30 @@ router.post("/admin/container-system/contracts/workflow", requireContainerPermis
   const customerId = Number(contractPayload.customerRecordId);
   let siteId = Number(assignmentPayload.siteRecordId ?? contractPayload.siteRecordId);
   const assetId = Number(assignmentPayload.containerRecordId ?? contractPayload.containerRecordId);
-  if (![customerId, assetId].every(value => Number.isInteger(value) && value > 0)) {
-    return res.status(422).json({ error: "العميل وأصل الحاوية مطلوبان لإنشاء دورة العقد" });
+  const requestedTypeId = Number(contractPayload.containerTypeId ?? rentalLineTemplatePayload.containerTypeId ?? 0);
+  const workflowContainerType = requestedTypeId > 0
+    ? activeContainerTypes.find(item => item.id === requestedTypeId)
+    : undefined;
+  const isAssetlessContract = workflowContainerType?.category === "contract";
+  if (!Number.isInteger(customerId) || customerId <= 0 || (!isAssetlessContract && (!Number.isInteger(assetId) || assetId <= 0))) {
+    return res.status(422).json({ error: isAssetlessContract ? "العميل مطلوب لإنشاء عقد النظافة" : "العميل وأصل الحاوية مطلوبان لإنشاء دورة العقد" });
   }
   try {
-    await validateContractPayload(contractPayload, undefined, true);
+    await validateContractPayload(contractPayload, undefined, true, isAssetlessContract);
     if (await hasOverlappingContract(contractPayload)) return res.status(409).json({ error: "الحاوية مرتبطة بعقد آخر خلال نفس الفترة" });
   } catch (error) {
     return res.status(422).json({ error: "بيانات العقد غير صحيحة" });
   }
   try {
     const result = db.transaction((tx) => {
+      const now = new Date().toISOString();
       const customer = tx.select().from(containerSystemRecordsTable).where(eq(containerSystemRecordsTable.id, customerId)).get();
       let site = siteId > 0
         ? tx.select().from(containerSystemRecordsTable).where(eq(containerSystemRecordsTable.id, siteId)).get()
         : undefined;
-      const asset = tx.select().from(containerSystemRecordsTable).where(eq(containerSystemRecordsTable.id, assetId)).get();
+      const asset = assetId > 0
+        ? tx.select().from(containerSystemRecordsTable).where(eq(containerSystemRecordsTable.id, assetId)).get()
+        : undefined;
       if (!customer || customer.kind !== "customer" || customer.status === "archived") throw new Error("العميل غير موجود");
       if (!site) {
         const location = String(contractPayload.location ?? "").trim();
@@ -1149,39 +1157,71 @@ router.post("/admin/container-system/contracts/workflow", requireContainerPermis
       }
       if (site.kind !== "customer_site" || site.status === "archived") throw new Error("موقع العميل غير موجود");
       if (Number(parsePayload(site.payload).customerRecordId) !== customerId) throw new Error("الموقع لا يتبع العميل المحدد");
-      if (!asset || !["container", "container_asset"].includes(asset.kind) || asset.status === "archived") throw new Error("أصل الحاوية غير موجود");
+      if (!isAssetlessContract && (!asset || !["container", "container_asset"].includes(asset.kind) || asset.status === "archived")) throw new Error("أصل الحاوية غير موجود");
       // The record status is the lifecycle of the system record (often
       // "active"), while the asset availability is stored in its payload.
       // Check the latter so assets shown as available by the wizard can be
       // assigned by the workflow.
-      const assetPayload = parsePayload(asset.payload);
-      const requestedTypeId = Number(
+      const assetPayload = asset ? parsePayload(asset.payload) : {};
+      const selectedTypeId = Number(
         contractPayload.containerTypeId ??
         rentalLineTemplatePayload.containerTypeId ??
         assetPayload.containerTypeId ??
         assetPayload.containerTypeRecordId ??
         0,
       );
-      const contractContainerType = requestedTypeId > 0
-        ? activeContainerTypes.find(item => item.id === requestedTypeId)
+      const contractContainerType = selectedTypeId > 0
+        ? activeContainerTypes.find(item => item.id === selectedTypeId)
+        : undefined;
+      const customerPayload = parsePayload(customer.payload);
+      const templateType = Number(rentalLineTemplatePayload.containerTypeId) > 0
+        ? activeContainerTypes.find(item => item.id === Number(rentalLineTemplatePayload.containerTypeId))
         : undefined;
       if (rentalLineTemplateId > 0 && !contractContainerType) throw new Error("نوع الحاوية المركزي المرتبط بنموذج البند غير موجود");
-      if (rentalLineTemplateId > 0 && Number(rentalLineTemplatePayload.containerTypeId) > 0 &&
-          Number(rentalLineTemplatePayload.containerTypeId) !== Number(contractContainerType?.id)) {
-        throw new Error("نموذج بند الإيجار لا يتبع نوع الحاوية المختار");
+      if (rentalLineTemplateId > 0 && templateType && templateType.category !== contractContainerType?.category) {
+        throw new Error("نموذج بند الإيجار لا يتبع فئة نوع الحاوية المختار");
       }
       if (contractContainerType) applyContainerTypePayload(contractPayload, contractContainerType);
-      const assetAvailability = canonicalAssetStatus(assetPayload.status ?? asset.status, asset.status);
-      if (!["available", "reserved", "active"].includes(assetAvailability)) throw new Error("الحاوية ليست متاحة للتخصيص");
+      const suppliedCommercialRegistration = String(
+        contractPayload.customerCommercialRegistration ?? contractPayload.commercialRegistration ?? "",
+      ).trim();
+      const suppliedTaxNumber = String(contractPayload.customerTaxNumber ?? "").trim();
+      const customerCommercialRegistration = suppliedCommercialRegistration ||
+        String(customerPayload.commercialRegistration ?? customerPayload.crNumber ?? "").trim();
+      const customerTaxNumber = suppliedTaxNumber ||
+        String(customerPayload.taxNumber ?? customerPayload.vatNumber ?? customerPayload.taxId ?? "").trim();
+      if (suppliedCommercialRegistration) {
+        customerPayload.commercialRegistration = suppliedCommercialRegistration;
+      }
+      if (suppliedTaxNumber) {
+        customerPayload.taxNumber = suppliedTaxNumber;
+      }
+      if (suppliedCommercialRegistration || suppliedTaxNumber) {
+        tx.update(containerSystemRecordsTable)
+          .set({ payload: JSON.stringify(customerPayload), updatedAt: now })
+          .where(eq(containerSystemRecordsTable.id, customerId))
+          .run();
+      }
+      if (contractContainerType?.category === "waste") {
+        if (!customerCommercialRegistration || !customerTaxNumber) throw new Error("السجل التجاري والرقم الضريبي مطلوبان لعميل عقود النفايات");
+        contractPayload.customerCommercialRegistration = customerCommercialRegistration;
+        contractPayload.commercialRegistration = customerCommercialRegistration;
+        contractPayload.customerTaxNumber = customerTaxNumber;
+      }
+      if (!isAssetlessContract && asset) {
+        const assetAvailability = canonicalAssetStatus(assetPayload.status ?? asset.status, asset.status);
+        if (!["available", "reserved", "active"].includes(assetAvailability)) throw new Error("الحاوية ليست متاحة للتخصيص");
+      }
       contractPayload.siteRecordId = siteId;
       assignmentPayload.siteRecordId = siteId;
-      const activeAssignment = tx.select().from(containerSystemRecordsTable).all().find(record =>
-        record.kind === "container_assignment" && record.status !== "archived" &&
-        ["reserved", "active"].includes(String(parsePayload(record.payload).assignmentStatus ?? record.status)) &&
-        Number(parsePayload(record.payload).containerRecordId) === assetId,
-      );
+      const activeAssignment = assetId > 0
+        ? tx.select().from(containerSystemRecordsTable).all().find(record =>
+            record.kind === "container_assignment" && record.status !== "archived" &&
+            ["reserved", "active"].includes(String(parsePayload(record.payload).assignmentStatus ?? record.status)) &&
+            Number(parsePayload(record.payload).containerRecordId) === assetId,
+          )
+        : undefined;
       if (activeAssignment) throw new Error("الحاوية مرتبطة بتخصيص نشط بالفعل");
-      const now = new Date().toISOString();
       const contract = tx.insert(containerSystemRecordsTable).values({
         kind: "contract", status: "active", reference: referenceFor("contract", contractPayload, Date.now()),
         payload: JSON.stringify(contractPayload), operationKey: operationKey || null, createdBy: adminReq.adminId,
@@ -1192,21 +1232,23 @@ router.post("/admin/container-system/contracts/workflow", requireContainerPermis
         payload: JSON.stringify({ ...contractPayload, contractNumber }),
         updatedAt: now,
       }).where(eq(containerSystemRecordsTable.id, contract.id)).returning().get();
-      const assignment = tx.insert(containerSystemRecordsTable).values({
-        kind: "container_assignment", status: "reserved",
-        reference: referenceFor("container_assignment", assignmentPayload, Date.now()),
-        payload: JSON.stringify({ ...assignmentPayload, contractRecordId: contract.id, siteRecordId: siteId, containerRecordId: assetId, contractNumber, assignmentStatus: "reserved" }),
-        createdBy: adminReq.adminId,
-      }).returning().get();
-      const nextAssetPayload = { ...assetPayload, assignmentRecordId: assignment.id, assignedContractRecordId: contract.id, assignedSiteRecordId: siteId };
-      tx.update(containerSystemRecordsTable).set({ status: "reserved", payload: JSON.stringify(nextAssetPayload), updatedAt: now }).where(eq(containerSystemRecordsTable.id, assetId)).run();
+      let assignment: typeof containerSystemRecordsTable.$inferSelect | null = null;
+      if (asset) {
+        assignment = tx.insert(containerSystemRecordsTable).values({
+          kind: "container_assignment", status: "reserved",
+          reference: referenceFor("container_assignment", assignmentPayload, Date.now()),
+          payload: JSON.stringify({ ...assignmentPayload, contractRecordId: contract.id, siteRecordId: siteId, containerRecordId: assetId, contractNumber, assignmentStatus: "reserved" }),
+          createdBy: adminReq.adminId,
+        }).returning().get();
+        const nextAssetPayload = { ...assetPayload, assignmentRecordId: assignment.id, assignedContractRecordId: contract.id, assignedSiteRecordId: siteId };
+        tx.update(containerSystemRecordsTable).set({ status: "reserved", payload: JSON.stringify(nextAssetPayload), updatedAt: now }).where(eq(containerSystemRecordsTable.id, assetId)).run();
+      }
       const appointment = tx.insert(containerSystemRecordsTable).values({
         kind: "appointment", status: "scheduled",
         reference: referenceFor("appointment", appointmentPayload, Date.now()),
-        payload: JSON.stringify({ ...appointmentPayload, contractRecordId: contract.id, contractNumber, customerRecordId: customerId, containerRecordId: assetId }),
+         payload: JSON.stringify({ ...appointmentPayload, contractRecordId: contract.id, contractNumber, customerRecordId: customerId, containerRecordId: assetId || null }),
         createdBy: adminReq.adminId,
       }).returning().get();
-      const customerPayload = parsePayload(customer.payload);
       let serviceRequest;
       if (existingRequestId > 0) {
         serviceRequest = tx.select().from(serviceRequestsTable).where(eq(serviceRequestsTable.id, existingRequestId)).get();
@@ -1216,7 +1258,7 @@ router.post("/admin/container-system/contracts/workflow", requireContainerPermis
         }
         serviceRequest = tx.update(serviceRequestsTable).set({
           customerRecordId: customerId,
-          containerRecordId: assetId,
+          containerRecordId: assetId > 0 ? assetId : null,
           contractRecordId: contract.id,
           updatedAt: now,
         }).where(eq(serviceRequestsTable.id, existingRequestId)).returning().get();
@@ -1230,14 +1272,14 @@ router.post("/admin/container-system/contracts/workflow", requireContainerPermis
         workOrderNumber: `WO-${String(contract.id).padStart(6, "0")}`,
         customerRecordId: customerId,
         contractRecordId: contract.id,
-        containerRecordId: assetId,
+         containerRecordId: assetId || null,
         siteRecordId: siteId,
         customerName: String(servicePayload.clientName ?? customerPayload.name ?? customerPayload.customerName ?? ""),
         phone: String(servicePayload.phone ?? customerPayload.phone ?? ""),
         email: String(servicePayload.email ?? customerPayload.email ?? ""),
-        operationType: String(appointmentPayload.appointmentType ?? "delivery") === "pickup" ? "PICKUP_CONTAINER" : "DELIVER_CONTAINER",
+        operationType: isAssetlessContract ? "CLEANING_CONTRACT" : String(appointmentPayload.appointmentType ?? "delivery") === "pickup" ? "PICKUP_CONTAINER" : "DELIVER_CONTAINER",
         serviceType: String(servicePayload.serviceType ?? "تسليم حاوية"),
-        containerCode: String(contractPayload.containerCode ?? assetPayload.assetCode ?? assetPayload.code ?? asset.reference ?? ""),
+        containerCode: String(contractPayload.containerCode ?? assetPayload.assetCode ?? assetPayload.code ?? asset?.reference ?? ""),
         location: String(servicePayload.location ?? contractPayload.location ?? "يحدد لاحقًا"),
         notes: String(servicePayload.notes ?? contractPayload.notes ?? ""),
         appointmentRecordId: appointment.id,
@@ -1281,9 +1323,11 @@ router.post("/admin/container-system/contracts/workflow", requireContainerPermis
           contractNumber,
           customerRecordId: customerId,
           customerName: String(customerPayload.name ?? customerPayload.customerName ?? ""),
+          customerCommercialRegistration,
+          customerTaxNumber,
           siteRecordId: siteId,
-          containerRecordId: assetId,
-          containerCode: String(contractPayload.containerCode ?? assetPayload.assetCode ?? assetPayload.code ?? asset.reference ?? ""),
+          containerRecordId: assetId || null,
+          containerCode: String(contractPayload.containerCode ?? assetPayload.assetCode ?? assetPayload.code ?? asset?.reference ?? ""),
           rentalLineTemplateId: rentalLineTemplateId || null,
           lineName: String(template.lineName ?? template.description ?? template.serviceType ?? `بند ${contractContainerType.name}`),
           serviceType: String(template.serviceType ?? contractPayload.serviceType ?? "إيجار حاوية"),
@@ -1335,7 +1379,7 @@ router.post("/admin/container-system/contracts/workflow", requireContainerPermis
             const taxEnabled = contractPayload.taxEnabled === true || ["true", "1", "yes", "نعم"].includes(String(contractPayload.taxEnabled ?? "").toLowerCase());
             const taxAmount = taxEnabled ? Number(contractPayload.taxAmount ?? Math.round(subtotal * taxRate / 100 * 100) / 100) : 0;
             const total = taxEnabled ? Number(contractPayload.total ?? Math.round((subtotal + taxAmount) * 100) / 100) : subtotal;
-          const containerCode = String(contractPayload.containerCode ?? assetPayload.assetCode ?? assetPayload.code ?? asset.reference ?? "");
+          const containerCode = String(contractPayload.containerCode ?? assetPayload.assetCode ?? assetPayload.code ?? asset?.reference ?? "");
           const containerType = String(contractPayload.containerType ?? assetPayload.typeName ?? assetPayload.containerType ?? assetPayload.size ?? "");
           const contractLocation = String(contractPayload.location ?? parsePayload(site.payload).address ?? "").trim();
           const rentalLinePayload = rentalLine ? parsePayload(rentalLine.payload) : undefined;
@@ -1364,12 +1408,13 @@ router.post("/admin/container-system/contracts/workflow", requireContainerPermis
             customerRecordId: customerId,
             customerName: String(customerPayload.name ?? customerPayload.customerName ?? ""),
             customerPhone: String(customerPayload.phone ?? customerPayload.mobile ?? ""),
-            customerTaxNumber: String(customerPayload.taxNumber ?? customerPayload.vatNumber ?? ""),
+            customerCommercialRegistration,
+            customerTaxNumber,
             customerAddress: String(customerPayload.address ?? customerPayload.location ?? ""),
             serviceAddress: contractLocation,
             location: contractLocation,
             siteRecordId: siteId,
-            containerRecordId: assetId,
+            containerRecordId: assetId || null,
             containerCode,
             containerType,
             billingPeriod,
@@ -1415,12 +1460,12 @@ router.post("/admin/container-system/contracts/workflow", requireContainerPermis
           }).run();
         }
       }
-      for (const record of [finalizedContract, assignment, appointment, workOrder, ...(rentalLine ? [rentalLine] : [])]) {
+      for (const record of [finalizedContract, ...(assignment ? [assignment] : []), appointment, workOrder, ...(rentalLine ? [rentalLine] : [])]) {
         tx.insert(containerSystemAuditTable).values({ recordId: record.id, kind: record.kind, action: "workflow_create", afterPayload: record.payload, actorId: adminReq.adminId }).run();
       }
       return { contract: finalizedContract, assignment, appointment, workOrder, serviceRequest, invoice, rentalLine };
     });
-    return res.status(201).json({ contract: formatRecord(result.contract), assignment: formatRecord(result.assignment), appointment: formatRecord(result.appointment), workOrder: formatRecord(result.workOrder), serviceRequest: result.serviceRequest ?? null, invoice: result.invoice ? formatRecord(result.invoice) : null, rentalLine: result.rentalLine ? formatRecord(result.rentalLine) : null, idempotent: false });
+    return res.status(201).json({ contract: formatRecord(result.contract), assignment: result.assignment ? formatRecord(result.assignment) : null, appointment: formatRecord(result.appointment), workOrder: formatRecord(result.workOrder), serviceRequest: result.serviceRequest ?? null, invoice: result.invoice ? formatRecord(result.invoice) : null, rentalLine: result.rentalLine ? formatRecord(result.rentalLine) : null, idempotent: false });
   } catch (error) {
     return res.status(422).json({ error: "تعذر إنشاء دورة العقد كاملة" });
   }

@@ -191,6 +191,7 @@ export const FIELD_CONFIG: Record<RecordKind, FieldConfig[]> = {
     { key: "name", label: "اسم العميل", placeholder: "شركة أو اسم العميل" },
     { key: "phone", label: "رقم الجوال", placeholder: "05xxxxxxxx", type: "text" },
     { key: "city", label: "المدينة", placeholder: "الرياض" },
+    { key: "commercialRegistration", label: "السجل التجاري", placeholder: "1010123456" },
     { key: "taxNumber", label: "الرقم الضريبي", placeholder: "اختياري" },
     { key: "notes", label: "ملاحظات", type: "textarea", wide: true },
   ],
@@ -1053,7 +1054,7 @@ export function RecordDialog({
   const [formError, setFormError] = useState("")
   const [createdCustomers, setCreatedCustomers] = useState<ContainerSystemRecord[]>([])
   const [newCustomerOpen, setNewCustomerOpen] = useState(false)
-  const [newCustomer, setNewCustomer] = useState({ name: "", phone: "", email: "" })
+   const [newCustomer, setNewCustomer] = useState({ name: "", phone: "", email: "", commercialRegistration: "", taxNumber: "" })
   const [newCustomerError, setNewCustomerError] = useState("")
   const createCustomerMutation = useCreateContainerSystemRecord()
   const { data: containerTypes = [] } = useGetContainers()
@@ -1293,13 +1294,13 @@ export function RecordDialog({
       data: {
         kind: "customer",
         status: "active",
-        payload: { name, phone, email: newCustomer.email.trim(), city: "الرياض" },
+         payload: { name, phone, email: newCustomer.email.trim(), commercialRegistration: newCustomer.commercialRegistration.trim(), taxNumber: newCustomer.taxNumber.trim(), city: "الرياض" },
       },
     }, {
       onSuccess: customer => {
         setCreatedCustomers(current => [...current, customer])
         selectCustomer(customer)
-        setNewCustomer({ name: "", phone: "", email: "" })
+         setNewCustomer({ name: "", phone: "", email: "", commercialRegistration: "", taxNumber: "" })
         setNewCustomerError("")
         setNewCustomerOpen(false)
       },
@@ -1886,6 +1887,8 @@ export function RecordDialog({
             <div><Label htmlFor="quick-customer-name">اسم العميل</Label><Input id="quick-customer-name" value={newCustomer.name} onChange={event => setNewCustomer(current => ({ ...current, name: event.target.value }))} className="mt-1.5" required /></div>
             <div><Label htmlFor="quick-customer-phone">رقم الجوال</Label><Input id="quick-customer-phone" value={newCustomer.phone} onChange={event => setNewCustomer(current => ({ ...current, phone: event.target.value }))} className="mt-1.5" dir="ltr" required /></div>
             <div><Label htmlFor="quick-customer-email">البريد الإلكتروني (اختياري)</Label><Input id="quick-customer-email" value={newCustomer.email} onChange={event => setNewCustomer(current => ({ ...current, email: event.target.value }))} className="mt-1.5" dir="ltr" /></div>
+            <div><Label htmlFor="quick-customer-commercial-registration">السجل التجاري (اختياري)</Label><Input id="quick-customer-commercial-registration" value={newCustomer.commercialRegistration} onChange={event => setNewCustomer(current => ({ ...current, commercialRegistration: event.target.value }))} className="mt-1.5" dir="ltr" /></div>
+            <div><Label htmlFor="quick-customer-tax-number">الرقم الضريبي (اختياري)</Label><Input id="quick-customer-tax-number" value={newCustomer.taxNumber} onChange={event => setNewCustomer(current => ({ ...current, taxNumber: event.target.value }))} className="mt-1.5" dir="ltr" /></div>
             {newCustomerError && <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-bold text-rose-700">{newCustomerError}</p>}
           </div>
           <DialogFooter className="flex-row-reverse gap-2">

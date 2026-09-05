@@ -23,6 +23,7 @@ const demo = [
       name: "شركة البناء المتين",
       phone: "0501234567",
       city: "الرياض",
+      commercialRegistration: "1010123456",
       taxNumber: "310123456700003",
       customerType: "شركة",
       balance: 4200,
@@ -35,6 +36,7 @@ const demo = [
       name: "مؤسسة مدار للمقاولات",
       phone: "0557891234",
       city: "الخرج",
+      commercialRegistration: "2050112233",
       taxNumber: "310987654300003",
       customerType: "مؤسسة",
       balance: 0,
@@ -69,16 +71,6 @@ const demo = [
       typeName: "حاوية أنقاض 20 ياردة",
       location: "مشروع البناء المتين",
       lastInspection: daysFromNow(-4),
-    },
-  ],
-  [
-    "container",
-    "available",
-    {
-      assetCode: "CNT-103",
-      typeName: "حاوية مغلقة للنفايات",
-      location: "مستودع الخرج",
-      lastInspection: daysFromNow(-15),
     },
   ],
   [
@@ -939,6 +931,64 @@ const extendedDemo = [
   const seededCategoryIds = new Map<string, number>();
   const seededSizeIds = new Map<string, number>();
   const containerTypes = db.select().from(packagesTable).all();
+  const demoWasteAssets = containerTypes
+    .filter(type => type.isActive && type.category === "waste")
+    .map((type, index) => [
+      "container",
+      "available",
+      {
+        demoSeedKey: `waste-asset-${type.id}`,
+        assetCode: `WST-${String(index + 1).padStart(3, "0")}`,
+        typeName: type.name,
+        location: "مستودع الرياض",
+        lastInspection: daysFromNow(-3),
+      },
+    ] as const);
+  const demoRentalLines = containerTypes
+    .filter(type => type.isActive)
+    .map(type => {
+      const unitPrice = type.category === "debris"
+        ? Math.max(type.pricePerDay, 450)
+        : type.category === "waste"
+          ? (type.name.includes("مكبس") ? 850 : 550)
+          : 3200;
+      const serviceType = type.category === "debris"
+        ? "توصيل ورفع حاوية أنقاض"
+        : type.category === "waste"
+          ? "تجميع ورفع حاوية نفايات"
+          : "عقد نظافة وتشغيل حاويات";
+      return [
+        "contract_line",
+        "active",
+        {
+          demoSeedKey: `rental-line-${type.id}`,
+          lineName: `${serviceType} — ${type.name}`,
+          serviceType,
+          billingFrequency: type.category === "contract" ? "monthly" : "per_trip",
+          quantity: 1,
+          unitPrice,
+          amount: unitPrice,
+          taxRate: 15,
+          taxEnabled: false,
+          taxAmount: 0,
+          lineTotal: unitPrice,
+          total: unitPrice,
+          isTemplate: true,
+          notes: type.category === "waste" ? "يتطلب السجل التجاري والرقم الضريبي للعميل عند إنشاء العقد." : "",
+          containerTypeId: type.id,
+          typeName: type.name,
+          containerType: type.name,
+          category: type.category,
+          categoryName: type.category === "debris" ? "حاويات الأنقاض ومخلفات البناء" : type.category === "waste" ? "حاويات النفايات والمكابس" : "عقود النظافة ورخص بلدي",
+          size: type.size,
+          containerSize: type.size,
+          capacity: type.capacity,
+          pricePerDay: type.pricePerDay,
+          dailyRate: type.pricePerDay,
+          priceText: type.priceText,
+        },
+      ] as const;
+    });
   const resolveContainerType = (payload: Record<string, unknown>) => {
     const requestedName = String(payload.typeName ?? payload.containerType ?? "").trim();
     const requestedSize = String(payload.size ?? "").trim();
@@ -957,6 +1007,8 @@ const extendedDemo = [
     ...demo,
     ...linkedDemo,
     ...extendedDemo,
+    ...demoWasteAssets,
+    ...demoRentalLines,
   ]) {
     const payloadRecord = { ...(payload as Record<string, unknown>) };
     if (kind === "category_size") {
@@ -973,6 +1025,20 @@ const extendedDemo = [
         payloadRecord.category = type.category;
         payloadRecord.categoryName = type.category === "waste" ? "حاويات النفايات والمكابس" : "حاويات الأنقاض ومخلفات البناء";
         payloadRecord.size = type.size;
+        payloadRecord.capacity = type.capacity;
+        payloadRecord.pricePerDay = type.pricePerDay;
+        payloadRecord.dailyRate = type.pricePerDay;
+      }
+    }
+    if (kind === "contract_line") {
+      const type = containerTypes.find(item => item.id === Number(payloadRecord.containerTypeId));
+      if (type) {
+        payloadRecord.typeName = type.name;
+        payloadRecord.containerType = type.name;
+        payloadRecord.category = type.category;
+        payloadRecord.categoryName = type.category === "debris" ? "حاويات الأنقاض ومخلفات البناء" : type.category === "waste" ? "حاويات النفايات والمكابس" : "عقود النظافة ورخص بلدي";
+        payloadRecord.size = type.size;
+        payloadRecord.containerSize = type.size;
         payloadRecord.capacity = type.capacity;
         payloadRecord.pricePerDay = type.pricePerDay;
         payloadRecord.dailyRate = type.pricePerDay;

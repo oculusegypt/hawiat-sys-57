@@ -51,6 +51,8 @@ type FormState = {
   requestId: string
   customerPhone: string
   customerEmail: string
+  customerCommercialRegistration: string
+  customerTaxNumber: string
   serviceType: string
   containerSize: string
   location: string
@@ -97,6 +99,8 @@ const initialForm: FormState = {
   requestId: "",
   customerPhone: "",
   customerEmail: "",
+  customerCommercialRegistration: "",
+  customerTaxNumber: "",
   serviceType: "",
   containerSize: "",
   location: "",
@@ -146,6 +150,14 @@ function contractCategoryLabel(category?: string | null) {
   if (category === "waste") return "نفايات"
   if (category === "contract") return "عقود نظافة"
   return category || "—"
+}
+
+function contractCategoryKey(value?: string | null) {
+  const normalized = String(value ?? "").trim().toLowerCase()
+  if (/debris|أنقاض|مخلفات بناء/.test(normalized)) return "debris"
+  if (/waste|نفايات|مكبس/.test(normalized)) return "waste"
+  if (/contract|نظافة/.test(normalized)) return "contract"
+  return normalized
 }
 
 function MapPicker({ initialCoordinates, onSelect }: { initialCoordinates: string; onSelect: (coordinates: string, address: string) => void }) {
@@ -251,6 +263,8 @@ export function ContractWizard({ open, records, initialCustomerId = null, initia
       endDate,
       customerPhone: initialRequest?.phone ?? "",
       customerEmail: initialRequest?.email ?? "",
+      customerCommercialRegistration: String(requestCustomer ? payloadOf(requestCustomer).commercialRegistration ?? payloadOf(requestCustomer).crNumber ?? "" : ""),
+      customerTaxNumber: String(requestCustomer ? payloadOf(requestCustomer).taxNumber ?? payloadOf(requestCustomer).vatNumber ?? payloadOf(requestCustomer).taxId ?? "" : ""),
       serviceType: initialRequest?.serviceType ?? "",
       containerSize: initialRequest?.containerSize ?? "",
       location: initialRequest?.location ?? "",
@@ -280,9 +294,12 @@ export function ContractWizard({ open, records, initialCustomerId = null, initia
       if (record.kind !== "contract_line" || record.status === "archived") return false
       const payload = payloadOf(record)
       if (!form.containerTypeId) return false
-      return String(payload.containerTypeId ?? payload.containerTypeRecordId ?? "") === form.containerTypeId
+      const lineType = containerTypes.find(item => String(item.id) === String(payload.containerTypeId ?? payload.containerTypeRecordId ?? ""))
+       const lineCategory = contractCategoryKey(String(payload.category ?? payload.categoryName ?? payload.classification ?? lineType?.category ?? ""))
+      const selectedCategory = contractCategoryKey(containerTypes.find(item => String(item.id) === form.containerTypeId)?.category)
+      return Boolean(selectedCategory) && lineCategory === selectedCategory
     }),
-    [form.containerTypeId, records],
+    [containerTypes, form.containerTypeId, records],
   )
   const sites = useMemo(
     () => records.filter(record => record.kind === "customer_site" && record.status !== "archived" && (!form.customerRecordId || String(payloadOf(record).customerRecordId) === form.customerRecordId)),
@@ -295,6 +312,9 @@ export function ContractWizard({ open, records, initialCustomerId = null, initia
   const containerPayload = container ? payloadOf(container) : undefined
   const selectedContainerType = containerTypes.find(item => String(item.id) === form.containerTypeId)
   const selectedRentalLine = rentalLines.find(record => String(record.id) === form.rentalLineId)
+  const isAssetlessContract = selectedContainerType?.category === "contract"
+  const isWasteContract = selectedContainerType?.category === "waste"
+  const showBusinessIdentifiers = isWasteContract || isAssetlessContract
   const containerCategory = String(containerPayload?.category ?? containerPayload?.classification ?? containerPayload?.categoryName ?? "")
   const containerSize = String(containerPayload?.size ?? containerPayload?.containerSize ?? containerPayload?.capacity ?? containerPayload?.typeName ?? "")
   const categoryOptions = Array.from(new Set([
@@ -322,6 +342,12 @@ export function ContractWizard({ open, records, initialCustomerId = null, initia
     if (key === "unitPrice" || key === "trips" || key === "amount" || key === "pricingMode") setPriceConfirmed(false)
     setForm(current => {
       const next = { ...current, [key]: value, ...(key === "customerRecordId" ? { siteRecordId: "" } : {}) }
+      if (key === "customerRecordId") {
+        const selectedCustomer = customers.find(record => String(record.id) === value)
+        const selectedPayload = selectedCustomer ? payloadOf(selectedCustomer) : {}
+        next.customerCommercialRegistration = String(selectedPayload.commercialRegistration ?? selectedPayload.crNumber ?? "")
+        next.customerTaxNumber = String(selectedPayload.taxNumber ?? selectedPayload.vatNumber ?? selectedPayload.taxId ?? "")
+      }
       if (key === "startDate" || key === "billingFrequency") {
         next.endDate = endDateFromBillingFrequency(
           key === "startDate" ? value : next.startDate,
@@ -352,14 +378,17 @@ export function ContractWizard({ open, records, initialCustomerId = null, initia
     const selectedType = containerTypes.find(item => String(item.id) === value)
     const currentLine = records.find(record => record.kind === "contract_line" && String(record.id) === form.rentalLineId)
     const currentLineTypeId = currentLine ? String(payloadOf(currentLine).containerTypeId ?? payloadOf(currentLine).containerTypeRecordId ?? "") : ""
+    const currentLinePayload = currentLine ? payloadOf(currentLine) : {}
+    const currentLineType = containerTypes.find(item => String(item.id) === currentLineTypeId)
+     const currentLineCategory = contractCategoryKey(String(currentLinePayload.category ?? currentLinePayload.categoryName ?? currentLinePayload.classification ?? currentLineType?.category ?? ""))
     const currentContainer = records.find(record => ["container", "container_asset"].includes(record.kind) && String(record.id) === form.containerRecordId)
     const currentContainerTypeId = currentContainer ? String(payloadOf(currentContainer).containerTypeId ?? payloadOf(currentContainer).containerTypeRecordId ?? "") : ""
     setError("")
     setForm(current => ({
       ...current,
       containerTypeId: value,
-      rentalLineId: current.rentalLineId && currentLineTypeId === value ? current.rentalLineId : "",
-      containerRecordId: current.containerRecordId && currentContainerTypeId === value ? current.containerRecordId : "",
+      rentalLineId: current.rentalLineId && currentLineCategory === contractCategoryKey(selectedType?.category) ? current.rentalLineId : "",
+      containerRecordId: selectedType?.category === "contract" ? "" : current.containerRecordId && currentContainerTypeId === value ? current.containerRecordId : "",
       contractType: selectedType ? contractCategoryLabel(selectedType.category) : "",
       classification: selectedType?.category ?? current.classification,
       containerSize: selectedType?.size ?? current.containerSize,
@@ -415,7 +444,9 @@ export function ContractWizard({ open, records, initialCustomerId = null, initia
     if (targetStep === 0 && !customer) return "اختر عميلاً مسجلاً قبل المتابعة"
     if (targetStep === 1 && !form.location.trim()) return "أدخل الموقع يدويًا أو حدده من الخريطة"
     if (targetStep === 1 && !form.containerTypeId) return "اختر نوع الحاوية المركزي قبل المتابعة"
-    if (targetStep === 1 && !container) return "اختر أصلاً متاحاً من النوع المحدد قبل المتابعة"
+    if (targetStep === 1 && !isAssetlessContract && !container) return "اختر أصلاً متاحاً من النوع المحدد قبل المتابعة"
+    if (targetStep === 1 && isWasteContract && !form.customerCommercialRegistration.trim()) return "السجل التجاري للعميل مطلوب لعقود النفايات"
+    if (targetStep === 1 && isWasteContract && !form.customerTaxNumber.trim()) return "الرقم الضريبي للعميل مطلوب لعقود النفايات"
     if (targetStep === 1 && !form.startDate) return "تاريخ بداية العقد مطلوب"
     if (targetStep === 1 && !form.endDate) return "تاريخ نهاية العقد مطلوب"
     if (targetStep === 1 && form.endDate < form.startDate) return "نهاية العقد يجب أن تكون بعد بدايته"
@@ -454,34 +485,38 @@ export function ContractWizard({ open, records, initialCustomerId = null, initia
       customerName: String(customerPayload?.name ?? customerPayload?.customerName ?? ""),
       customerPhone: String(customerPayload?.phone ?? form.customerPhone ?? ""),
       customerEmail: String(customerPayload?.email ?? form.customerEmail ?? ""),
-      containerRecordId: container?.id,
-       containerTypeId: selectedContainerType?.id ?? Number(form.containerTypeId),
-       rentalLineRecordId: selectedRentalLine?.id ?? (form.rentalLineId ? Number(form.rentalLineId) : null),
+      commercialRegistration: form.customerCommercialRegistration.trim(),
+      customerCommercialRegistration: form.customerCommercialRegistration.trim(),
+      customerTaxNumber: form.customerTaxNumber.trim(),
+      containerRecordId: isAssetlessContract ? null : container?.id,
+      containerTypeId: selectedContainerType?.id ?? Number(form.containerTypeId),
+      rentalLineRecordId: selectedRentalLine?.id ?? (form.rentalLineId ? Number(form.rentalLineId) : null),
       containerCode: String(containerPayload?.assetCode ?? containerPayload?.code ?? ""),
       contractNumber: form.contractNumber.trim(),
       startDate: form.startDate,
       endDate: form.endDate,
-       amount: netAmount,
+      amount: netAmount,
       taxRate,
       taxAmount,
       total,
-       taxInclusive,
+      taxInclusive,
+      taxEnabled: true,
       status: "active",
       notes: form.notes.trim(),
-       contractType: form.contractType,
-       propertyNumber: form.propertyNumber.trim(),
-       planNumber: form.planNumber.trim(),
-       classification: form.classification.trim(),
-       trips: form.trips ? Number(form.trips) : null,
-       unitPrice: form.unitPrice ? Number(form.unitPrice) : null,
-       contractTerms: form.clauses.filter(Boolean),
-       location: form.location.trim() || String(site ? payloadOf(site).address ?? "" : ""),
-       locationCoordinates: form.locationCoordinates,
-       locationMode: form.locationMode,
-       serviceType: form.serviceType,
-       containerSize: form.containerSize,
-       duration: form.billingFrequency === "daily" ? "يومي" : form.billingFrequency === "weekly" ? "أسبوعي" : form.billingFrequency === "yearly" ? "سنوي" : "شهري",
-       billingFrequency: form.billingFrequency,
+      contractType: form.contractType,
+      propertyNumber: form.propertyNumber.trim(),
+      planNumber: form.planNumber.trim(),
+      classification: form.classification.trim(),
+      trips: form.trips ? Number(form.trips) : null,
+      unitPrice: form.unitPrice ? Number(form.unitPrice) : null,
+      contractTerms: form.clauses.filter(Boolean),
+      location: form.location.trim() || String(site ? payloadOf(site).address ?? "" : ""),
+      locationCoordinates: form.locationCoordinates,
+      locationMode: form.locationMode,
+      serviceType: form.serviceType,
+      containerSize: form.containerSize,
+      duration: form.billingFrequency === "daily" ? "يومي" : form.billingFrequency === "weekly" ? "أسبوعي" : form.billingFrequency === "yearly" ? "سنوي" : "شهري",
+      billingFrequency: form.billingFrequency,
       createdFrom: "contract_workflow",
       appointmentDate: form.appointmentDate,
       appointmentTime: form.appointmentTime,
@@ -517,14 +552,14 @@ export function ContractWizard({ open, records, initialCustomerId = null, initia
             </section>}
 
             {step === 1 && <section className="space-y-4">
-               <div><h3 className="font-black text-slate-900">بيانات العقد والتخصيص</h3><p className="mt-1 text-sm text-slate-500">لا يمكن إصدار عقد تشغيلي دون موقع عميل وأصل متاح وفترة واضحة.</p></div>
+                <div><h3 className="font-black text-slate-900">بيانات العقد والتخصيص</h3><p className="mt-1 text-sm text-slate-500">{isAssetlessContract ? "عقد النظافة يعتمد على العميل والموقع والبند، ولا يرتبط بأصل حاوية." : "لا يمكن إصدار عقد تشغيلي دون موقع عميل وأصل متاح وفترة واضحة."}</p></div>
                {initialRequest && <div className="rounded-2xl border border-indigo-100 bg-indigo-50/70 p-4 text-xs leading-6 text-indigo-950"><div className="mb-2 font-black">بيانات الطلب المحملة تلقائياً</div><div className="grid gap-x-4 sm:grid-cols-2"><span>العميل: <b>{initialRequest.clientName}</b></span><span>الجوال: <b dir="ltr">{initialRequest.phone}</b></span><span>الخدمة: <b>{initialRequest.serviceType}</b></span><span>الحاوية المطلوبة: <b>{initialRequest.containerSize || "غير محدد"}</b></span><span className="sm:col-span-2">العنوان: <b>{initialRequest.location}</b></span>{initialRequest.duration && <span>المدة: <b>{initialRequest.duration}</b></span>}{initialRequest.notes && <span className="sm:col-span-2">الملاحظات: <b>{initialRequest.notes}</b></span>}</div></div>}
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div><Label htmlFor="contract-container-type">نوع الحاوية المركزي</Label><select id="contract-container-type" value={form.containerTypeId} onChange={event => selectContainerType(event.target.value)} className="mt-2 h-10 w-full rounded-lg border border-cyan-200 bg-white px-3 text-sm" required><option value="">اختر النوع: أنقاض أو نفايات أو عقود نظافة</option>{containerTypes.filter(item => item.isActive).map(item => <option key={item.id} value={item.id}>{item.name} · {contractCategoryLabel(item.category)}{item.size ? ` · ${item.size}` : ""}</option>)}</select><p className="mt-1 text-[11px] text-slate-500">نوع العقد يتحدد تلقائياً من فئة النوع المركزي.</p></div>
                   <div><Label htmlFor="contract-rental-line">نموذج بند الإيجار</Label><select id="contract-rental-line" value={form.rentalLineId} onChange={event => selectRentalLine(event.target.value)} disabled={!form.containerTypeId} className="mt-2 h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm"><option value="">{form.containerTypeId ? "اختر نموذجاً أو أدخل القيم يدوياً" : "اختر نوع الحاوية أولاً"}</option>{rentalLines.map(record => { const value = payloadOf(record); return <option key={record.id} value={record.id}>{String(value.lineName ?? value.description ?? value.serviceType ?? `بند #${record.id}`)} · {Number(value.unitPrice ?? 0).toLocaleString("ar-SA")} ر.س</option> })}</select><p className="mt-1 text-[11px] text-slate-500">تظهر البنود المرتبطة بهذا النوع فقط.</p></div>
                   <div><Label htmlFor="contract-type">نوع العقد التابع للنوع</Label><Input id="contract-type" value={form.contractType || (selectedContainerType ? contractCategoryLabel(selectedContainerType.category) : "")} readOnly className="mt-2 bg-slate-50" /></div>
                  <div><Label htmlFor="contract-number">رقم العقد</Label><Input id="contract-number" value={form.contractNumber} onChange={event => update("contractNumber", event.target.value)} placeholder="سيولد تلقائياً عند الحفظ" className="mt-2" dir="ltr" /><p className="mt-1 text-[11px] text-slate-500">اتركه فارغاً ليولد النظام رقماً فريداً تلقائياً.</p></div>
-                  <div><Label htmlFor="contract-container">أصل الحاوية المتاح</Label><select id="contract-container" value={form.containerRecordId} onChange={event => selectContainer(event.target.value)} disabled={!form.containerTypeId} className="mt-2 h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm"><option value="">{form.containerTypeId ? "اختر الأصل من النوع المحدد" : "اختر نوع الحاوية أولاً"}</option>{containers.map(record => <option key={record.id} value={record.id}>{labelOf(record)} · {String(payloadOf(record).typeName ?? payloadOf(record).size ?? "نوع غير محدد")}</option>)}</select>{form.containerTypeId && containers.length === 0 && <p className="mt-1 text-[11px] text-amber-700">لا يوجد أصل متاح من هذا النوع حالياً.</p>}</div>
+                  <div><Label htmlFor="contract-container">أصل الحاوية المتاح {isAssetlessContract ? "(غير مطلوب)" : ""}</Label><select id="contract-container" value={form.containerRecordId} onChange={event => selectContainer(event.target.value)} disabled={!form.containerTypeId || isAssetlessContract} className="mt-2 h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm"><option value="">{isAssetlessContract ? "عقود النظافة لا ترتبط بأصل" : form.containerTypeId ? "اختر الأصل من النوع المحدد" : "اختر نوع الحاوية أولاً"}</option>{containers.map(record => <option key={record.id} value={record.id}>{labelOf(record)} · {String(payloadOf(record).typeName ?? payloadOf(record).size ?? "نوع غير محدد")}</option>)}</select>{!isAssetlessContract && form.containerTypeId && containers.length === 0 && <p className="mt-1 text-[11px] text-amber-700">لا يوجد أصل متاح من هذا النوع حالياً.</p>}</div>
                    <div className="sm:col-span-2"><Label htmlFor="contract-location">موقع العقد</Label><div className="mt-2 flex flex-col gap-2 sm:flex-row"><Input id="contract-location" value={form.location} onChange={event => setForm(current => ({ ...current, location: event.target.value, locationMode: "manual", locationCoordinates: "" }))} placeholder="أدخل العنوان يدويًا أو اختر نقطة من الخريطة" className="flex-1" /><Button type="button" variant="outline" onClick={() => setMapOpen(current => !current)} className="gap-2 border-cyan-200 text-cyan-800"><MapPin size={16} /> {mapOpen ? "إخفاء الخريطة" : "اختيار من الخريطة"}</Button></div>{mapOpen && <div className="mt-3 space-y-2"><p className="text-xs text-slate-500">انقر على النقطة المطلوبة مباشرة على الخريطة، وسيتم حفظ الإحداثيات والعنوان الناتج.</p><MapPicker initialCoordinates={form.locationCoordinates} onSelect={handleMapSelect} /></div>}{form.locationMode === "map" && <p className="mt-1 flex items-center gap-1 text-[11px] font-bold text-emerald-700"><LocateFixed size={13} /> تم اختيار الموقع يدويًا: {form.locationCoordinates}</p>}</div>
                   {form.locationMode === "manual" && <><div><Label htmlFor="contract-site">موقع العميل المسجل</Label><select id="contract-site" value={form.siteRecordId} onChange={event => update("siteRecordId", event.target.value)} className="mt-2 h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm"><option value="">{sites.length ? "اختر موقع العميل" : "لا توجد مواقع لهذا العميل"}</option>{sites.map(record => <option key={record.id} value={record.id}>{labelOf(record)} · {String(payloadOf(record).address ?? "")}</option>)}</select></div><div><Label htmlFor="contract-property-number">رقم القطعة</Label><Input id="contract-property-number" value={form.propertyNumber} onChange={event => update("propertyNumber", event.target.value)} placeholder="رقم القطعة" className="mt-2" /></div><div><Label htmlFor="contract-plan-number">رقم المخطط</Label><Input id="contract-plan-number" value={form.planNumber} onChange={event => update("planNumber", event.target.value)} placeholder="رقم المخطط" className="mt-2" /></div></>}
                   <div><Label htmlFor="contract-classification">التصنيف</Label><select id="contract-classification" value={form.classification || containerCategory} onChange={event => update("classification", event.target.value)} className="mt-2 h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm"><option value="">اختر التصنيف</option>{categoryOptions.map(option => <option key={option} value={option}>{option}</option>)}</select></div>
@@ -534,6 +569,7 @@ export function ContractWizard({ open, records, initialCustomerId = null, initia
                 <div><Label htmlFor="contract-start">بداية العقد</Label><Input id="contract-start" type="date" value={form.startDate} onChange={event => update("startDate", event.target.value)} className="mt-2" dir="ltr" /></div>
                 <div><Label htmlFor="contract-end">نهاية العقد</Label><Input id="contract-end" type="date" value={form.endDate} onChange={event => update("endDate", event.target.value)} className="mt-2" dir="ltr" /></div>
               </div>
+              {showBusinessIdentifiers && <div className="grid gap-4 rounded-2xl border border-amber-100 bg-amber-50 p-4 sm:grid-cols-2"><div><Label htmlFor="customer-commercial-registration">السجل التجاري للعميل</Label><Input id="customer-commercial-registration" value={form.customerCommercialRegistration} onChange={event => update("customerCommercialRegistration", event.target.value)} placeholder="مثال: 1010123456" className="mt-2 bg-white" dir="ltr" /></div><div><Label htmlFor="customer-tax-number">الرقم الضريبي للعميل</Label><Input id="customer-tax-number" value={form.customerTaxNumber} onChange={event => update("customerTaxNumber", event.target.value)} placeholder="مثال: 310123456700003" className="mt-2 bg-white" dir="ltr" /></div><p className="text-[11px] leading-5 text-amber-900 sm:col-span-2">{isWasteContract ? "يتم حفظ هذه البيانات مع العقد والفاتورة، وتصبح إلزامية لعقود النفايات." : "يمكن حفظ هذه البيانات مع عقد النظافة والفاتورة عند توفرها."}</p></div>}
               {container && <div className="rounded-2xl border border-cyan-100 bg-cyan-50 p-4 text-sm text-cyan-950"><b>{labelOf(container)}</b><span className="mx-2 text-cyan-500">·</span>{String(containerPayload?.typeName ?? "نوع غير محدد")}<span className="mx-2 text-cyan-500">·</span>الحالة الحالية: <Badge variant="outline" className="border-cyan-200 bg-white text-cyan-800">{recordStatusLabel(container.status)}</Badge></div>}
             </section>}
 
