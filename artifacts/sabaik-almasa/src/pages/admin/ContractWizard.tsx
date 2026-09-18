@@ -171,6 +171,28 @@ function contractCategoryKey(value?: string | null) {
   return normalized
 }
 
+function normalizedContainerValue(value: unknown) {
+  return String(value ?? "").trim().toLowerCase().replace(/\s+/g, " ")
+}
+
+function assetMatchesContainerType(payload: Record<string, unknown>, type: { id: number; name?: string; category?: string; size?: string }) {
+  const assetTypeId = Number(payload.containerTypeId ?? payload.containerTypeRecordId ?? 0)
+  if (assetTypeId > 0) return assetTypeId === type.id
+
+  const assetCategory = String(payload.category ?? payload.categoryName ?? payload.classification ?? "").trim()
+  if (assetCategory && contractCategoryKey(assetCategory) !== contractCategoryKey(type.category)) return false
+
+  const expectedSize = normalizedContainerValue(type.size)
+  const assetSize = normalizedContainerValue(payload.size ?? payload.containerSize ?? "")
+  const assetTypeName = normalizedContainerValue(payload.typeName ?? payload.containerType ?? "")
+  if (expectedSize) {
+    return assetSize === expectedSize || assetTypeName.includes(expectedSize)
+  }
+
+  const expectedName = normalizedContainerValue(type.name)
+  return Boolean(expectedName) && (assetTypeName === expectedName || assetTypeName.includes(expectedName) || expectedName.includes(assetTypeName))
+}
+
 function coordinatesFromText(value: unknown) {
   const match = String(value ?? "").match(/(?:إحداثيات\s*GPS|GPS)\s*[:：]\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)/i)
   if (!match) return ""
@@ -381,9 +403,11 @@ export function ContractWizard({ open, records, initialCustomerId = null, initia
       if (!["container", "container_asset"].includes(record.kind) || record.status === "archived" || !["available", "متاح", "active"].includes(record.status)) return false
       if (!form.containerTypeId) return true
       const payload = payloadOf(record)
-      return String(payload.containerTypeId ?? payload.containerTypeRecordId ?? "") === form.containerTypeId
+      const selectedType = containerTypes.find(item => String(item.id) === form.containerTypeId)
+      if (!selectedType) return false
+      return assetMatchesContainerType(payload, selectedType)
     }),
-    [form.containerTypeId, records],
+    [containerTypes, form.containerTypeId, records],
   )
   const rentalLines = useMemo(
     () => {

@@ -79,6 +79,30 @@ function canonicalContainerCategory(value: unknown) {
   return CONTAINER_CATEGORY_ALIASES[normalized] ?? normalized;
 }
 
+function normalizedContainerValue(value: unknown) {
+  return String(value ?? "").trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function assetMatchesContainerType(
+  payload: Record<string, unknown>,
+  type: typeof containersTable.$inferSelect,
+) {
+  const assetTypeId = Number(payload.containerTypeId ?? payload.containerTypeRecordId ?? 0);
+  if (assetTypeId > 0) return assetTypeId === type.id;
+
+  const assetCategory = String(payload.category ?? payload.categoryName ?? payload.classification ?? "").trim();
+  if (assetCategory && canonicalContainerCategory(assetCategory) !== canonicalContainerCategory(type.category)) return false;
+
+  const expectedSize = normalizedContainerValue(type.size);
+  const assetSize = normalizedContainerValue(payload.size ?? payload.containerSize ?? "");
+  const assetTypeName = normalizedContainerValue(payload.typeName ?? payload.containerType ?? "");
+  if (expectedSize) return assetSize === expectedSize || assetTypeName.includes(expectedSize);
+
+  const expectedName = normalizedContainerValue(type.name);
+  return Boolean(expectedName) &&
+    (assetTypeName === expectedName || assetTypeName.includes(expectedName) || expectedName.includes(assetTypeName));
+}
+
 function applyContainerTypePayload(payload: Record<string, unknown>, type: typeof containersTable.$inferSelect) {
   payload.containerTypeId = type.id;
   delete payload.containerTypeRecordId;
@@ -1233,6 +1257,9 @@ router.post("/admin/container-system/contracts/workflow", requireContainerPermis
         throw new Error("نموذج بند الإيجار لا يتبع فئة نوع الحاوية المختار");
       }
       if (contractContainerType) applyContainerTypePayload(contractPayload, contractContainerType);
+      if (!isAssetlessContract && asset && contractContainerType && !assetMatchesContainerType(assetPayload, contractContainerType)) {
+        throw new Error("الأصل المحدد لا يطابق نوع الحاوية المختار");
+      }
       const suppliedCommercialRegistration = String(
         contractPayload.customerCommercialRegistration ?? contractPayload.commercialRegistration ?? "",
       ).trim();
