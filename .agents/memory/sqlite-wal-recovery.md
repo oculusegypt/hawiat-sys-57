@@ -7,4 +7,4 @@ When the SQLite main file fails integrity checks, do not overwrite it with an ol
 
 **Why:** The WAL can contain newer customer, request, and contract data than the available full-file backups; blindly restoring an older snapshot can make the server start while silently losing recent work.
 
-**How to apply:** Stop the API writer, keep timestamped copies of all corrupt database files, recover to a temporary file, start the API against that file on a temporary port, then replace the runtime database only after startup and representative API reads succeed.
+**How to apply:** Stop the API writer, keep timestamped copies of all database sidecars, and never copy a main file over an existing `-wal`/`-shm` pair. Recover or checkpoint to a temporary file, then replace the runtime database only after startup and representative API reads succeed.
