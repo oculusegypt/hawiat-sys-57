@@ -1136,6 +1136,36 @@ router.get("/admin/container-system/records", requireContainerPermission("contai
   return res.json((await enrichContainerRegistryRows(rows)).map(formatRecord));
 });
 
+async function existingContractWorkflowResponse(contract: typeof containerSystemRecordsTable.$inferSelect) {
+  const rows = await db.select().from(containerSystemRecordsTable);
+  const related = (kind: string) => rows.find(row => {
+    const payload = parsePayload(row.payload);
+    return row.kind === kind && row.status !== "archived" &&
+      Number(payload.contractRecordId) === contract.id;
+  }) ?? null;
+  const serviceRequest = await db.select().from(serviceRequestsTable)
+    .where(eq(serviceRequestsTable.contractRecordId, contract.id)).get();
+  const workOrder = rows.find(row => {
+    if (row.kind !== "work_order" || row.status === "archived") return false;
+    return Number(parsePayload(row.payload).contractRecordId ?? 0) === contract.id;
+  });
+  const invoice = rows.find(row => {
+    if (row.kind !== "invoice" || row.status === "archived") return false;
+    return Number(parsePayload(row.payload).contractRecordId ?? 0) === contract.id;
+  });
+  const rentalLine = related("contract_line");
+  return {
+    contract: formatRecord(contract),
+    assignment: related("container_assignment") ? formatRecord(related("container_assignment")!) : null,
+    appointment: related("appointment") ? formatRecord(related("appointment")!) : null,
+    workOrder: workOrder ? formatRecord(workOrder) : null,
+    serviceRequest: serviceRequest ?? null,
+    invoice: invoice ? formatRecord(invoice) : null,
+    rentalLine: rentalLine ? formatRecord(rentalLine) : null,
+    idempotent: true,
+  };
+}
+
 router.post("/admin/container-system/contracts/workflow", requireContainerPermission("contract"), async (req, res) => {
   const adminReq = req as unknown as AdminRequest;
   const body = req.body as {
@@ -1151,35 +1181,20 @@ router.post("/admin/container-system/contracts/workflow", requireContainerPermis
   }
   const existingContract = operationKey ? await findByOperationKey("contract", operationKey) : null;
   if (existingContract) {
-    const existingPayload = parsePayload(existingContract.payload);
-    const rows = await db.select().from(containerSystemRecordsTable);
-    const related = (kind: string) => rows.find(row => {
-      const payload = parsePayload(row.payload);
-      return row.kind === kind && row.status !== "archived" &&
-        Number(payload.contractRecordId) === existingContract.id;
-    }) ?? null;
-    const serviceRequest = await db.select().from(serviceRequestsTable)
-      .where(eq(serviceRequestsTable.contractRecordId, existingContract.id)).get();
-    const workOrder = rows.find(row => {
-      if (row.kind !== "work_order" || row.status === "archived") return false;
-      return Number(parsePayload(row.payload).contractRecordId ?? 0) === existingContract.id;
-    });
-    const invoice = rows.find(row => {
-      if (row.kind !== "invoice" || row.status === "archived") return false;
-      const payload = parsePayload(row.payload);
-      return Number(payload.contractRecordId ?? 0) === existingContract.id;
-    });
-    const rentalLine = related("contract_line");
-    return res.status(200).json({
-      contract: formatRecord(existingContract),
-      assignment: related("container_assignment") ? formatRecord(related("container_assignment")!) : null,
-      appointment: related("appointment") ? formatRecord(related("appointment")!) : null,
-      workOrder: workOrder ? formatRecord(workOrder) : null,
-      serviceRequest: serviceRequest ?? null,
-      invoice: invoice ? formatRecord(invoice) : null,
-      rentalLine: rentalLine ? formatRecord(rentalLine) : null,
-      idempotent: true,
-    });
+    return res.status(200).json(await existingContractWorkflowResponse(existingContract));
+  }
+  const requestIdForDuplicateCheck = Number(body.serviceRequest?.requestId ?? body.contract?.requestId ?? 0);
+  if (requestIdForDuplicateCheck > 0) {
+    const linkedRequestForDuplicateCheck = await db.select().from(serviceRequestsTable)
+      .where(eq(serviceRequestsTable.id, requestIdForDuplicateCheck)).get();
+    const linkedContractId = Number(linkedRequestForDuplicateCheck?.contractRecordId ?? 0);
+    if (linkedContractId > 0) {
+      const linkedContract = await db.select().from(containerSystemRecordsTable)
+        .where(eq(containerSystemRecordsTable.id, linkedContractId)).get();
+      if (linkedContract?.kind === "contract" && linkedContract.status !== "archived") {
+        return res.status(200).json(await existingContractWorkflowResponse(linkedContract));
+      }
+    }
   }
   const contractPayload = normalizeContractPayload({ ...(body.contract ?? {}), ...(operationKey ? { operationKey } : {}) });
   const rentalLineTemplateId = Number(contractPayload.rentalLineRecordId ?? contractPayload.contractLineTemplateId ?? 0);

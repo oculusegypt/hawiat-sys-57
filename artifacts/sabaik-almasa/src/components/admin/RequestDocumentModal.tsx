@@ -39,6 +39,10 @@ export default function RequestDocumentModal({ request, kind, onClose }: Props) 
   const invoiceMutation = useCreateContainerSystemRecord()
   const [amount, setAmount] = useState("")
   const [notes, setNotes] = useState("")
+  const contractOperationKey = useMemo(
+    () => request ? `contract-request-${request.id}` : "",
+    [request?.id],
+  )
 
   useEffect(() => {
     if (request && kind === "invoice") {
@@ -112,7 +116,7 @@ export default function RequestDocumentModal({ request, kind, onClose }: Props) 
     const contractNumber = String(payload.contractNumber ?? "")
     contractMutation.mutate({
       data: {
-        operationKey: crypto.randomUUID(),
+        operationKey: contractOperationKey || crypto.randomUUID(),
         contract: payload,
         assignment: {
           siteRecordId: payload.siteRecordId,

@@ -979,6 +979,36 @@ function hostingerContainerSystemRoute(PDO $pdo, string $path, string $method, a
                 ]);
             }
         }
+        if ($existingServiceRequestId > 0) {
+            $linkedServiceStmt = $pdo->prepare("SELECT contract_record_id FROM service_requests WHERE id = :id LIMIT 1");
+            $linkedServiceStmt->execute([':id' => $existingServiceRequestId]);
+            $linkedContractId = (int)($linkedServiceStmt->fetchColumn() ?: 0);
+            if ($linkedContractId > 0) {
+                $linkedContractStmt = $pdo->prepare("SELECT * FROM container_system_records WHERE id = :id AND kind = 'contract' AND status <> 'archived' LIMIT 1");
+                $linkedContractStmt->execute([':id' => $linkedContractId]);
+                $linkedContract = $linkedContractStmt->fetch(PDO::FETCH_ASSOC);
+                if ($linkedContract) {
+                    $allExisting = hsFindRecords($pdo);
+                    $related = static function (string $kind) use ($allExisting, $linkedContract): ?array {
+                        foreach ($allExisting as $row) {
+                            if ($row['kind'] !== $kind || $row['status'] === 'archived') continue;
+                            $payload = hsPayload($row['payload']);
+                            if ((int)($payload['contractRecordId'] ?? 0) === (int)$linkedContract['id']) return $row;
+                        }
+                        return null;
+                    };
+                    $serviceStmt = $pdo->prepare("SELECT * FROM service_requests WHERE contract_record_id = :contract_id LIMIT 1");
+                    $serviceStmt->execute([':contract_id' => $linkedContractId]);
+                    hsJson([
+                        'contract' => hsRecord($linkedContract),
+                        'assignment' => ($row = $related('container_assignment')) ? hsRecord($row) : null,
+                        'appointment' => ($row = $related('appointment')) ? hsRecord($row) : null,
+                        'serviceRequest' => $serviceStmt->fetch(PDO::FETCH_ASSOC) ?: null,
+                        'idempotent' => true,
+                    ]);
+                }
+            }
+        }
         $find = static function (PDO $pdo, int $id): ?array {
             $stmt = $pdo->prepare("SELECT * FROM container_system_records WHERE id = :id LIMIT 1");
             $stmt->execute([':id' => $id]);
