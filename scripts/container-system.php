@@ -565,10 +565,26 @@ function hsFindAsset(PDO $pdo, string $code): ?array {
     return null;
 }
 
+function hsApplyRequestContainerType(array &$contract, array $service, array $assetPayload): void {
+    $requestType = trim((string)($service['containerSize'] ?? ''));
+    $assetType = trim((string)($assetPayload['typeName'] ?? $assetPayload['containerType'] ?? $assetPayload['size'] ?? ''));
+    if ($requestType === '' && $assetType === '') return;
+    // The selected asset is the authoritative central type when available.
+    // Otherwise preserve the type captured in the service request so old
+    // Hostinger records still carry the request's container selection.
+    $resolvedType = $assetType !== '' ? $assetType : $requestType;
+    $contract['containerType'] = $resolvedType;
+    $contract['typeName'] = $resolvedType;
+    $contract['containerSize'] = trim((string)($assetPayload['size'] ?? '')) ?: ($requestType !== '' ? $requestType : $resolvedType);
+    if (isset($assetPayload['containerTypeId']) || isset($assetPayload['containerTypeRecordId'])) {
+        $contract['containerTypeId'] = (int)($assetPayload['containerTypeId'] ?? $assetPayload['containerTypeRecordId']);
+    }
+}
+
 function hsNormalizeFinancial(string $kind, array $payload): array {
     $payload['currency'] = strtoupper(trim((string)($payload['currency'] ?? 'SAR'))) ?: 'SAR';
     $amount = (float)($payload['amount'] ?? $payload['subtotal'] ?? 0);
-    $taxRate = (float)($payload['taxRate'] ?? 15);
+    $taxRate = (float)($payload['taxRate'] ?? ($kind === 'contract' ? 0 : 15));
     if ($kind === 'invoice' || $kind === 'contract') {
         $payload['taxRate'] = $taxRate;
         $taxEnabled = ($payload['taxEnabled'] ?? false) === true || in_array(strtolower((string)($payload['taxEnabled'] ?? '')), ['true', '1', 'yes', 'نعم'], true);
@@ -914,6 +930,11 @@ function hostingerContainerSystemRoute(PDO $pdo, string $path, string $method, a
         $service = is_array($input['serviceRequest'] ?? null) ? $input['serviceRequest'] : [];
         $contract = hsNormalizeFinancial('contract', $contract);
         $existingServiceRequestId = (int)($service['requestId'] ?? $contract['requestId'] ?? 0);
+        if ($existingServiceRequestId > 0) {
+            $contract['taxRate'] = 0;
+            $contract['taxEnabled'] = true;
+            $contract = hsNormalizeFinancial('contract', $contract);
+        }
         $customerId = (int)($contract['customerRecordId'] ?? 0);
         $siteId = (int)($assignment['siteRecordId'] ?? $contract['siteRecordId'] ?? 0);
         $assetId = (int)($assignment['containerRecordId'] ?? $contract['containerRecordId'] ?? 0);
@@ -974,6 +995,7 @@ function hostingerContainerSystemRoute(PDO $pdo, string $path, string $method, a
         // The row status is the record lifecycle (commonly "active"); the
         // payload carries the asset's actual availability.
         $assetPayload = hsPayload($asset['payload']);
+        hsApplyRequestContainerType($contract, $service, $assetPayload);
         $assetAvailability = hsCanonicalAssetStatus((string)($assetPayload['status'] ?? $asset['status']), (string)$asset['status']);
         if (!in_array($assetAvailability, ['available', 'reserved', 'active'], true)) hsJson(['error' => 'الحاوية ليست متاحة للتخصيص'], 422);
         // The wizard selects the asset by record id. Older bundles sometimes

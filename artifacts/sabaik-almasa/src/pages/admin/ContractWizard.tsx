@@ -101,7 +101,7 @@ const initialForm: FormState = {
   startDate: new Date().toISOString().slice(0, 10),
   endDate: "",
   amount: "",
-  taxRate: "15",
+  taxRate: "0",
   taxInclusive: "false",
   notes: "",
   appointmentDate: "",
@@ -173,6 +173,42 @@ function contractCategoryKey(value?: string | null) {
 
 function normalizedContainerValue(value: unknown) {
   return String(value ?? "").trim().toLowerCase().replace(/\s+/g, " ")
+}
+
+function requestContainerTypeScore(request: { containerSize?: string | null; serviceType?: string | null }, type: { name?: string; size?: string; capacity?: string; category?: string }) {
+  const requested = normalizedContainerValue(request.containerSize)
+  if (!requested) return 0
+  const typeValues = [type.name, type.size, type.capacity]
+    .map(normalizedContainerValue)
+    .filter(Boolean)
+  const exactMatch = typeValues.some(value => value === requested)
+  const textMatch = typeValues.some(value => requested.includes(value) || value.includes(requested))
+  const requestedNumbers = requested.match(/\d+(?:\.\d+)?/g) ?? []
+  const typeNumbers = typeValues.flatMap(value => value.match(/\d+(?:\.\d+)?/g) ?? [])
+  const numberMatch = requestedNumbers.some(value => typeNumbers.includes(value))
+  const requestText = normalizedContainerValue(`${request.containerSize ?? ""} ${request.serviceType ?? ""}`)
+  const requestCategory = /نفايات|مكبس|waste/.test(requestText)
+    ? "waste"
+    : /أنقاض|هدم|مخلفات بناء|debris/.test(requestText)
+      ? "debris"
+      : /عقد|نظافة|تنظيف|contract/.test(requestText)
+        ? "contract"
+        : ""
+  const categoryMatch = requestCategory && contractCategoryKey(type.category) === requestCategory
+  if (exactMatch) return categoryMatch ? 130 : 110
+  if (textMatch) return categoryMatch ? 100 : 80
+  if (numberMatch) return categoryMatch ? 70 : 50
+  return 0
+}
+
+function requestContainerType(
+  request: { containerSize?: string | null; serviceType?: string | null },
+  types: Array<{ id: number; name?: string; size?: string; capacity?: string; category?: string }>,
+) {
+  return types
+    .map(type => ({ type, score: requestContainerTypeScore(request, type) }))
+    .filter(item => item.score > 0)
+    .sort((left, right) => right.score - left.score)[0]?.type
 }
 
 function assetMatchesContainerType(payload: Record<string, unknown>, type: { id: number; name?: string; category?: string; size?: string }) {
@@ -327,18 +363,20 @@ export function ContractWizard({ open, records, initialCustomerId = null, initia
         })
       : undefined
     const selectedSite = requestSite ?? customerSites[0]
+    const requestTypeHint = initialRequest ? requestContainerType(initialRequest, containerTypes) : undefined
     const requestContainer = initialRequest
       ? records.find(record => {
           if (!["container", "container_asset"].includes(record.kind) || record.status === "archived") return false
           const payload = payloadOf(record)
+           if (requestTypeHint && !assetMatchesContainerType(payload, requestTypeHint)) return false
           const type = String(payload.typeName ?? payload.containerType ?? payload.size ?? payload.capacity ?? payload.assetCode ?? "")
-          return ["available", "متاح", "active"].includes(record.status) &&
-            Boolean(initialRequest.containerSize) && (type.includes(initialRequest.containerSize) || initialRequest.containerSize.includes(type))
+           return ["available", "متاح", "active"].includes(record.status) &&
+             (Boolean(requestTypeHint) || (Boolean(initialRequest.containerSize) && (type.includes(initialRequest.containerSize) || initialRequest.containerSize.includes(type))))
         })
       : undefined
     const requestContainerPayload = requestContainer ? payloadOf(requestContainer) : undefined
     const requestContainerTypeId = String(requestContainerPayload?.containerTypeId ?? requestContainerPayload?.containerTypeRecordId ?? "")
-    const requestType = containerTypes.find(item => String(item.id) === requestContainerTypeId)
+    const requestType = requestTypeHint ?? containerTypes.find(item => String(item.id) === requestContainerTypeId)
     const initialTypeLines = requestType
       ? records.filter(record => {
           if (record.kind !== "contract_line" || record.status === "archived") return false
@@ -657,7 +695,7 @@ export function ContractWizard({ open, records, initialCustomerId = null, initia
       taxAmount,
       total,
       taxInclusive,
-      taxEnabled: true,
+       taxEnabled: true,
       status: "active",
       notes: withoutBusinessIdentifierRequirementNote(form.notes),
       contractType: form.contractType,

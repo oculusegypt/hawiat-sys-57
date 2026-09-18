@@ -103,6 +103,35 @@ function assetMatchesContainerType(
     (assetTypeName === expectedName || assetTypeName.includes(expectedName) || expectedName.includes(assetTypeName));
 }
 
+function requestContainerType(value: unknown, types: Array<typeof containersTable.$inferSelect>) {
+  const requested = normalizedContainerValue(value);
+  if (!requested) return undefined;
+  const requestedNumbers = requested.match(/\d+(?:\.\d+)?/g) ?? [];
+  const requestedCategory = /نفايات|مكبس|waste/.test(requested)
+    ? "waste"
+    : /أنقاض|هدم|مخلفات بناء|debris/.test(requested)
+      ? "debris"
+      : /عقد|نظافة|تنظيف|contract/.test(requested)
+        ? "contract"
+        : "";
+  return types
+    .map(type => {
+      const values = [type.name, type.size, type.capacity].map(normalizedContainerValue).filter(Boolean);
+      const exactMatch = values.some(item => item === requested);
+      const textMatch = values.some(item => requested.includes(item) || item.includes(requested));
+      const typeNumbers = values.flatMap(item => item.match(/\d+(?:\.\d+)?/g) ?? []);
+      const numberMatch = requestedNumbers.some(item => typeNumbers.includes(item));
+      const categoryMatch = Boolean(requestedCategory) && canonicalContainerCategory(type.category) === requestedCategory;
+      const score = exactMatch ? (categoryMatch ? 130 : 110)
+        : textMatch ? (categoryMatch ? 100 : 80)
+          : numberMatch ? (categoryMatch ? 70 : 50)
+            : 0;
+      return { type, score };
+    })
+    .filter(item => item.score > 0)
+    .sort((left, right) => right.score - left.score)[0]?.type;
+}
+
 function applyContainerTypePayload(payload: Record<string, unknown>, type: typeof containersTable.$inferSelect) {
   payload.containerTypeId = type.id;
   delete payload.containerTypeRecordId;
@@ -188,14 +217,14 @@ async function normalizeContractLinePayload(payload: Record<string, unknown>, re
 
   const quantity = Number(payload.quantity ?? payload.trips ?? 1);
   const unitPrice = Number(payload.unitPrice ?? payload.pricePerDay ?? type.pricePerDay ?? 0);
-  const taxRate = Number(payload.taxRate ?? 15);
+  const taxRate = Number(payload.taxRate ?? 0);
   const taxEnabled = payload.taxEnabled === true ||
     ["true", "1", "yes", "نعم"].includes(String(payload.taxEnabled ?? "").trim().toLowerCase());
   if (!Number.isFinite(quantity) || quantity <= 0) throw new Error("كمية بند الإيجار يجب أن تكون أكبر من صفر");
   if (!Number.isFinite(unitPrice) || unitPrice < 0) throw new Error("سعر بند الإيجار غير صحيح");
   payload.quantity = quantity;
   payload.unitPrice = unitPrice;
-  payload.taxRate = Number.isFinite(taxRate) && taxRate >= 0 ? taxRate : 15;
+  payload.taxRate = Number.isFinite(taxRate) && taxRate >= 0 ? taxRate : 0;
   payload.taxEnabled = taxEnabled;
   const subtotal = Math.round(quantity * unitPrice * 100) / 100;
   const taxAmount = taxEnabled ? Math.round(subtotal * Number(payload.taxRate) / 100 * 100) / 100 : 0;
@@ -406,7 +435,7 @@ function normalizeInvoicePayload(payload: Record<string, unknown>) {
     : Number.isFinite(quantity) && Number.isFinite(unitPrice) && quantity > 0 && unitPrice >= 0
       ? quantity * unitPrice
       : 0;
-  const taxRate = Number(next.taxRate ?? 15);
+  const taxRate = Number(next.taxRate ?? 0);
   const taxEnabled = next.taxEnabled === true || ["true", "1", "yes", "نعم"].includes(String(next.taxEnabled ?? "").toLowerCase());
   if (Number.isFinite(amount) && Number.isFinite(taxRate)) {
     next.taxRate = taxRate;
@@ -1166,10 +1195,21 @@ router.post("/admin/container-system/contracts/workflow", requireContainerPermis
   const appointmentPayload = { ...(body.appointment ?? {}) };
   const servicePayload = { ...(body.serviceRequest ?? {}) };
   const existingRequestId = Number(servicePayload.requestId ?? contractPayload.requestId ?? 0);
+  const linkedRequest = existingRequestId > 0
+    ? await db.select().from(serviceRequestsTable).where(eq(serviceRequestsTable.id, existingRequestId)).get()
+    : undefined;
+  const requestType = requestContainerType(linkedRequest?.containerSize ?? servicePayload.containerSize, activeContainerTypes);
+  if (linkedRequest && requestType) {
+    applyContainerTypePayload(contractPayload, requestType);
+    contractPayload.taxRate = 0;
+    contractPayload.taxEnabled = true;
+    contractPayload.taxAmount = 0;
+    contractPayload.total = Math.round(Number(contractPayload.amount ?? 0) * 100) / 100;
+  }
   const customerId = Number(contractPayload.customerRecordId);
   let siteId = Number(assignmentPayload.siteRecordId ?? contractPayload.siteRecordId);
   const assetId = Number(assignmentPayload.containerRecordId ?? contractPayload.containerRecordId);
-  const requestedTypeId = Number(contractPayload.containerTypeId ?? rentalLineTemplatePayload.containerTypeId ?? 0);
+  const requestedTypeId = Number(requestType?.id ?? contractPayload.containerTypeId ?? rentalLineTemplatePayload.containerTypeId ?? 0);
   const workflowContainerType = requestedTypeId > 0
     ? activeContainerTypes.find(item => item.id === requestedTypeId)
     : undefined;
@@ -1410,8 +1450,8 @@ router.post("/admin/container-system/contracts/workflow", requireContainerPermis
           template.unitPrice ??
           (Number(contractPayload.amount ?? 0) / quantity),
         );
-        const taxRate = Number(contractPayload.taxRate ?? template.taxRate ?? 15);
-        const taxEnabled = contractPayload.taxEnabled === true ||
+        const taxRate = Number(contractPayload.taxRate ?? template.taxRate ?? 0);
+        const taxEnabled = linkedRequest ? true : contractPayload.taxEnabled === true ||
           ["true", "1", "yes", "نعم"].includes(String(contractPayload.taxEnabled ?? "").toLowerCase());
         const subtotal = Math.round(quantity * Math.max(unitPrice, 0) * 100) / 100;
         const taxAmount = taxEnabled ? Math.round(subtotal * taxRate / 100 * 100) / 100 : 0;
@@ -1474,8 +1514,8 @@ router.post("/admin/container-system/contracts/workflow", requireContainerPermis
           invoice = existingInvoice;
         } else {
           const subtotal = Number(contractPayload.amount ?? 0);
-          const taxRate = Number(contractPayload.taxRate ?? 15);
-            const taxEnabled = contractPayload.taxEnabled === true || ["true", "1", "yes", "نعم"].includes(String(contractPayload.taxEnabled ?? "").toLowerCase());
+          const taxRate = Number(contractPayload.taxRate ?? 0);
+            const taxEnabled = linkedRequest ? true : contractPayload.taxEnabled === true || ["true", "1", "yes", "نعم"].includes(String(contractPayload.taxEnabled ?? "").toLowerCase());
             const taxAmount = taxEnabled ? Number(contractPayload.taxAmount ?? Math.round(subtotal * taxRate / 100 * 100) / 100) : 0;
             const total = taxEnabled ? Number(contractPayload.total ?? Math.round((subtotal + taxAmount) * 100) / 100) : subtotal;
           const containerCode = String(contractPayload.containerCode ?? assetPayload.assetCode ?? assetPayload.code ?? asset?.reference ?? "");
