@@ -158,6 +158,13 @@ const serviceTitle = (value: unknown) => {
   return SERVICE_LABELS[raw] ?? SERVICE_LABELS[raw.toLowerCase()] ?? raw.replace(/_/g, " ")
 }
 
+const ACTIVE_RENTAL_STATUSES = new Set(["rented", "with_customer", "awaiting_return"])
+const DELIVERED_CONTRACT_STATUSES = new Set(["delivered"])
+
+const isCurrentlyRented = (status: unknown) => ACTIVE_RENTAL_STATUSES.has(String(status ?? "").trim().toLowerCase())
+const isDeliveredContract = (record?: ContainerSystemRecord | null) =>
+  Boolean(record && DELIVERED_CONTRACT_STATUSES.has(String(record.status).trim().toLowerCase()))
+
 const PROFILE_KIND_LABELS: Record<string, string> = {
   contract: "عقد",
   contract_line: "بند عقد",
@@ -222,16 +229,27 @@ function OperationalQuickActions({ customerId, customerName, phone, email, locat
   const [, navigate] = useLocation()
   const { toast } = useToast()
   const [busy, setBusy] = useState("")
-  const contract = contracts.find(item => item.status !== "archived")
-  const contractPayload = payloadOf(contract)
   const container = containers.find(item => item.status !== "archived" && (
-    String(contractPayload.containerRecordId ?? "") === String(item.id) ||
-    text(contractPayload.containerCode ?? contractPayload.assetCode, "") === text(payloadOf(item).assetCode ?? payloadOf(item).containerCode ?? item.reference, "")
+    contracts.some(contract => {
+      const contractPayload = payloadOf(contract)
+      return String(contractPayload.containerRecordId ?? "") === String(item.id) ||
+        text(contractPayload.containerCode ?? contractPayload.assetCode, "") === text(payloadOf(item).assetCode ?? payloadOf(item).containerCode ?? item.reference, "")
+    })
   )) ?? containers.find(item => item.status !== "archived")
+  const containerStatus = getContainerOperationalStatus(container?.status, payloadOf(container))
+  const containerIsRented = isCurrentlyRented(containerStatus)
+  const contract = contracts.find(item => {
+    const contractPayload = payloadOf(item)
+    const linkedToContainer = !container ||
+      String(contractPayload.containerRecordId ?? "") === String(container.id) ||
+      text(contractPayload.containerCode ?? contractPayload.assetCode, "") === text(payloadOf(container).assetCode ?? payloadOf(container).containerCode ?? container.reference, "")
+    return linkedToContainer && isDeliveredContract(item)
+  })
   const ap = payloadOf(container)
   const openOperation = findOpenContainerOperation(records, serviceRequests, contract?.id, container?.id)
+  const canOperateCurrentRental = Boolean(containerIsRented && contract && container)
   const run = async (kind: "pickup" | "empty") => {
-    if (!contract || !container || !customerId) return
+    if (!canOperateCurrentRental || !contract || !container || !customerId) return
     setBusy(kind)
     try {
       const operationKey = `container-operation-${contract.id}-${container.id}-${kind}-${kind === "empty" ? new Date().toISOString().slice(0, 10) : "active"}`
@@ -254,7 +272,7 @@ function OperationalQuickActions({ customerId, customerName, phone, email, locat
       setBusy("")
     }
   }
-  return <Card className="border-amber-200 bg-amber-50/60 shadow-sm"><CardContent className="flex flex-wrap items-center justify-between gap-3 p-4"><div><p className="text-sm font-black text-amber-950">إجراءات تشغيل سريعة</p><p className="mt-1 text-xs text-amber-900/70">مرتبطة بالعقد والحاوية ولا تغيّر القيود المالية.</p></div><div className="flex flex-wrap gap-2"><Button size="sm" disabled={!!busy || Boolean(openOperation) || !contract || !container || !customerId} onClick={() => run("pickup")} className="gap-2 bg-amber-700 hover:bg-amber-800"><RotateCcw size={14} />{busy === "pickup" ? "جارٍ الإنشاء..." : "استرجاع وسحب الحاوية"}</Button><Button size="sm" variant="outline" disabled={!!busy || Boolean(openOperation) || !contract || !container || !customerId} onClick={() => run("empty")} className="gap-2 border-amber-300 text-amber-900 hover:bg-white"><Trash2 size={14} />{busy === "empty" ? "جارٍ الإنشاء..." : "أمر تفريغ"}</Button>{contract && <Button size="sm" variant="outline" onClick={() => navigate(`/admin/container-system?view=overview&contractId=${contract.id}&prepare=1`)} className="gap-2 border-cyan-300 text-cyan-900 hover:bg-white"><LockKeyhole size={14} /> تجهيز العقد</Button>}</div>{openOperation ? <p className="w-full text-xs font-semibold text-amber-800">أمر تشغيل قائم #{openOperation.id}: {openOperation.statusLabel} · {openOperation.assigned ? "تم الإسناد" : "غير مسند"}.</p> : (!contract || !container) && <p className="w-full text-xs font-semibold text-amber-800">يلزم عقد نشط وحاوية مخصصة لإظهار إجراءات التشغيل.</p>}</CardContent></Card>
+  return <Card className="border-amber-200 bg-amber-50/60 shadow-sm"><CardContent className="flex flex-wrap items-center justify-between gap-3 p-4"><div><p className="text-sm font-black text-amber-950">إجراءات تشغيل سريعة</p><p className="mt-1 text-xs text-amber-900/70">مرتبطة بدورة الإيجار الحالية ولا تغيّر القيود المالية.</p></div><div className="flex flex-wrap gap-2">{canOperateCurrentRental && <><Button size="sm" disabled={!!busy || Boolean(openOperation) || !customerId} onClick={() => run("pickup")} className="gap-2 bg-amber-700 hover:bg-amber-800"><RotateCcw size={14} />{busy === "pickup" ? "جارٍ الإنشاء..." : "استرجاع وسحب الحاوية"}</Button><Button size="sm" variant="outline" disabled={!!busy || Boolean(openOperation) || !customerId} onClick={() => run("empty")} className="gap-2 border-amber-300 text-amber-900 hover:bg-white"><Trash2 size={14} />{busy === "empty" ? "جارٍ الإنشاء..." : "أمر تفريغ"}</Button></>}{contract && <Button size="sm" variant="outline" onClick={() => navigate(`/admin/container-system?view=overview&contractId=${contract.id}&prepare=1`)} className="gap-2 border-cyan-300 text-cyan-900 hover:bg-white"><LockKeyhole size={14} /> تجهيز العقد</Button>}</div>{openOperation ? <p className="w-full text-xs font-semibold text-amber-800">أمر تشغيل قائم #{openOperation.id}: {openOperation.statusLabel} · {openOperation.assigned ? "تم الإسناد" : "غير مسند"}.</p> : !canOperateCurrentRental && <p className="w-full text-xs font-semibold text-amber-800">لا توجد دورة إيجار نشطة لهذه الحاوية؛ ستظهر إجراءات الاسترجاع والتفريغ بعد تسليمها للعميل.</p>}</CardContent></Card>
 }
 
 function Stat({ label, value, tone = "text-slate-900" }: { label: string; value: string | number; tone?: string }) {
@@ -865,15 +883,41 @@ function ContainerProfile({ record, records }: { record: ContainerSystemRecord; 
     return Number(payload.containerRecordId ?? 0) === record.id ||
       contracts.some(contract => Number(payload.contractRecordId ?? 0) === contract.id)
   })
-  const completionEvidence = [
-    ...workOrders.map(item => ({
+  const activeContract = isCurrentlyRented(currentStatus)
+    ? contracts.find(item => isDeliveredContract(item))
+    : undefined
+  const activeContractPayload = payloadOf(activeContract)
+  const activeContractId = activeContract?.id ?? 0
+  const currentCycleWorkOrders = activeContractId > 0
+    ? workOrders.filter(item => {
+      const linked = item as typeof item & { containerRecordId?: number | null; contractRecordId?: number | null }
+      return Number(linked.contractRecordId ?? 0) === activeContractId &&
+        Number(linked.containerRecordId ?? 0) === record.id
+    })
+    : []
+  const currentCycleOperationalWorkOrders = activeContractId > 0
+    ? operationalWorkOrders.filter(item => {
+      const payload = payloadOf(item)
+      return Number(payload.contractRecordId ?? 0) === activeContractId &&
+        Number(payload.containerRecordId ?? 0) === record.id
+    })
+    : []
+  const currentCycleMovements = activeContractId > 0
+    ? movements.filter(item => {
+      const payload = payloadOf(item)
+      return Number(payload.contractRecordId ?? 0) === activeContractId &&
+        Number(payload.containerRecordId ?? 0) === record.id
+    })
+    : []
+  const currentCycleEvidence = [
+    ...currentCycleWorkOrders.map(item => ({
       id: `request-${item.id}`,
       label: `الطلب #${item.id} · ${item.serviceType}`,
       url: item.driverProofPhotoUrl,
       receiver: item.driverReceiverName,
       date: item.driverCompletedAt ?? item.updatedAt,
     })),
-    ...operationalWorkOrders.map(item => {
+    ...currentCycleOperationalWorkOrders.map(item => {
       const payload = payloadOf(item)
       return {
         id: `work-order-${item.id}`,
@@ -883,7 +927,7 @@ function ContainerProfile({ record, records }: { record: ContainerSystemRecord; 
         date: text(payload.driverCompletedAt ?? item.updatedAt, ""),
       }
     }),
-    ...movements.map(item => {
+    ...currentCycleMovements.map(item => {
       const payload = payloadOf(item)
       return {
         id: `movement-${item.id}`,
@@ -894,9 +938,6 @@ function ContainerProfile({ record, records }: { record: ContainerSystemRecord; 
       }
     }),
   ]
-  const activeContract = contracts.find(item => ["active", "approved", "issued", "scheduled", "delivered"].includes(String(item.status).toLowerCase()))
-    ?? contracts.find(item => item.status !== "archived")
-  const activeContractPayload = payloadOf(activeContract)
   const customer = records.find(item => item.kind === "customer" && String(item.id) === String(activeContractPayload.customerRecordId))
     ?? records.find(item => item.kind === "customer" && text(payloadOf(item).name ?? payloadOf(item).customerName, "") === text(activeContractPayload.customerName, ""))
   const customerPayload = payloadOf(customer)
@@ -934,7 +975,7 @@ function ContainerProfile({ record, records }: { record: ContainerSystemRecord; 
     phone={text(customerPayload.phone ?? customerPayload.mobile ?? activeContractPayload.customerPhone, "")}
     email={text(customerPayload.email, "")}
     location={text(p.location ?? activeContractPayload.location ?? activeContractPayload.address, "يحدد لاحقاً")}
-    contracts={contracts}
+    contracts={activeContract ? [activeContract] : []}
     containers={[record]}
     records={records}
     serviceRequests={workOrders}
@@ -984,7 +1025,7 @@ function ContainerProfile({ record, records }: { record: ContainerSystemRecord; 
       <ContainerMetric label="صافي القيمة" value={money(revenue - costs)} tone={revenue - costs >= 0 ? "text-emerald-700" : "text-rose-700"} icon={<CheckCircle2 size={16} />} />
     </div>
 
-    <CompletionEvidence items={completionEvidence} />
+    <CompletionEvidence items={currentCycleEvidence} />
 
     <div className="grid gap-5 xl:grid-cols-[1.15fr_.85fr]">
       <Card className="overflow-hidden border-slate-200/80 shadow-sm">

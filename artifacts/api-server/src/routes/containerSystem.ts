@@ -847,21 +847,33 @@ async function hasOverlappingContract(payload: Record<string, unknown>, ignoredI
 
 const terminalOperationStatuses = new Set(["completed", "cancelled", "rejected", "closed"]);
 
+type ContainerOperationKind = "delivery" | "return" | "other";
+
+function operationKindOf(value: unknown): ContainerOperationKind {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  if (/deliver|delivery|تسليم|إرسال|ارسال|إنزال|انزال|drop/.test(normalized)) return "delivery";
+  if (/return|pickup|استرجاع|إرجاع|ارجاع|سحب|رفع/.test(normalized)) return "return";
+  return "other";
+}
+
 function findOpenContainerOperation(
   rows: typeof containerSystemRecordsTable.$inferSelect[],
   requests: typeof serviceRequestsTable.$inferSelect[],
   contractId: number,
   containerId?: number,
+  operationKind?: ContainerOperationKind,
 ) {
   const request = requests.find(item =>
     !terminalOperationStatuses.has(String(item.status).toLowerCase()) &&
     !terminalOperationStatuses.has(String(item.driverStatus).toLowerCase()) &&
+    (!operationKind || operationKindOf(item.serviceType) === operationKind) &&
     (item.contractRecordId === contractId || (containerId && item.containerRecordId === containerId)),
   );
   if (request) {
     return {
       source: "service_request",
       id: request.id,
+      operationKind: operationKindOf(request.serviceType),
       status: request.driverStatus || request.status,
       assignedDriverId: request.assignedDriverId,
       assignedVehicleId: request.assignedVehicleId,
@@ -873,7 +885,9 @@ function findOpenContainerOperation(
     const matches = Number(payload.contractRecordId ?? 0) === contractId ||
       (containerId && Number(payload.containerRecordId ?? 0) === containerId);
     const operationStatus = String(payload.driverStatus ?? payload.status ?? row.status).toLowerCase();
-    return Boolean(matches) && !terminalOperationStatuses.has(operationStatus) &&
+    return Boolean(matches) &&
+      (!operationKind || operationKindOf(payload.serviceType ?? payload.operationType) === operationKind) &&
+      !terminalOperationStatuses.has(operationStatus) &&
       !terminalOperationStatuses.has(String(row.status).toLowerCase());
   });
   if (!workOrder) return null;
@@ -881,6 +895,7 @@ function findOpenContainerOperation(
   return {
     source: "work_order",
     id: workOrder.id,
+    operationKind: operationKindOf(payload.serviceType ?? payload.operationType),
     status: String(payload.driverStatus ?? payload.status ?? workOrder.status),
     assignedDriverId: Number(payload.assignedDriverId ?? 0) || null,
     assignedVehicleId: Number(payload.assignedVehicleId ?? 0) || null,
@@ -1987,6 +2002,10 @@ router.post("/admin/container-system/contracts/:id/lifecycle", requireContainerP
       const allRows = tx.select().from(containerSystemRecordsTable).all();
       const linkedRequests = tx.select().from(serviceRequestsTable).all();
       const containerId = Number(contractPayload.containerRecordId ?? 0) || undefined;
+      const openDeliveryOperation = findOpenContainerOperation(allRows, linkedRequests, contractId, containerId, "delivery");
+      if (action === "deliver" && openDeliveryOperation) {
+        throw new Error(`لا يمكن تسجيل التسليم؛ يوجد أمر إرسال قائم رقم ${openDeliveryOperation.id}`);
+      }
       if (["return", "close"].includes(action)) {
         const openOperation = findOpenContainerOperation(allRows, linkedRequests, contractId, containerId);
         if (openOperation) {

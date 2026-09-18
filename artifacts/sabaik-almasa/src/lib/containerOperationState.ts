@@ -7,11 +7,21 @@ const payloadOf = (record: ContainerSystemRecord) => (record.payload ?? {}) as R
 export type ContainerOperationState = {
   id: number
   source: "work_order" | "service_request"
+  operationKind: "delivery" | "return" | "other"
   status: string
   statusLabel: string
   assigned: boolean
   assignedDriverId?: number | null
   assignedVehicleId?: number | null
+}
+
+export type ContainerOperationKind = ContainerOperationState["operationKind"]
+
+function operationKindOf(value: unknown): ContainerOperationKind {
+  const normalized = String(value ?? "").trim().toLowerCase()
+  if (/deliver|delivery|تسليم|إرسال|ارسال|إنزال|انزال|drop/.test(normalized)) return "delivery"
+  if (/return|pickup|استرجاع|إرجاع|ارجاع|سحب|رفع/.test(normalized)) return "return"
+  return "other"
 }
 
 const statusLabel = (status: string) => ({
@@ -30,12 +40,14 @@ export function findOpenContainerOperation(
   serviceRequests: ServiceRequest[] = [],
   contractId?: number | null,
   containerId?: number | null,
+  operationKind?: ContainerOperationKind,
 ): ContainerOperationState | null {
   const request = serviceRequests.find(item => {
     const row = item as ServiceRequest & { contractRecordId?: number | null; containerRecordId?: number | null }
     const matches = Number(row.contractRecordId ?? 0) === Number(contractId ?? 0) ||
       Number(row.containerRecordId ?? 0) === Number(containerId ?? 0)
     return matches &&
+      (!operationKind || operationKindOf(row.serviceType) === operationKind) &&
       !TERMINAL_STATUSES.has(String(row.status).toLowerCase()) &&
       !TERMINAL_STATUSES.has(String(row.driverStatus).toLowerCase())
   })
@@ -44,6 +56,7 @@ export function findOpenContainerOperation(
     return {
       id: request.id,
       source: "service_request",
+      operationKind: operationKindOf(request.serviceType),
       status,
       statusLabel: statusLabel(status),
       assigned: Boolean(request.assignedDriverId || request.assignedVehicleId),
@@ -57,7 +70,10 @@ export function findOpenContainerOperation(
     const matches = Number(payload.contractRecordId ?? 0) === Number(contractId ?? 0) ||
       Number(payload.containerRecordId ?? 0) === Number(containerId ?? 0)
     const status = String(payload.driverStatus ?? payload.status ?? record.status).toLowerCase()
-    return matches && !TERMINAL_STATUSES.has(status) && !TERMINAL_STATUSES.has(String(record.status).toLowerCase())
+    return matches &&
+      (!operationKind || operationKindOf(payload.serviceType ?? payload.operationType) === operationKind) &&
+      !TERMINAL_STATUSES.has(status) &&
+      !TERMINAL_STATUSES.has(String(record.status).toLowerCase())
   })
   if (!workOrder) return null
   const payload = payloadOf(workOrder)
@@ -67,6 +83,7 @@ export function findOpenContainerOperation(
   return {
     id: workOrder.id,
     source: "work_order",
+    operationKind: operationKindOf(payload.serviceType ?? payload.operationType),
     status,
     statusLabel: statusLabel(status),
     assigned: Boolean(assignedDriverId || assignedVehicleId),
