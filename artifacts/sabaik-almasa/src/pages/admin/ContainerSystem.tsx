@@ -1281,7 +1281,15 @@ function InvoiceWorkspace({ records, onAdd, onDetails, onEdit, onArchive }: { re
                   <span>رقم الفاتورة</span><span>العميل</span><span>البيان</span><span>تاريخ الإصدار</span><span>الإجمالي</span><span>الحالة</span>
                 </div>
                 {visibleRecords.map(({ record, payload, number, paid, total, remaining, status, dueDate }) => {
-                  const contract = records.find(item => item.kind === "contract" && (item.id === Number(payload.contractRecordId) || String((item.payload as Record<string, unknown>).contractNumber ?? item.reference) === String(payload.contractNumber ?? "")))
+                  const invoiceContractId = Number(payload.contractRecordId ?? 0)
+                  const invoiceContractNumber = String(payload.contractNumber ?? "").trim()
+                  const contract = records.find(item => {
+                    if (item.kind !== "contract") return false
+                    const contractPayload = item.payload as Record<string, unknown>
+                    const contractNumber = String(contractPayload.contractNumber ?? item.reference ?? "").trim()
+                    return (invoiceContractId > 0 && item.id === invoiceContractId) ||
+                      Boolean(invoiceContractNumber && contractNumber && contractNumber === invoiceContractNumber)
+                  })
                   return (
                     <div key={record.id} className="grid grid-cols-[1.1fr_1.4fr_1.2fr_1fr_1fr_auto] items-center gap-3 border-t border-slate-100 px-5 py-4 text-xs transition hover:bg-cyan-50/30" data-testid={`row-invoice-${record.id}`}>
                       <div><button type="button" onClick={() => onDetails(record)} className="text-right font-black text-cyan-800 hover:underline" dir="ltr">{number || `#${record.id}`}</button><span className="mt-1 block text-[10px] text-slate-400">{String(payload.billingPeriod ?? dueDate ?? "—")}</span></div>
@@ -1695,10 +1703,15 @@ function ContractRecordDetails({
   const remainingAmount = totalAmount !== undefined && paidAmount !== undefined ? Math.max(totalAmount - paidAmount, 0) : undefined
   const hasMoney = [baseAmount, taxAmountValue, totalAmount, paidAmount, remainingAmount].some(value => value !== undefined && value > 0)
   const money = (value: number | undefined) => value === undefined ? "—" : `${value.toLocaleString("ar-SA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ر.س`
-  const contractInvoices = allRecords.filter(item => item.kind === "invoice" && item.status !== "archived" && (
-    Number((item.payload as Record<string, unknown>).contractRecordId ?? 0) === record.id ||
-    String((item.payload as Record<string, unknown>).contractNumber ?? "").trim() === contractNumber.trim()
-  ))
+  const normalizedContractNumber = contractNumber.trim()
+  const contractInvoices = allRecords.filter(item => {
+    if (item.kind !== "invoice" || item.status === "archived") return false
+    const invoicePayload = item.payload as Record<string, unknown>
+    const invoiceContractId = Number(invoicePayload.contractRecordId ?? 0)
+    const invoiceContractNumber = String(invoicePayload.contractNumber ?? "").trim()
+    return (invoiceContractId > 0 && invoiceContractId === record.id) ||
+      Boolean(normalizedContractNumber && invoiceContractNumber && invoiceContractNumber === normalizedContractNumber)
+  })
   const linkedRequest = serviceRequests.find(request => Number((request as ServiceRequest & { contractRecordId?: number }).contractRecordId ?? 0) === record.id || request.id === Number(payload.requestId ?? 0))
   const proofPhotoUrl = String(payload.driverProofPhotoUrl ?? payload.proofPhotoUrl ?? linkedRequest?.driverProofPhotoUrl ?? "").trim()
   const openOperation = findOpenContainerOperation(allRecords, serviceRequests, record.id, containerId || null)
@@ -1849,11 +1862,16 @@ function RecordDetails({ record, allRecords, serviceRequests = [], open, onOpenC
   })
   const customerContracts = customerRecords.filter(item => item.kind === "contract")
   const customerInvoices = customerRecords.filter(item => item.kind === "invoice")
+  const recordContractNumber = String(record.payload.contractNumber ?? record.reference ?? "").trim()
   const contractInvoices = record.kind === "contract"
-    ? allRecords.filter(item => item.kind === "invoice" && (
-        Number((item.payload as Record<string, unknown>).contractRecordId) === record.id ||
-        String((item.payload as Record<string, unknown>).contractNumber ?? "") === String(record.payload.contractNumber ?? record.reference)
-      ))
+    ? allRecords.filter(item => {
+        if (item.kind !== "invoice" || item.status === "archived") return false
+        const invoicePayload = item.payload as Record<string, unknown>
+        const invoiceContractId = Number(invoicePayload.contractRecordId ?? 0)
+        const invoiceContractNumber = String(invoicePayload.contractNumber ?? "").trim()
+        return (invoiceContractId > 0 && invoiceContractId === record.id) ||
+          Boolean(recordContractNumber && invoiceContractNumber && invoiceContractNumber === recordContractNumber)
+      })
     : []
   const customerPaymentsRecords = customerRecords.filter(item => ["payment", "receipt"].includes(item.kind))
   const customerPayments = customerRecords.filter(item => ["payment", "receipt"].includes(item.kind)).reduce((sum, item) => sum + amountOf(item), 0)
