@@ -15,3 +15,4 @@
 - [Contract line central types](contract-line-central-types.md) — rental templates use central package IDs; contract creation snapshots the selected line into the same transaction and invoice.
 - [Demo asset seed legacy keys](seed-demo-assets-legacy-keys.md) — legacy seed fallbacks must never match records with an empty demo key.
 - [SQLite WAL recovery](sqlite-wal-recovery.md) — preserve the corrupt main DB and WAL files, recover into a separate file, validate business counts, then switch safely.
+- [Replit preview manifest Shield](replit-preview-manifest-shield.md) — preview may rewrite a valid same-origin manifest request through Replit Shield and show a 401/CORS console warning.
