@@ -114,12 +114,34 @@ function hsFinancialTables(PDO $pdo): void {
     foreach ($accounts as $account) $stmt->execute($account);
 }
 
+function hsSettlementAccountForPaymentMethod(string $method): string {
+    $normalized = strtolower(trim($method));
+    if (in_array($normalized, ['نقدي', 'نقد', 'cash', 'cash payment'], true)) return 'CASH-001';
+    if (preg_match('/بنكي|تحويل|شبكة|مدى|فيزا|ماستركارد|visa|master\s?card|card|بطاقة|pos/iu', $normalized) === 1) {
+        return 'BANK-001';
+    }
+    throw new RuntimeException('طريقة الدفع غير مدعومة؛ اختر نقدي أو مدى أو بطاقة أو تحويلًا بنكيًا');
+}
+
+function hsInitialFinancialStatus(string $requestedStatus): string {
+    $status = trim($requestedStatus);
+    if ($status === '') return 'draft';
+    if (in_array($status, ['draft', 'pending_approval'], true)) return $status;
+    throw new RuntimeException('يجب بدء المستند المالي كمسودة أو إرساله للاعتماد؛ لا يُسمح بإنشائه مرحّلًا مباشرة');
+}
+
 function hsPostFinancialCore(PDO $pdo, string $kind, int $sourceId, array $payload, string $reference, ?int $actorId): void {
     $amount = (float)($payload['amount'] ?? $payload['total'] ?? 0);
     if ($amount <= 0) throw new RuntimeException('لا يمكن ترحيل قيمة مالية غير موجبة');
     if ($kind === 'receipt' && !empty($payload['sourcePaymentId'])) return;
+    $settlementAccount = in_array($kind, ['payment', 'receipt', 'payment_return'], true)
+        ? hsSettlementAccountForPaymentMethod((string)($payload['paymentMethod'] ?? ''))
+        : null;
     hsFinancialTables($pdo);
     $date = (string)($payload['date'] ?? date('Y-m-d'));
+    $exists = $pdo->prepare("SELECT id FROM financial_transactions WHERE source_kind = ? AND source_id = ?");
+    $exists->execute([$kind, $sourceId]);
+    if ($exists->fetchColumn()) return;
     $period = substr($date, 0, 7);
     $periodStmt = $pdo->prepare("SELECT status FROM financial_periods WHERE period_key = ?");
     $periodStmt->execute([$period]);
@@ -128,14 +150,11 @@ function hsPostFinancialCore(PDO $pdo, string $kind, int $sourceId, array $paylo
     $periodEnd = date('Y-m-t', strtotime("{$period}-01"));
     $pdo->prepare("INSERT OR IGNORE INTO financial_periods (period_key,starts_on,ends_on,status) VALUES (?,?,?,'open')")
         ->execute([$period, "{$period}-01", $periodEnd]);
-    $exists = $pdo->prepare("SELECT id FROM financial_transactions WHERE source_kind = ? AND source_id = ?");
-    $exists->execute([$kind, $sourceId]);
-    if ($exists->fetchColumn()) return;
     $debit = 'ADJ-001'; $credit = 'CASH-001';
     if ($kind === 'invoice') [$debit,$credit] = ['AR-001','REV-001'];
     elseif ($kind === 'invoice_return') [$debit,$credit] = ['REV-001','AR-001'];
-    elseif ($kind === 'payment' || $kind === 'receipt') [$debit,$credit] = [str_contains((string)($payload['paymentMethod'] ?? ''),'بنكي') || str_contains((string)($payload['paymentMethod'] ?? ''),'شبكة') ? 'BANK-001' : 'CASH-001','AR-001'];
-    elseif (in_array($kind,['payment_return'],true)) [$debit,$credit] = ['REFUND-001', str_contains((string)($payload['paymentMethod'] ?? ''),'بنكي') ? 'BANK-001' : 'CASH-001'];
+    elseif ($kind === 'payment' || $kind === 'receipt') [$debit,$credit] = [$settlementAccount,'AR-001'];
+    elseif ($kind === 'payment_return') [$debit,$credit] = ['REFUND-001',$settlementAccount];
     elseif (in_array($kind,['expense','daily_expense','fuel_expense','salary_payment','salary_advance'],true)) [$debit,$credit] = ['EXP-001','CASH-001'];
     elseif ($kind === 'purchase') [$debit,$credit] = ['INV-001','AP-001'];
     elseif ($kind === 'purchase_return') [$debit,$credit] = ['AP-001','INV-001'];
@@ -173,8 +192,8 @@ function hsEnsureDepositReconciliation(PDO $pdo, int $depositRecordId, string $k
         (deposit_record_id,deposit_reference,deposit_date,amount,linked_transaction_id,difference,status,audit_trail)
         SELECT ?,?,?,?,?,?,?,?
         WHERE NOT EXISTS (SELECT 1 FROM bank_reconciliations WHERE deposit_record_id = ?)")
-        ->execute([$depositRecordId, $depositReference, $date, $amount, $financialTransactionId, 0, 'matched',
-            json_encode([['at' => date('c'), 'action' => 'deposit_posted', 'sourceKind' => $kind, 'sourceId' => $depositRecordId]], JSON_UNESCAPED_UNICODE),
+        ->execute([$depositRecordId, $depositReference, $date, $amount, $financialTransactionId, 0, 'unmatched',
+            json_encode([['at' => date('c'), 'action' => 'deposit_posted_not_bank_confirmed', 'sourceKind' => $kind, 'sourceId' => $depositRecordId]], JSON_UNESCAPED_UNICODE),
             $depositRecordId]);
 }
 
@@ -331,92 +350,95 @@ function hsEnsureSchema(PDO $pdo): void {
     }
 }
 
-function hsSyncRequestsToCustomers(PDO $pdo): void {
-    $requests = $pdo->query("SELECT id, client_name, phone, email, service_type, location, created_at, customer_record_id FROM service_requests ORDER BY id ASC")->fetchAll(PDO::FETCH_ASSOC);
-    $findCustomer = $pdo->prepare("SELECT id, payload FROM container_system_records WHERE kind = 'customer' AND status != 'archived'");
-    $updateCustomer = $pdo->prepare("UPDATE container_system_records SET payload = :payload, updated_at = :updated_at WHERE id = :id");
-    $insertCustomer = $pdo->prepare("INSERT INTO container_system_records (kind, status, reference, payload, created_at, updated_at) VALUES ('customer', 'active', :reference, :payload, :now, :now)");
-    $findSite = $pdo->prepare("SELECT id, payload FROM container_system_records WHERE kind = 'customer_site' AND status != 'archived'");
-    $insertSite = $pdo->prepare("INSERT INTO container_system_records (kind, status, reference, payload, created_at, updated_at) VALUES ('customer_site', 'active', :reference, :payload, :now, :now)");
-    $linkRequest = $pdo->prepare("UPDATE service_requests SET customer_record_id = :customer_id WHERE id = :id");
+function hsCreateProvisionalCustomerForRequest(PDO $pdo, array $request): ?int {
+    $requestId = (int)($request['id'] ?? 0);
+    $phone = trim((string)($request['phone'] ?? ''));
+    if ($requestId <= 0 || $phone === '') return null;
 
-    foreach ($requests as $request) {
-        $phoneDigits = preg_replace('/\D+/', '', (string)($request['phone'] ?? ''));
-        if ($phoneDigits === '') continue;
-        $customer = null;
-        $findCustomer->execute();
-        foreach ($findCustomer->fetchAll(PDO::FETCH_ASSOC) as $candidate) {
-            $payload = hsPayload((string)($candidate['payload'] ?? ''));
-            if ($phoneDigits === preg_replace('/\D+/', '', (string)($payload['phone'] ?? ''))) {
-                $customer = ['id' => (int)$candidate['id'], 'payload' => $payload];
-                break;
-            }
-        }
+    $link = $pdo->prepare('SELECT customer_record_id FROM service_requests WHERE id = ? LIMIT 1');
+    $link->execute([$requestId]);
+    $existingLink = (int)($link->fetchColumn() ?: 0);
+    if ($existingLink > 0) return $existingLink;
 
+    $ownsTransaction = !$pdo->inTransaction();
+    if ($ownsTransaction) $pdo->beginTransaction();
+    try {
         $now = date('c');
-        if (!$customer) {
-            $payload = [
+        $customerReference = 'CUS-' . str_pad((string)$requestId, 5, '0', STR_PAD_LEFT);
+        $findCustomer = $pdo->prepare("SELECT id FROM container_system_records WHERE kind = 'customer' AND reference = ? LIMIT 1");
+        $findCustomer->execute([$customerReference]);
+        $customerId = (int)($findCustomer->fetchColumn() ?: 0);
+        if ($customerId <= 0) {
+            $customerPayload = [
                 'name' => trim((string)($request['client_name'] ?? '')) ?: 'عميل الطلب',
-                'phone' => (string)$request['phone'],
+                'phone' => $phone,
                 'email' => (string)($request['email'] ?? ''),
                 'source' => 'service_request',
-                'firstRequestId' => (int)$request['id'],
-                'lastRequestId' => (int)$request['id'],
-                'lastRequestClientName' => (string)($request['client_name'] ?? ''),
-                'lastRequestAt' => (string)($request['created_at'] ?? $now),
+                'firstRequestId' => $requestId,
+                'lastRequestId' => $requestId,
+                'identityVerification' => 'unverified',
+                'identityReviewStatus' => 'pending',
             ];
+            $insertCustomer = $pdo->prepare("INSERT INTO container_system_records
+                (kind, status, reference, payload, created_at, updated_at)
+                VALUES ('customer', 'active', ?, ?, ?, ?)");
             $insertCustomer->execute([
-                ':reference' => 'CUS-' . str_pad((string)$request['id'], 5, '0', STR_PAD_LEFT),
-                ':payload' => json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE),
-                ':now' => $now,
+                $customerReference,
+                json_encode($customerPayload, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE),
+                $now,
+                $now,
             ]);
-            $customer = ['id' => (int)$pdo->lastInsertId(), 'payload' => $payload];
-        } else {
-            $payload = $customer['payload'];
-            $payload['lastRequestId'] = (int)$request['id'];
-            $payload['lastRequestClientName'] = (string)($request['client_name'] ?? '');
-            $payload['lastRequestAt'] = (string)($request['created_at'] ?? $now);
-            if (!empty($request['email'])) $payload['email'] = (string)$request['email'];
-            $updateCustomer->execute([
-                ':payload' => json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE),
-                ':updated_at' => $now,
-                ':id' => $customer['id'],
-            ]);
+            $customerId = (int)$pdo->lastInsertId();
         }
 
         $location = trim((string)($request['location'] ?? ''));
         if ($location !== '' && $location !== 'غير محدد') {
-            $sameSite = false;
-            $findSite->execute();
-            foreach ($findSite->fetchAll(PDO::FETCH_ASSOC) as $siteRow) {
-                $sitePayload = hsPayload((string)($siteRow['payload'] ?? ''));
-                if ((int)($sitePayload['customerRecordId'] ?? 0) === $customer['id'] &&
-                    trim((string)($sitePayload['address'] ?? $sitePayload['location'] ?? '')) === $location) {
-                    $sameSite = true;
-                    break;
-                }
-            }
-            if (!$sameSite) {
+            $siteReference = 'SITE-' . str_pad((string)$requestId, 5, '0', STR_PAD_LEFT);
+            $findSite = $pdo->prepare("SELECT id FROM container_system_records WHERE kind = 'customer_site' AND reference = ? LIMIT 1");
+            $findSite->execute([$siteReference]);
+            if (!(int)$findSite->fetchColumn()) {
                 $sitePayload = [
-                    'customerRecordId' => $customer['id'],
-                    'name' => trim((string)($request['client_name'] ?? '')) . ' — عنوان الطلب #' . (int)$request['id'],
+                    'customerRecordId' => $customerId,
+                    'name' => trim((string)($request['client_name'] ?? '')) . ' — عنوان الطلب #' . $requestId,
                     'address' => $location,
                     'location' => $location,
-                    'requestId' => (int)$request['id'],
+                    'requestId' => $requestId,
                     'source' => 'service_request',
                     'serviceType' => (string)($request['service_type'] ?? ''),
                 ];
+                $insertSite = $pdo->prepare("INSERT INTO container_system_records
+                    (kind, status, reference, payload, created_at, updated_at)
+                    VALUES ('customer_site', 'active', ?, ?, ?, ?)");
                 $insertSite->execute([
-                    ':reference' => 'SITE-' . str_pad((string)$request['id'], 5, '0', STR_PAD_LEFT),
-                    ':payload' => json_encode($sitePayload, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE),
-                    ':now' => $now,
+                    $siteReference,
+                    json_encode($sitePayload, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE),
+                    $now,
+                    $now,
                 ]);
             }
         }
 
-        if ((int)($request['customer_record_id'] ?? 0) !== $customer['id']) {
-            $linkRequest->execute([':customer_id' => $customer['id'], ':id' => (int)$request['id']]);
-        }
+        $updateRequest = $pdo->prepare("UPDATE service_requests SET customer_record_id = ?
+            WHERE id = ? AND (customer_record_id IS NULL OR customer_record_id = 0)");
+        $updateRequest->execute([$customerId, $requestId]);
+        $link->execute([$requestId]);
+        $linkedCustomerId = (int)($link->fetchColumn() ?: 0);
+        if ($ownsTransaction) $pdo->commit();
+        return $linkedCustomerId > 0 ? $linkedCustomerId : $customerId;
+    } catch (Throwable $error) {
+        if ($ownsTransaction && $pdo->inTransaction()) $pdo->rollBack();
+        throw $error;
+    }
+}
+
+function hsSyncRequestsToCustomers(PDO $pdo): void {
+    $requests = $pdo->query("SELECT id, client_name, phone, email, service_type, location, created_at, customer_record_id
+        FROM service_requests WHERE customer_record_id IS NULL OR customer_record_id = 0 ORDER BY id ASC")
+        ->fetchAll(PDO::FETCH_ASSOC);
+    foreach ($requests as $request) {
+        // Legacy linked customers are left untouched; unverified phone matches
+        // must never rewrite or claim an existing profile during backfill.
+        hsCreateProvisionalCustomerForRequest($pdo, $request);
     }
 }
 
@@ -1263,6 +1285,15 @@ function hostingerContainerSystemRoute(PDO $pdo, string $path, string $method, a
         foreach ($rows as $row) {
             if ($row['kind'] === 'payment' && (string)($row['payload']['operationKey'] ?? '') === $operationKey) {
                 if ((float)($row['payload']['amount'] ?? 0) !== $amount || json_encode($row['payload']['allocations'] ?? [], JSON_UNESCAPED_UNICODE) !== json_encode($allocations, JSON_UNESCAPED_UNICODE)) hsJson(['error' => 'مفتاح العملية مستخدم لحمولة مختلفة'], 409);
+                $pdo->beginTransaction();
+                try {
+                    hsPostFinancialCore($pdo, 'payment', (int)$row['id'], $row['payload'], (string)$row['reference'], (int)($row['createdBy'] ?? 0) ?: null);
+                    $pdo->commit();
+                } catch (Throwable $error) {
+                    if ($pdo->inTransaction()) $pdo->rollBack();
+                    error_log('[container-system] idempotent payment posting failed: ' . $error->getMessage());
+                    hsJson(['error' => 'تعذر استكمال ترحيل الدفعة السابقة؛ لم يُنشأ تحصيل مكرر'], 422);
+                }
                 $ledger = null;
                 foreach ($rows as $candidate) if ($candidate['kind'] === 'ledger_entry' && (int)($candidate['payload']['sourceId'] ?? 0) === (int)$row['id']) { $ledger = $candidate; break; }
                 hsJson(['payment' => $row, 'ledgerEntry' => $ledger, 'idempotent' => true]);
@@ -1301,9 +1332,21 @@ function hostingerContainerSystemRoute(PDO $pdo, string $path, string $method, a
             $paid = max($paid, 0);
             $total = (float)($contract['payload']['total'] ?? $contract['payload']['amount'] ?? 0);
             if ($total > 0 && $paid + $allocation['amount'] > $total + 0.01) hsJson(['error' => 'قيمة التحصيل تتجاوز المتبقي في العقد'], 422);
+            $contractInvoices = array_values(array_filter($rows, static function (array $row) use ($allocation, $contract, $number): bool {
+                if ($row['kind'] !== 'invoice' || $row['status'] === 'archived') return false;
+                return (int)($row['payload']['contractRecordId'] ?? 0) === $allocation['contractId']
+                    || (string)($row['payload']['contractNumber'] ?? '') === $number;
+            }));
+            if ($contractInvoices !== [] && $allocation['invoiceId'] === null) {
+                hsJson(['error' => 'حدد فاتورة مرحّلة للتحصيل في العقد ' . $number], 422);
+            }
             if ($allocation['invoiceId']) {
                 $invoice = null; foreach ($rows as $row) if ($row['kind'] === 'invoice' && (int)$row['id'] === $allocation['invoiceId']) $invoice = $row;
                   if (!$invoice || $invoice['status'] === 'archived' || ((int)($invoice['payload']['contractRecordId'] ?? 0) !== $allocation['contractId'] && (string)($invoice['payload']['contractNumber'] ?? '') !== $number)) hsJson(['error' => 'الفاتورة لا تتبع العقد المحدد'], 422);
+                  if (!in_array($invoice['status'], ['posted', 'due', 'overdue', 'partially_paid'], true)) hsJson(['error' => 'لا يمكن التحصيل على فاتورة غير مرحّلة أو مغلقة'], 422);
+                  $invoicePosting = $pdo->prepare("SELECT id FROM financial_transactions WHERE source_kind = 'invoice' AND source_id = ? AND status = 'posted' LIMIT 1");
+                  $invoicePosting->execute([(int)$invoice['id']]);
+                  if (!$invoicePosting->fetchColumn()) hsJson(['error' => 'الفاتورة لم تُرحّل إلى النواة المالية بعد'], 422);
                  $invoiceTotal = (float)($invoice['payload']['total'] ?? $invoice['payload']['amount'] ?? 0);
                  $invoicePaid = 0.0;
                  foreach (hsPostedCollections($rows) as $payment) {
@@ -1360,7 +1403,8 @@ function hostingerContainerSystemRoute(PDO $pdo, string $path, string $method, a
             $ledgerId = (int)$pdo->lastInsertId();
             foreach ($contractRows as $index => $item) {
                 $next = $item['contract']['payload']; $next['paid'] = $item['paid'] + $allocations[$index]['amount']; $next['remaining'] = max($item['total'] - $next['paid'], 0);
-                $pdo->prepare("UPDATE container_system_records SET payload=:payload,status=:status,updated_at=:updated_at WHERE id=:id")->execute([':payload' => json_encode($next, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE), ':status' => $next['remaining'] <= 0.01 && $item['total'] > 0 ? 'settled' : $item['contract']['status'], ':updated_at' => $now, ':id' => $item['contract']['id']]);
+                $next['settlementStatus'] = $next['remaining'] <= 0.01 ? 'settled' : 'open';
+                $pdo->prepare("UPDATE container_system_records SET payload=:payload,status=:status,updated_at=:updated_at WHERE id=:id")->execute([':payload' => json_encode($next, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE), ':status' => $item['contract']['status'], ':updated_at' => $now, ':id' => $item['contract']['id']]);
                 $invoiceId = (int)($allocations[$index]['invoiceId'] ?? 0);
                 if ($invoiceId > 0) {
                     foreach ($rows as $invoice) {
@@ -1566,18 +1610,18 @@ function hostingerContainerSystemRoute(PDO $pdo, string $path, string $method, a
         $payload = hsNormalizeFinancial($kind, $payload);
         hsValidateRecord($pdo, $kind, $payload);
         $requestedStatus = (string)($input['status'] ?? '');
-        if (in_array($kind, hsFinancialLifecycleKinds(), true) && $requestedStatus === 'posted') {
-            $periodKey = substr((string)($payload['date'] ?? date('Y-m-d')), 0, 7);
-            $periodStmt = $pdo->prepare("SELECT status FROM financial_periods WHERE period_key = ? LIMIT 1");
-            $periodStmt->execute([$periodKey]);
-            if ($periodStmt->fetchColumn() === 'closed') {
-                hsJson(['error' => 'FINANCIAL_PERIOD_CLOSED', 'periodKey' => $periodKey], 422);
+        $initialFinancialStatus = null;
+        if (in_array($kind, hsFinancialLifecycleKinds(), true)) {
+            try {
+                $initialFinancialStatus = hsInitialFinancialStatus($requestedStatus);
+            } catch (RuntimeException $error) {
+                hsJson(['error' => $error->getMessage()], 422);
             }
         }
         $status = in_array($kind, ['container', 'container_asset'], true)
             ? hsCanonicalAssetStatus((string)($payload['status'] ?? ''), (string)($input['status'] ?? 'available'))
             : (in_array($kind, hsFinancialLifecycleKinds(), true)
-                ? (in_array($requestedStatus, ['draft', 'pending_approval', 'posted'], true) ? $requestedStatus : 'draft')
+                ? $initialFinancialStatus
                 : (string)($input['status'] ?? 'active'));
         $pdo->beginTransaction();
         try {

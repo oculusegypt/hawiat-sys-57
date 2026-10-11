@@ -19,14 +19,14 @@ content_type = "application/octet-stream"
 id = "8wpwjJWk2KepEi0Yl7z6j"
 uri = "file://hawiat-sys-hostinger.zip"
 type = "unspecified"
-title = "حزمة Hostinger الجاهزة"
-description = "أرشيف الموقع الكامل. اجتازت بوابة SEO وفحص هوية العلامة، وسلامة ملف ZIP مؤكدة."
+title = "حزمة Hostinger — CleanFlow"
+description = "أرشيف الاستبدال الكامل، مع واجهة PHP وقاعدة SQLite والواجهة الرئيسية ومنصة CleanFlow."
 logical_id = "990d3da6-af4c-4a74-b7a3-c0ec0ef58ac0"
-content_hash = "sha256:beba9b635e5b9da48a7006c19aa35cb35b2af317512f8215f33d13efc2698adb"
-size = 20557837
-mtime_ms = 1791740839115
-storage_uri = "gcs://replit-rams-assets-riker/rams/assets/repl:2d9a771e-3d61-4d29-86e3-d9e83aa2f7bf/990d3da6-af4c-4a74-b7a3-c0ec0ef58ac0/b7dcc3fa-3866-494f-b664-75fc34d52924"
-storage_version_token = "1791740950364763"
+content_hash = "sha256:6c8c44469b0b506a3ec25e20c0539047778a922f0e99e47505d000b2f4e2c38e"
+size = 19829286
+mtime_ms = 1791758069749
+storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:d62f614f-1695-43e2-ae73-b8132c49de08/990d3da6-af4c-4a74-b7a3-c0ec0ef58ac0/539b0031-d03d-4822-afa4-d5f33166cb14"
+storage_version_token = "1791758141738093"
 content_type = "application/octet-stream"
 
 [[outputs]]
