@@ -76,6 +76,59 @@ export interface ContainerSystemRecordUpdate {
   payload?: ContainerSystemRecordUpdatePayload;
 }
 
+export type CustomerIdentityReviewResolutionInputAction = typeof CustomerIdentityReviewResolutionInputAction[keyof typeof CustomerIdentityReviewResolutionInputAction];
+
+
+export const CustomerIdentityReviewResolutionInputAction = {
+  approve: 'approve',
+  merge: 'merge',
+} as const;
+
+export interface CustomerIdentityReviewResolutionInput {
+  action: CustomerIdentityReviewResolutionInputAction;
+  /** @minimum 1 */
+  targetCustomerId?: number;
+  /** @minLength 3 */
+  reason: string;
+}
+
+export type CustomerIdentityReviewResolutionResultAction = typeof CustomerIdentityReviewResolutionResultAction[keyof typeof CustomerIdentityReviewResolutionResultAction];
+
+
+export const CustomerIdentityReviewResolutionResultAction = {
+  approve: 'approve',
+  merge: 'merge',
+} as const;
+
+export interface CustomerIdentityReviewResolutionResult {
+  action: CustomerIdentityReviewResolutionResultAction;
+  customer: ContainerSystemRecord;
+  updatedRequestCount: number;
+  /** @nullable */
+  mergedIntoCustomerId: number | null;
+}
+
+export type ContainerContractLifecycleInputAction = typeof ContainerContractLifecycleInputAction[keyof typeof ContainerContractLifecycleInputAction];
+
+
+export const ContainerContractLifecycleInputAction = {
+  deliver: 'deliver',
+  return: 'return',
+  approve: 'approve',
+  reject: 'reject',
+  close: 'close',
+} as const;
+
+export interface ContainerContractLifecycleInput {
+  action: ContainerContractLifecycleInputAction;
+}
+
+export interface ContainerContractLifecycleResult {
+  contract: ContainerSystemRecord;
+  movement: ContainerSystemRecord | null;
+  idempotent: boolean;
+}
+
 export type ContainerContractWorkflowInputContract = { [key: string]: unknown };
 
 export type ContainerContractWorkflowInputAssignment = { [key: string]: unknown };

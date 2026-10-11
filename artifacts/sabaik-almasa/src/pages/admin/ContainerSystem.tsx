@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react"
 import { useQueryClient } from "@tanstack/react-query"
 import { Link, useLocation } from "wouter"
 import AdminPackages from "./Packages"
+import CustomerIdentityReview from "./CustomerIdentityReview"
 import {
   AlertCircle, Archive, ArrowDownLeft, ArrowLeftRight, ArrowUpRight, BellRing, BookOpenCheck, Box, CalendarDays, CarFront, CheckCircle2, CircleDollarSign,
   ChevronDown, ChevronLeft, ClipboardList, Coins, FileCheck2, FileDown, FilePenLine, FileText, FolderSearch, Gauge, HandCoins, Landmark, LayoutDashboard, ReceiptText, Trash2, Truck,
@@ -108,7 +109,7 @@ type ViewKey =
   | "rental" | "vouchers" | "operations" | "customer_payments" | "bookings"
   | "expenses" | "payroll" | "fleet" | "warehouses" | "system_settings" | "contracts_list"
   | "settlements" | "container_types"
-  | "financial_cycle"
+  | "financial_cycle" | "identity_review"
 type NavItem = { key?: ViewKey; href?: string; label: string; icon: typeof LayoutDashboard }
 
 const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
@@ -124,6 +125,7 @@ const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
     label: "العملاء والتعاقدات",
     items: [
       { key: "customer" as ViewKey, label: "العملاء", icon: Users },
+      { key: "identity_review" as ViewKey, label: "مراجعة هويات العملاء", icon: ShieldCheck },
       { key: "customer_site" as ViewKey, label: "مواقع العملاء", icon: MapPin },
       { key: "contract" as ViewKey, label: "إنشاء عقد", icon: FileCheck2 },
       { key: "contracts_list" as ViewKey, label: "العقود", icon: FileText },
@@ -238,11 +240,12 @@ const viewLabel = (view: ViewKey) =>
   : view === "warehouses" ? "المستودعات والمخازن"
   : view === "system_settings" ? "إعدادات النظام والتشغيل"
   : view === "contracts_list" ? "العقود"
+  : view === "identity_review" ? "مراجعة هويات العملاء"
   : KIND_LABELS[view as RecordKind]
 
 function ContainerSidebar({ view, onSelect }: { view: ViewKey; onSelect: (view: ViewKey) => void }) {
   const [expanded, setExpanded] = useState<Record<string, boolean>>(
-    Object.fromEntries(NAV_GROUPS.map(group => [group.label, ["مركز التشغيل", "المالية والتحصيل"].includes(group.label)])),
+    Object.fromEntries(NAV_GROUPS.map(group => [group.label, ["مركز التشغيل", "العملاء والتعاقدات", "المالية والتحصيل"].includes(group.label)])),
   )
   return (
     <Card className="sticky top-20 border-slate-200/80 bg-white/90 shadow-sm">
@@ -2646,7 +2649,7 @@ export default function ContainerSystem() {
   }
   const busy = createMutation.isPending || updateMutation.isPending || contractFlowBusy
   const loading = snapshotQuery.isLoading || (isCollection && recordsQuery.isLoading)
-  const error = snapshotQuery.isError || (isCollection && recordsQuery.isError)
+  const error = view !== "identity_review" && (snapshotQuery.isError || (isCollection && recordsQuery.isError))
 
   return (
     <div className="container-system min-h-[calc(100dvh-4rem)] space-y-5" dir="rtl">
@@ -2679,6 +2682,8 @@ export default function ContainerSystem() {
                 ? <InvoiceWorkspace records={records} onAdd={() => openCreate("invoice")} onDetails={record => navigate(`/admin/container-system/invoice/${record.id}/details`)} onEdit={openEdit} onArchive={archiveRecord} />
                : view === "contracts_list"
                  ? <ContractsWorkspace records={records} allRecords={snapshot?.records ?? records} loading={loading} onAdd={() => openCreate("contract")} onDetails={openRecordDetails} onEdit={openEdit} onArchive={archiveRecord} />
+              : view === "identity_review"
+                ? <CustomerIdentityReview />
               : view === "customer"
                   ? <CustomersWorkspace records={records} allRecords={snapshot?.records ?? records} loading={loading} onAdd={() => openCreate("customer")} onDetails={openRecordDetails} onEdit={openEdit} onArchive={archiveRecord} />
               : view === "operations"

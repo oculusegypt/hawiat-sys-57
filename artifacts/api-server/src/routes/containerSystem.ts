@@ -1,6 +1,11 @@
 import { Router, type Request, type Response, type NextFunction } from "express";
 import { and, desc, eq, like, ne, or } from "drizzle-orm";
 import { db, sqlite, containersTable, containerSystemAuditTable, containerSystemRecordsTable, serviceRequestsTable, financialTruth, financialPeriods, closeFinancialPeriod, postToFinancialCore, postToFinancialCoreInTransaction, reverseInFinancialCore } from "@workspace/db";
+import {
+  ResolveCustomerIdentityReviewBody,
+  ResolveCustomerIdentityReviewParams,
+  ResolveCustomerIdentityReviewResponse,
+} from "@workspace/api-zod";
 import type { AdminRequest } from "../middleware/adminAuth";
 import { getSetting } from "./settings";
 import { refreshPrivateUploadUrl } from "../lib/privateUploadUrl";
@@ -1143,6 +1148,182 @@ router.get("/admin/container-system/records", requireContainerPermission("contai
   return res.json((await enrichContainerRegistryRows(rows)).map(formatRecord));
 });
 
+router.post("/admin/container-system/identity-review/:id/resolve", requireContainerPermission("customer"), async (req, res) => {
+  const adminReq = req as unknown as AdminRequest;
+  if (adminReq.adminRole !== "admin" && adminReq.adminRole !== "manager") {
+    res.status(403).json({ error: "مراجعة هوية العملاء متاحة للمدير أو المدير الرئيسي فقط" });
+    return;
+  }
+
+  const params = ResolveCustomerIdentityReviewParams.safeParse(req.params);
+  if (!params.success) {
+    res.status(400).json({ error: "رقم ملف العميل غير صحيح" });
+    return;
+  }
+  const parsed = ResolveCustomerIdentityReviewBody.safeParse(req.body);
+  if (!parsed.success || parsed.data.reason.trim().length < 3) {
+    res.status(422).json({ error: "الإجراء وسبب المراجعة مطلوبان" });
+    return;
+  }
+
+  const customerId = params.data.id;
+  const action = parsed.data.action;
+  const reason = parsed.data.reason.trim();
+  const targetCustomerId = action === "merge" ? parsed.data.targetCustomerId : undefined;
+  if (action === "merge" && (!targetCustomerId || targetCustomerId === customerId)) {
+    res.status(422).json({ error: "اختر ملف عميل موثّقًا مختلفًا لدمج السجل فيه" });
+    return;
+  }
+
+  const now = new Date().toISOString();
+  const outcome = db.transaction((tx) => {
+    const source = tx.select().from(containerSystemRecordsTable)
+      .where(eq(containerSystemRecordsTable.id, customerId)).get();
+    if (!source || source.kind !== "customer" || source.status === "archived") {
+      return { error: "ملف العميل غير موجود", status: 404 as const };
+    }
+
+    const sourcePayload = parsePayload(source.payload);
+    if (sourcePayload.identityReviewStatus !== "pending" || sourcePayload.identityVerification !== "unverified") {
+      return { error: "تمت مراجعة ملف العميل مسبقًا أو أنه غير مؤهل للمراجعة", status: 409 as const };
+    }
+
+    let target: typeof source | undefined;
+    let targetPayload: Record<string, unknown> | undefined;
+    if (action === "merge") {
+      target = tx.select().from(containerSystemRecordsTable)
+        .where(eq(containerSystemRecordsTable.id, targetCustomerId!)).get();
+      if (!target || target.kind !== "customer" || target.status === "archived") {
+        return { error: "ملف العميل المستهدف غير موجود أو مؤرشف", status: 409 as const };
+      }
+      targetPayload = parsePayload(target.payload);
+      if (targetPayload.identityVerification !== "verified" || targetPayload.identityReviewStatus === "pending") {
+        return { error: "لا يمكن الدمج إلا في ملف عميل سبق التحقق من هويته", status: 409 as const };
+      }
+    }
+
+    let updatedRequestCount = 0;
+    if (action === "approve") {
+      const nextPayload = {
+        ...sourcePayload,
+        identityVerification: "verified",
+        identityReviewStatus: "approved",
+        identityReviewedAt: now,
+        identityReviewedBy: adminReq.adminId,
+        identityReviewReason: reason,
+      };
+      const customer = tx.update(containerSystemRecordsTable).set({
+        payload: JSON.stringify(nextPayload),
+        updatedAt: now,
+      }).where(eq(containerSystemRecordsTable.id, customerId)).returning().get();
+      if (!customer) throw new Error("تعذر تحديث ملف العميل بعد المراجعة");
+      tx.insert(containerSystemAuditTable).values({
+        recordId: customerId,
+        kind: "customer",
+        action: "identity_review_approved",
+        beforePayload: source.payload,
+        afterPayload: JSON.stringify(nextPayload),
+        actorId: adminReq.adminId,
+      }).run();
+      return { action, customer, updatedRequestCount, mergedIntoCustomerId: null };
+    }
+
+    const targetId = targetCustomerId!;
+    const rows = tx.select().from(containerSystemRecordsTable).all();
+    for (const row of rows) {
+      if (row.id === customerId || row.id === targetId) continue;
+      const rowPayload = parsePayload(row.payload);
+      if (Number(rowPayload.customerRecordId ?? 0) !== customerId) continue;
+      const nextPayload = { ...rowPayload, customerRecordId: targetId };
+      tx.update(containerSystemRecordsTable).set({
+        payload: JSON.stringify(nextPayload),
+        updatedAt: now,
+      }).where(eq(containerSystemRecordsTable.id, row.id)).run();
+      tx.insert(containerSystemAuditTable).values({
+        recordId: row.id,
+        kind: row.kind,
+        action: "identity_customer_merge_relink",
+        beforePayload: row.payload,
+        afterPayload: JSON.stringify(nextPayload),
+        actorId: adminReq.adminId,
+      }).run();
+    }
+
+    const linkedRequests = tx.select().from(serviceRequestsTable)
+      .where(eq(serviceRequestsTable.customerRecordId, customerId)).all();
+    updatedRequestCount = linkedRequests.length;
+    if (updatedRequestCount > 0) {
+      tx.update(serviceRequestsTable).set({
+        customerRecordId: targetId,
+        updatedAt: now,
+      }).where(eq(serviceRequestsTable.customerRecordId, customerId)).run();
+    }
+
+    const nextTargetPayload = {
+      ...targetPayload!,
+      mergedProvisionalCustomerIds: [
+        ...new Set([
+          ...(Array.isArray(targetPayload!.mergedProvisionalCustomerIds)
+            ? targetPayload!.mergedProvisionalCustomerIds.map(Number).filter(Number.isInteger)
+            : []),
+          customerId,
+        ]),
+      ],
+      identityMergeUpdatedAt: now,
+      identityMergeUpdatedBy: adminReq.adminId,
+    };
+    const updatedTarget = tx.update(containerSystemRecordsTable).set({
+      payload: JSON.stringify(nextTargetPayload),
+      updatedAt: now,
+    }).where(eq(containerSystemRecordsTable.id, targetId)).returning().get();
+    if (!updatedTarget) throw new Error("تعذر تحديث ملف العميل المستهدف");
+    tx.insert(containerSystemAuditTable).values({
+      recordId: targetId,
+      kind: "customer",
+      action: "identity_review_merge_target",
+      beforePayload: target!.payload,
+      afterPayload: JSON.stringify(nextTargetPayload),
+      actorId: adminReq.adminId,
+    }).run();
+
+    const nextSourcePayload = {
+      ...sourcePayload,
+      identityVerification: "verified",
+      identityReviewStatus: "merged",
+      identityReviewedAt: now,
+      identityReviewedBy: adminReq.adminId,
+      identityReviewReason: reason,
+      mergedIntoCustomerId: targetId,
+      mergedAt: now,
+      mergedBy: adminReq.adminId,
+    };
+    const customer = tx.update(containerSystemRecordsTable).set({
+      status: "archived",
+      payload: JSON.stringify(nextSourcePayload),
+      updatedAt: now,
+    }).where(eq(containerSystemRecordsTable.id, customerId)).returning().get();
+    if (!customer) throw new Error("تعذر أرشفة ملف العميل المدمج");
+    tx.insert(containerSystemAuditTable).values({
+      recordId: customerId,
+      kind: "customer",
+      action: "identity_review_merged",
+      beforePayload: source.payload,
+      afterPayload: JSON.stringify(nextSourcePayload),
+      actorId: adminReq.adminId,
+    }).run();
+    return { action, customer, updatedRequestCount, mergedIntoCustomerId: targetId };
+  });
+
+  if ("error" in outcome) {
+    res.status(outcome.status).json({ error: outcome.error });
+    return;
+  }
+  res.json(ResolveCustomerIdentityReviewResponse.parse({
+    ...outcome,
+    customer: formatRecord(outcome.customer),
+  }));
+});
+
 async function existingContractWorkflowResponse(contract: typeof containerSystemRecordsTable.$inferSelect) {
   const rows = await db.select().from(containerSystemRecordsTable);
   const related = (kind: string) => rows.find(row => {
@@ -2214,7 +2395,31 @@ router.post("/admin/container-system/contracts/:id/lifecycle", requireContainerP
         }).where(eq(containerSystemRecordsTable.id, contractId)).returning().get();
         for (const row of allRows) {
           const payload = parsePayload(row.payload);
-          if (row.kind !== "container_assignment" || Number(payload.contractRecordId ?? 0) !== contractId) continue;
+          if (Number(payload.contractRecordId ?? 0) !== contractId) continue;
+          if (row.kind === "contract_line" && row.status !== "archived") {
+            const nextLinePayload = {
+              ...payload,
+              status: "closed",
+              lineLifecycleStatus: "closed",
+              closedAt: now,
+              lifecycleAction: "contract_close",
+            };
+            tx.update(containerSystemRecordsTable).set({
+              status: "closed",
+              payload: JSON.stringify(nextLinePayload),
+              updatedAt: now,
+            }).where(eq(containerSystemRecordsTable.id, row.id)).run();
+            tx.insert(containerSystemAuditTable).values({
+              recordId: row.id,
+              kind: "contract_line",
+              action: "contract_close_line",
+              beforePayload: row.payload,
+              afterPayload: JSON.stringify(nextLinePayload),
+              actorId: adminReq.adminId,
+            }).run();
+            continue;
+          }
+          if (row.kind !== "container_assignment") continue;
           tx.update(containerSystemRecordsTable).set({
             status: "closed",
             payload: JSON.stringify({ ...payload, assignmentStatus: "closed", closedAt: now }),

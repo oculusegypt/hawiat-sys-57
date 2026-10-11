@@ -27,6 +27,8 @@ import type {
   CompanyValue,
   CompanyValueInput,
   Container,
+  ContainerContractLifecycleInput,
+  ContainerContractLifecycleResult,
   ContainerContractWorkflowInput,
   ContainerContractWorkflowResult,
   ContainerInput,
@@ -42,6 +44,8 @@ import type {
   ConversationInput,
   ConversationTypingInput,
   ConversationUpdate,
+  CustomerIdentityReviewResolutionInput,
+  CustomerIdentityReviewResolutionResult,
   DashboardStats,
   DriverWorkOrderUpdate,
   FinancialTruthResponse,
@@ -4400,6 +4404,138 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
         TContext
       > => {
       return useMutation(getCreateContainerContractWorkflowMutationOptions(options));
+    }
+
+export const getResolveCustomerIdentityReviewUrl = (id: number,) => {
+
+
+
+
+  return `/api/admin/container-system/identity-review/${id}/resolve`
+}
+
+export const resolveCustomerIdentityReview = async (id: number,
+    customerIdentityReviewResolutionInput: CustomerIdentityReviewResolutionInput, options?: RequestInit): Promise<CustomerIdentityReviewResolutionResult> => {
+
+  return customFetch<CustomerIdentityReviewResolutionResult>(getResolveCustomerIdentityReviewUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(customerIdentityReviewResolutionInput)
+  }
+);}
+
+
+
+
+
+export const getResolveCustomerIdentityReviewMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof resolveCustomerIdentityReview>>, TError,{id: number;data: BodyType<CustomerIdentityReviewResolutionInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof resolveCustomerIdentityReview>>, TError,{id: number;data: BodyType<CustomerIdentityReviewResolutionInput>}, TContext> => {
+
+const mutationKey = ['resolveCustomerIdentityReview'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof resolveCustomerIdentityReview>>, {id: number;data: BodyType<CustomerIdentityReviewResolutionInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  resolveCustomerIdentityReview(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ResolveCustomerIdentityReviewMutationResult = NonNullable<Awaited<ReturnType<typeof resolveCustomerIdentityReview>>>
+    export type ResolveCustomerIdentityReviewMutationBody = BodyType<CustomerIdentityReviewResolutionInput>
+    export type ResolveCustomerIdentityReviewMutationError = ErrorType<void>
+
+    export const useResolveCustomerIdentityReview = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof resolveCustomerIdentityReview>>, TError,{id: number;data: BodyType<CustomerIdentityReviewResolutionInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof resolveCustomerIdentityReview>>,
+        TError,
+        {id: number;data: BodyType<CustomerIdentityReviewResolutionInput>},
+        TContext
+      > => {
+      return useMutation(getResolveCustomerIdentityReviewMutationOptions(options));
+    }
+
+export const getUpdateContainerContractLifecycleUrl = (id: number,) => {
+
+
+
+
+  return `/api/admin/container-system/contracts/${id}/lifecycle`
+}
+
+export const updateContainerContractLifecycle = async (id: number,
+    containerContractLifecycleInput: ContainerContractLifecycleInput, options?: RequestInit): Promise<ContainerContractLifecycleResult> => {
+
+  return customFetch<ContainerContractLifecycleResult>(getUpdateContainerContractLifecycleUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(containerContractLifecycleInput)
+  }
+);}
+
+
+
+
+
+export const getUpdateContainerContractLifecycleMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateContainerContractLifecycle>>, TError,{id: number;data: BodyType<ContainerContractLifecycleInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateContainerContractLifecycle>>, TError,{id: number;data: BodyType<ContainerContractLifecycleInput>}, TContext> => {
+
+const mutationKey = ['updateContainerContractLifecycle'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateContainerContractLifecycle>>, {id: number;data: BodyType<ContainerContractLifecycleInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  updateContainerContractLifecycle(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateContainerContractLifecycleMutationResult = NonNullable<Awaited<ReturnType<typeof updateContainerContractLifecycle>>>
+    export type UpdateContainerContractLifecycleMutationBody = BodyType<ContainerContractLifecycleInput>
+    export type UpdateContainerContractLifecycleMutationError = ErrorType<void>
+
+    export const useUpdateContainerContractLifecycle = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateContainerContractLifecycle>>, TError,{id: number;data: BodyType<ContainerContractLifecycleInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateContainerContractLifecycle>>,
+        TError,
+        {id: number;data: BodyType<ContainerContractLifecycleInput>},
+        TContext
+      > => {
+      return useMutation(getUpdateContainerContractLifecycleMutationOptions(options));
     }
 
 export const getUpdateContainerSystemRecordUrl = (id: number,) => {

@@ -1106,6 +1106,72 @@ paths:
               schema:
                 $ref: "#/components/schemas/ContainerContractWorkflowResult"
 
+  /admin/container-system/identity-review/{id}/resolve:
+    post:
+      operationId: resolveCustomerIdentityReview
+      tags: [admin]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CustomerIdentityReviewResolutionInput"
+      responses:
+        "200":
+          description: Customer identity review resolved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CustomerIdentityReviewResolutionResult"
+        "400":
+          description: Invalid request
+        "403":
+          description: Insufficient permission
+        "404":
+          description: Customer record not found
+        "409":
+          description: Review already resolved or merge target is invalid
+
+  /admin/container-system/contracts/{id}/lifecycle:
+    post:
+      operationId: updateContainerContractLifecycle
+      tags: [admin]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ContainerContractLifecycleInput"
+      responses:
+        "200":
+          description: Contract lifecycle transition completed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ContainerContractLifecycleResult"
+        "400":
+          description: Invalid request
+        "403":
+          description: Insufficient permission
+        "404":
+          description: Contract not found
+        "422":
+          description: Invalid contract lifecycle transition
+
   /admin/container-system/records/{id}:
     patch:
       operationId: updateContainerSystemRecord
@@ -1328,6 +1394,55 @@ components:
         payload:
           type: object
           additionalProperties: true
+
+    CustomerIdentityReviewResolutionInput:
+      type: object
+      required: [action, reason]
+      properties:
+        action:
+          type: string
+          enum: [approve, merge]
+        targetCustomerId:
+          type: integer
+          minimum: 1
+        reason:
+          type: string
+          minLength: 3
+
+    CustomerIdentityReviewResolutionResult:
+      type: object
+      required: [action, customer, updatedRequestCount, mergedIntoCustomerId]
+      properties:
+        action:
+          type: string
+          enum: [approve, merge]
+        customer:
+          $ref: "#/components/schemas/ContainerSystemRecord"
+        updatedRequestCount:
+          type: integer
+        mergedIntoCustomerId:
+          type: ["integer", "null"]
+
+    ContainerContractLifecycleInput:
+      type: object
+      required: [action]
+      properties:
+        action:
+          type: string
+          enum: [deliver, return, approve, reject, close]
+
+    ContainerContractLifecycleResult:
+      type: object
+      required: [contract, movement, idempotent]
+      properties:
+        contract:
+          $ref: "#/components/schemas/ContainerSystemRecord"
+        movement:
+          oneOf:
+            - $ref: "#/components/schemas/ContainerSystemRecord"
+            - type: "null"
+        idempotent:
+          type: boolean
 
     ContainerContractWorkflowInput:
       type: object

@@ -1792,6 +1792,71 @@ export const CreateContainerContractWorkflowResponse = zod.object({
 })
 
 
+export const ResolveCustomerIdentityReviewParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+
+export const resolveCustomerIdentityReviewBodyReasonMin = 3;
+
+
+
+export const ResolveCustomerIdentityReviewBody = zod.object({
+  "action": zod.enum(['approve', 'merge']),
+  "targetCustomerId": zod.number().min(1).optional(),
+  "reason": zod.string().min(resolveCustomerIdentityReviewBodyReasonMin)
+})
+
+export const ResolveCustomerIdentityReviewResponse = zod.object({
+  "action": zod.enum(['approve', 'merge']),
+  "customer": zod.object({
+  "id": zod.number(),
+  "kind": zod.string(),
+  "status": zod.string(),
+  "reference": zod.string(),
+  "payload": zod.record(zod.string(), zod.unknown()),
+  "createdBy": zod.number().nullish(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+}),
+  "updatedRequestCount": zod.number(),
+  "mergedIntoCustomerId": zod.number().nullable()
+})
+
+
+export const UpdateContainerContractLifecycleParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const UpdateContainerContractLifecycleBody = zod.object({
+  "action": zod.enum(['deliver', 'return', 'approve', 'reject', 'close'])
+})
+
+export const UpdateContainerContractLifecycleResponse = zod.object({
+  "contract": zod.object({
+  "id": zod.number(),
+  "kind": zod.string(),
+  "status": zod.string(),
+  "reference": zod.string(),
+  "payload": zod.record(zod.string(), zod.unknown()),
+  "createdBy": zod.number().nullish(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+}),
+  "movement": zod.union([zod.object({
+  "id": zod.number(),
+  "kind": zod.string(),
+  "status": zod.string(),
+  "reference": zod.string(),
+  "payload": zod.record(zod.string(), zod.unknown()),
+  "createdBy": zod.number().nullish(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+}),zod.null()]),
+  "idempotent": zod.boolean()
+})
+
+
 export const UpdateContainerSystemRecordParams = zod.object({
   "id": zod.coerce.number()
 })

@@ -825,6 +825,123 @@ function hostingerContainerSystemRoute(PDO $pdo, string $path, string $method, a
     $admin = hsAuth($pdo);
     $actorId = (int)$admin['id'];
 
+    if (preg_match('#^/admin/container-system/identity-review/(\d+)/resolve$#', $path, $matches) && $method === 'POST') {
+        if (!hsCanManage($admin, 'customer') || !in_array((string)($admin['role'] ?? ''), ['admin', 'manager'], true)) {
+            hsJson(['error' => 'مراجعة هوية العملاء متاحة للمدير أو المدير الرئيسي فقط'], 403);
+        }
+        $customerId = (int)$matches[1];
+        $action = strtolower(trim((string)($input['action'] ?? '')));
+        $reason = trim((string)($input['reason'] ?? ''));
+        $targetCustomerId = (int)($input['targetCustomerId'] ?? 0);
+        if ($customerId <= 0 || !in_array($action, ['approve', 'merge'], true) || strlen($reason) < 3) {
+            hsJson(['error' => 'رقم الملف والإجراء وسبب المراجعة مطلوبة'], 422);
+        }
+        if ($action === 'merge' && ($targetCustomerId <= 0 || $targetCustomerId === $customerId)) {
+            hsJson(['error' => 'اختر ملف عميل موثّقًا مختلفًا لدمج السجل فيه'], 422);
+        }
+
+        $now = date('c');
+        try {
+            $pdo->beginTransaction();
+            $sourceStmt = $pdo->prepare("SELECT * FROM container_system_records WHERE id = ? LIMIT 1");
+            $sourceStmt->execute([$customerId]);
+            $source = $sourceStmt->fetch(PDO::FETCH_ASSOC);
+            if (!$source || $source['kind'] !== 'customer' || $source['status'] === 'archived') {
+                throw new RuntimeException('ملف العميل غير موجود');
+            }
+            $sourcePayload = hsPayload($source['payload']);
+            if (($sourcePayload['identityReviewStatus'] ?? '') !== 'pending' || ($sourcePayload['identityVerification'] ?? '') !== 'unverified') {
+                throw new RuntimeException('تمت مراجعة ملف العميل مسبقًا أو أنه غير مؤهل للمراجعة');
+            }
+
+            $updatedRequestCount = 0;
+            $mergedIntoCustomerId = null;
+            if ($action === 'approve') {
+                $nextPayload = array_merge($sourcePayload, [
+                    'identityVerification' => 'verified',
+                    'identityReviewStatus' => 'approved',
+                    'identityReviewedAt' => $now,
+                    'identityReviewedBy' => $actorId,
+                    'identityReviewReason' => $reason,
+                ]);
+            } else {
+                $targetStmt = $pdo->prepare("SELECT * FROM container_system_records WHERE id = ? LIMIT 1");
+                $targetStmt->execute([$targetCustomerId]);
+                $target = $targetStmt->fetch(PDO::FETCH_ASSOC);
+                if (!$target || $target['kind'] !== 'customer' || $target['status'] === 'archived') {
+                    throw new RuntimeException('ملف العميل المستهدف غير موجود أو مؤرشف');
+                }
+                $targetPayload = hsPayload($target['payload']);
+                if (($targetPayload['identityVerification'] ?? '') !== 'verified' || ($targetPayload['identityReviewStatus'] ?? '') === 'pending') {
+                    throw new RuntimeException('لا يمكن الدمج إلا في ملف عميل سبق التحقق من هويته');
+                }
+
+                $rows = $pdo->query("SELECT id, kind, payload FROM container_system_records WHERE id NOT IN ({$customerId}, {$targetCustomerId})")->fetchAll(PDO::FETCH_ASSOC);
+                $relink = $pdo->prepare("UPDATE container_system_records SET payload = :payload, updated_at = :updated_at WHERE id = :id");
+                foreach ($rows as $row) {
+                    $rowPayload = hsPayload($row['payload']);
+                    if ((int)($rowPayload['customerRecordId'] ?? 0) !== $customerId) continue;
+                    $nextRowPayload = $rowPayload;
+                    $nextRowPayload['customerRecordId'] = $targetCustomerId;
+                    $nextJson = json_encode($nextRowPayload, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+                    $relink->execute([':payload' => $nextJson, ':updated_at' => $now, ':id' => (int)$row['id']]);
+                    hsAudit($pdo, (int)$row['id'], (string)$row['kind'], 'identity_customer_merge_relink', (string)$row['payload'], (string)$nextJson, $actorId);
+                }
+
+                $requestStmt = $pdo->prepare("UPDATE service_requests SET customer_record_id = :target, updated_at = :updated_at WHERE customer_record_id = :source");
+                $requestStmt->execute([':target' => $targetCustomerId, ':updated_at' => $now, ':source' => $customerId]);
+                $updatedRequestCount = $requestStmt->rowCount();
+                $mergedIntoCustomerId = $targetCustomerId;
+
+                $mergedIds = is_array($targetPayload['mergedProvisionalCustomerIds'] ?? null)
+                    ? array_values(array_unique(array_filter(array_map('intval', $targetPayload['mergedProvisionalCustomerIds']), static fn(int $id): bool => $id > 0)))
+                    : [];
+                $mergedIds[] = $customerId;
+                $nextTargetPayload = array_merge($targetPayload, [
+                    'mergedProvisionalCustomerIds' => array_values(array_unique($mergedIds)),
+                    'identityMergeUpdatedAt' => $now,
+                    'identityMergeUpdatedBy' => $actorId,
+                ]);
+                $nextTargetJson = json_encode($nextTargetPayload, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+                $pdo->prepare("UPDATE container_system_records SET payload = ?, updated_at = ? WHERE id = ?")
+                    ->execute([$nextTargetJson, $now, $targetCustomerId]);
+                hsAudit($pdo, $targetCustomerId, 'customer', 'identity_review_merge_target', (string)$target['payload'], (string)$nextTargetJson, $actorId);
+
+                $nextPayload = array_merge($sourcePayload, [
+                    'identityVerification' => 'verified',
+                    'identityReviewStatus' => 'merged',
+                    'identityReviewedAt' => $now,
+                    'identityReviewedBy' => $actorId,
+                    'identityReviewReason' => $reason,
+                    'mergedIntoCustomerId' => $targetCustomerId,
+                    'mergedAt' => $now,
+                    'mergedBy' => $actorId,
+                ]);
+            }
+
+            $nextJson = json_encode($nextPayload, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+            $nextStatus = $action === 'merge' ? 'archived' : (string)$source['status'];
+            $pdo->prepare("UPDATE container_system_records SET status = ?, payload = ?, updated_at = ? WHERE id = ?")
+                ->execute([$nextStatus, $nextJson, $now, $customerId]);
+            hsAudit($pdo, $customerId, 'customer', $action === 'approve' ? 'identity_review_approved' : 'identity_review_merged', (string)$source['payload'], (string)$nextJson, $actorId);
+            $pdo->commit();
+        } catch (Throwable $error) {
+            if ($pdo->inTransaction()) $pdo->rollBack();
+            $message = $error->getMessage();
+            $status = str_contains($message, 'غير موجود') ? 404 : (str_contains($message, 'مسبقًا') || str_contains($message, 'موثّقًا') || str_contains($message, 'سبق التحقق') ? 409 : 422);
+            hsJson(['error' => $message], $status);
+        }
+
+        $updatedStmt = $pdo->prepare("SELECT * FROM container_system_records WHERE id = ? LIMIT 1");
+        $updatedStmt->execute([$customerId]);
+        hsJson([
+            'action' => $action,
+            'customer' => hsRecord($updatedStmt->fetch(PDO::FETCH_ASSOC)),
+            'updatedRequestCount' => $updatedRequestCount,
+            'mergedIntoCustomerId' => $mergedIntoCustomerId,
+        ]);
+    }
+
     if ($path === '/admin/container-system' && $method === 'GET') {
         $records = array_map('hsRecord', hsFindRecords($pdo));
         $payments = [];
