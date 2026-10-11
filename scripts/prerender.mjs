@@ -33,12 +33,10 @@ const distPublic = join(ROOT, "artifacts/sabaik-almasa/dist/public");
 
 const settingRows = db.prepare("SELECT key, value FROM site_settings").all();
 const settingMap = Object.fromEntries(settingRows.map(row => [row.key, row.value]));
-const SEO_DEFAULTS = {
-  companyName: "سبائك الماسه",
-  description: "",
-  priceRange: "",
-};
-const siteCompanyName = settingMap.company_name?.trim() || SEO_DEFAULTS.companyName;
+const siteCompanyName = settingMap.company_name?.trim() || "";
+if (!siteCompanyName) {
+  throw new Error("إعداد اسم المنشأة في «بيانات المنشأة» مطلوب قبل إنشاء صفحات SEO.");
+}
 // Keep the homepage title search-focused while the schema identity comes from
 // the configured company name above.
 const HOMEPAGE_SEO_TITLE = "تأجير حاويات الرياض | طلب الحاويات ومخلفات البناء والهدم";
@@ -116,14 +114,14 @@ function readableSeoExcerpt(value = "") {
 
 function authorityTrustMarkup() {
   const businessProfile = safeGoogleBusinessProfileUrl(settingMap.company_google_business_profile);
-  const addressText = [address.address, address.city, address.region].filter(Boolean).join("، ") || "الرياض، المملكة العربية السعودية";
+  const addressText = [address.address, address.city, address.region].filter(Boolean).join("، ");
   return `
     <section class="seo-authority-trust" aria-labelledby="authority-trust-title">
       <p class="seo-authority-eyebrow">مصدر واضح ومعلومات قابلة للتحقق</p>
       <h2 id="authority-trust-title">هوية الجهة الناشرة ومراجع الخدمة</h2>
       <div class="seo-authority-grid">
         <div><strong>الجهة الناشرة</strong><p>${esc(siteCompanyName)} — خدمات تأجير الحاويات ونقل المخلفات في الرياض.</p>${sitePhoneCall ? `<p><strong>التواصل:</strong> ${esc(sitePhoneCall)}</p>` : ""}</div>
-        <div><strong>موقع العمل المعلن</strong><p>${esc(addressText)}</p>${businessProfile ? `<a href="${esc(businessProfile)}" itemprop="sameAs" data-google-business-profile="true" target="_blank" rel="noopener noreferrer">عرض ملف Google Business Profile ↗</a>` : ""}</div>
+        ${addressText || businessProfile ? `<div><strong>موقع العمل المعلن</strong>${addressText ? `<p>${esc(addressText)}</p>` : ""}${businessProfile ? `<a href="${esc(businessProfile)}" itemprop="sameAs" data-google-business-profile="true" target="_blank" rel="noopener noreferrer">عرض ملف Google Business Profile ↗</a>` : ""}</div>` : ""}
         <div><strong>مراجعة المحتوى</strong><p>فريق المحتوى في ${esc(siteCompanyName)} يراجع معلومات المقاسات والطلب والتوصيل قبل النشر.</p></div>
         <div><strong>مراجع عامة</strong><p>للاطلاع على الاشتراطات والخدمات الحكومية ذات الصلة:</p><p><a href="https://balady.gov.sa/" target="_blank" rel="noopener noreferrer">منصة بلدي ↗</a> · <a href="https://www.alriyadh.gov.sa/" target="_blank" rel="noopener noreferrer">أمانة الرياض ↗</a></p></div>
       </div>
@@ -173,6 +171,38 @@ const socialLinks = [
   settingMap.social_linkedin,
   settingMap.company_google_business_profile,
 ].map(value => String(value || "").trim()).filter(value => /^https?:\/\//i.test(value));
+
+const markdownText = (value) => String(value || "").replace(/\s+/g, " ").trim();
+const llmsLines = [
+  `# ${markdownText(siteCompanyName)}`,
+  siteDescription ? `\n> ${markdownText(siteDescription)}` : "",
+  "\n## بيانات المنشأة",
+  `- الاسم: ${markdownText(siteCompanyName)}`,
+  settingMap.company_name_en?.trim() ? `- الاسم بالإنجليزية: ${markdownText(settingMap.company_name_en)}` : "",
+  SITE_URL ? `- الموقع: ${SITE_URL}` : "",
+  sitePhoneCall ? `- هاتف الاتصال: ${markdownText(sitePhoneCall)}` : "",
+  sitePhoneWhatsapp ? `- واتساب: ${markdownText(sitePhoneWhatsapp)}` : "",
+  settingMap.company_email?.trim() ? `- البريد الإلكتروني: ${markdownText(settingMap.company_email)}` : "",
+  [settingMap.company_address, settingMap.company_city, settingMap.company_region, settingMap.company_country]
+    .map(markdownText).filter(Boolean).length
+    ? `- العنوان: ${[settingMap.company_address, settingMap.company_city, settingMap.company_region, settingMap.company_country].map(markdownText).filter(Boolean).join("، ")}`
+    : "",
+  siteLogo ? `- الشعار: ${markdownText(siteLogo)}` : "",
+  socialLinks.length ? `- الروابط الاجتماعية: ${socialLinks.join("، ")}` : "",
+  "\n## الخدمات المنشورة",
+  ...db.prepare(`SELECT title, description FROM services WHERE is_active = 1 ORDER BY "order" ASC`).all()
+    .map(({ title, description }) => `- ${markdownText(title)}${markdownText(description) ? ` — ${markdownText(description)}` : ""}`),
+  "\n## الباقات المنشورة",
+  ...db.prepare(`SELECT name, description FROM packages WHERE is_active = 1 ORDER BY "order" ASC`).all()
+    .map(({ name, description }) => `- ${markdownText(name)}${markdownText(description) ? ` — ${markdownText(description)}` : ""}`),
+  "\n## صفحات عامة",
+  `- الصفحة الرئيسية: ${SITE_URL}/`,
+  `- الخدمات: ${SITE_URL}/services`,
+  `- الباقات: ${SITE_URL}/containers`,
+  `- التواصل: ${SITE_URL}/contact`,
+].filter(Boolean);
+writeFileSync(join(distPublic, "llms.txt"), `${llmsLines.join("\n")}\n`, "utf8");
+
 const address = {
   address: settingMap.company_address?.trim() || "",
   city: settingMap.company_city?.trim() || "",
@@ -180,6 +210,22 @@ const address = {
   country: settingMap.company_country?.trim() || "",
   postalCode: settingMap.company_postal_code?.trim() || "",
 };
+
+const manifest = {
+  name: siteCompanyName,
+  short_name: siteCompanyName,
+  description: settingMap.site_desc?.trim() || "",
+  start_url: "/",
+  display: "standalone",
+  background_color: "#ffffff",
+  theme_color: "#0f172a",
+  lang: "ar",
+  dir: "rtl",
+  icons: siteLogo
+    ? [{ src: "/images/logo.png", sizes: "512x512", type: "image/png", purpose: "any maskable" }]
+    : [],
+};
+writeFileSync(join(distPublic, "manifest.json"), `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
 function buildAddressSchema() {
   return {
     "@type": "PostalAddress",
@@ -516,13 +562,7 @@ function renderPage({
    ${twitterImageTags}
 
   <!-- Favicon and Google Search icon -->
-  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-  <link rel="icon" type="image/png" sizes="512x512" href="/favicon-512x512.png" />
-  <link rel="icon" type="image/png" sizes="192x192" href="/favicon.png" />
-  <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
-  <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />
-  <link rel="icon" type="image/x-icon" sizes="16x16 24x24 32x32 48x48 64x64 96x96 128x128 256x256" href="/favicon.ico" />
-  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+  ${siteLogo ? `<link rel="icon" href="${esc(siteLogo)}" /><link rel="apple-touch-icon" href="${esc(siteLogo)}" />` : ""}
   <link rel="manifest" href="/manifest.json" />
 
   <!-- Schema.org JSON-LD — emitted with the configured public origin -->
@@ -1702,7 +1742,7 @@ for (const c of containers) {
       "name": siteCompanyName,
       "url": SITE_URL,
     },
-    "areaServed": { "@type": "City", "name": address.city || "الرياض" },
+      ...(address.city ? { "areaServed": { "@type": "City", "name": address.city } } : {}),
   };
 
   const containerFaqs = [

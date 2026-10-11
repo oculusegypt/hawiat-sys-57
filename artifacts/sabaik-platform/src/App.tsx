@@ -99,6 +99,28 @@ const navLinks = [
 
 function TopNav({ onDemo }: { onDemo: () => void }) {
   const [open, setOpen] = useState(false);
+  const [callPhone, setCallPhone] = useState("");
+
+  useEffect(() => {
+    let active = true;
+    fetch(`${API_BASE}/api/settings`, { headers: { Accept: "application/json" } })
+      .then((response) => response.ok ? response.json() : Promise.reject(new Error("Settings unavailable")))
+      .then((settings: Record<string, unknown>) => {
+        if (!active) return;
+        const call = typeof settings.company_phone_call === "string" ? settings.company_phone_call.trim() : "";
+        let phones: string[] = [];
+        try {
+          const parsed = JSON.parse(String(settings.company_phones ?? "[]"));
+          if (Array.isArray(parsed)) phones = parsed.filter((phone): phone is string => typeof phone === "string" && Boolean(phone.trim()));
+        } catch {}
+        setCallPhone(call || phones[0] || "");
+      })
+      .catch(() => {
+        if (active) setCallPhone("");
+      });
+    return () => { active = false; };
+  }, []);
+
   return (
     <header className="site-header">
       <div className="page-shell nav-inner">
@@ -111,10 +133,12 @@ function TopNav({ onDemo }: { onDemo: () => void }) {
           ))}
         </nav>
         <div className="nav-actions">
-          <a href="tel:+966500000000" className="phone-link" data-testid="link-nav-phone">
-            <Phone size={15} />
-            ٠٥٠ ٠٠٠ ٠٠٠٠
-          </a>
+          {callPhone && (
+            <a href={`tel:${callPhone.replace(/[^\d+]/g, "")}`} className="phone-link" data-testid="link-nav-phone">
+              <Phone size={15} />
+              <span dir="ltr">{callPhone}</span>
+            </a>
+          )}
           <Button onClick={onDemo} testId="button-nav-demo">
             اطلب عرضاً عملياً <ArrowLeft size={16} />
           </Button>

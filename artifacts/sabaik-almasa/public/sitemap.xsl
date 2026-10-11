@@ -11,7 +11,7 @@
       <head>
         <meta charset="UTF-8"/>
         <meta name="viewport" content="width=device-width, initial-scale=1"/>
-        <title>خريطة الموقع — منصة حاويات</title>
+        <title>خريطة الموقع</title>
         <style>
           * { margin: 0; padding: 0; box-sizing: border-box; }
           body { font-family: 'Segoe UI', Tahoma, sans-serif; background: #f8fafc; color: #1e293b; }

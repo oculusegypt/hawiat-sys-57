@@ -8,45 +8,35 @@ const currentLegacyName = String.fromCodePoint(
 )
 const currentLegacyInstitution = `${String.fromCodePoint(1605, 1572, 1587, 1587, 1577)} ${currentLegacyName}`
 
-function replaceTerm(value: string, term: string, replacement: string, resolvedName: string): string {
-  // Do not replace a legacy term when the administrator intentionally kept it
-  // as the configured name. Otherwise an already-prefixed name could be
-  // duplicated after the bare-name pass.
-  return resolvedName === term || resolvedName.includes(term) ? value : value.replaceAll(term, replacement)
-}
-
 export function replaceLegacyCompanyName(value: unknown, companyName: string): string {
   if (typeof value !== "string" || !value || !companyName.trim()) {
     return typeof value === "string" ? value : ""
   }
 
   const resolvedName = companyName.trim()
-  let normalized = value
-    .replaceAll(`${legacyInstitution} لتأجير الحاويات ونقل الأنقاض`, `${resolvedName} لتأجير الحاويات ونقل الأنقاض`)
-    .replaceAll(`${currentLegacyInstitution} لتأجير الحاويات ونقل الأنقاض`, `${resolvedName} لتأجير الحاويات ونقل الأنقاض`)
-    .replaceAll("مؤسسة سبائك الماسة لتأجير الحاويات ونقل الأنقاض", `${resolvedName} لتأجير الحاويات ونقل الأنقاض`)
-    .replaceAll("مؤسسة سبائك الماسه لتأجير الحاويات ونقل الأنقاض", `${resolvedName} لتأجير الحاويات ونقل الأنقاض`)
-    .replaceAll("حاويات تأجير حاويات الرياض 0580595555 المتاحة", `حاويات ${resolvedName} المتاحة`)
-    .replaceAll("تأجير حاويات الرياض ( 0580595555 )", resolvedName)
-    .replaceAll("تأجير حاويات الرياض (0580595555)", resolvedName)
-    .replaceAll("تأجير حاويات الرياض 0580595555", resolvedName)
-    .replaceAll("حاويات مؤسسة سبائك الماسة", `حاويات ${resolvedName}`)
-    .replaceAll("حاويات مؤسسة سبائك الماسه", `حاويات ${resolvedName}`)
+  const marker = "\u0000COMPANY_NAME\u0000"
+  let normalized = value.replaceAll(resolvedName, marker)
 
-  for (const [term, replacement] of [
-    [legacyInstitution, resolvedName],
-    [legacyCompany, resolvedName],
-    [legacyName, resolvedName],
-    ["مؤسسة سبائك الماسة", resolvedName],
-    ["مؤسسة سبائك الماسه", resolvedName],
-    [currentLegacyInstitution, resolvedName],
-    [currentLegacyName, resolvedName],
-    ["منصة حاويات", resolvedName],
-  ] as const) {
-    normalized = replaceTerm(normalized, term, replacement, resolvedName)
+  normalized = normalized
+    .replaceAll("حاويات تأجير حاويات الرياض 0580595555 المتاحة", `حاويات ${marker} المتاحة`)
+    .replaceAll("تأجير حاويات الرياض ( 0580595555 )", marker)
+    .replaceAll("تأجير حاويات الرياض (0580595555)", marker)
+    .replaceAll("تأجير حاويات الرياض 0580595555", marker)
+
+  for (const term of [
+    legacyInstitution,
+    legacyCompany,
+    legacyName,
+    "مؤسسة سبائك الماسة",
+    "مؤسسة سبائك الماسه",
+    "سبائك الماسة",
+    "سبائك الماسه",
+    currentLegacyInstitution,
+    currentLegacyName,
+    "منصة حاويات",
+  ].sort((left, right) => right.length - left.length)) {
+    normalized = normalized.replaceAll(term, marker)
   }
 
-  // The current configured name can itself be a legacy phrase. Only replace
-  // it when the administrator has chosen a different name.
-  return normalized
+  return normalized.replaceAll(marker, resolvedName)
 }

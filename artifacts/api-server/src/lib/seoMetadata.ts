@@ -42,13 +42,6 @@ const GOLDEN_KEYWORDS = [
   "نقل المخلفات بالرياض",
 ];
 
-const FALLBACK_IMAGES: Record<SeoEntityKind, string> = {
-  service: "/images/container-small.png",
-  container: "/images/container-large.png",
-  post: "/images/waste-small.png",
-  page: "/images/container-small.png",
-};
-
 const ROUTE_PREFIXES: Record<SeoEntityKind, string> = {
   service: "/services",
   container: "/containers",
@@ -189,7 +182,7 @@ export function generateSeoMetadata(source: SeoSource): SeoMetadata {
   const description = customDescription
     ? fitDescription(customDescription, descriptionSuffix(source.kind))
     : generatedDescription(source, displayName, keyword, companyName);
-  const image = text(source.ogImage) || text(source.coverImage) || text(source.imageUrl) || FALLBACK_IMAGES[source.kind];
+  const image = text(source.ogImage) || text(source.coverImage) || text(source.imageUrl);
   const canonicalUrl = `${ROUTE_PREFIXES[source.kind]}/${slug}`;
 
   return {

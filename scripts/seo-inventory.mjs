@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { entityPath } from "./friendly-slug.mjs";
+import { normalizeBusinessText } from "./business-identity.mjs";
 import { ARABIC_AREA_SLUGS, INDEXABLE_AREA_SLUGS } from "./seo-area-routes.mjs";
 
 export const INDEXABILITY = Object.freeze({
@@ -189,8 +190,20 @@ export function inventoryJson(entries, siteUrl) {
 
 export function writeSeoInventory(root, db, siteUrl, mediaPaths = []) {
   const entries = buildSeoInventory(db);
+  const settingsRows = db.prepare(`
+    SELECT key, value FROM site_settings
+    WHERE key IN ('company_name', 'company_name_en', 'company_phone_call', 'company_phone_whatsapp')
+  `).all();
+  const settings = Object.fromEntries(settingsRows.map(({ key, value }) => [key, String(value || "").trim()]));
+  const identity = {
+    companyName: settings.company_name || "",
+    companyNameEnglish: settings.company_name_en || "",
+    call: settings.company_phone_call || "",
+    whatsapp: settings.company_phone_whatsapp || "",
+  };
+  const normalizedEntries = JSON.parse(normalizeBusinessText(JSON.stringify(entries), identity));
   const destination = join(root, "artifacts", "sabaik-almasa", "public", "seo-inventory.json");
-  writeFileSync(destination, JSON.stringify(inventoryJson(entries, siteUrl), null, 2) + "\n", "utf8");
+  writeFileSync(destination, JSON.stringify(inventoryJson(normalizedEntries, siteUrl), null, 2) + "\n", "utf8");
   const mediaDestination = join(root, "artifacts", "sabaik-almasa", "public", "seo-media-manifest.json");
   const uniqueMediaPaths = [...new Set(mediaPaths
     .filter((value) => typeof value === "string" && value.trim())

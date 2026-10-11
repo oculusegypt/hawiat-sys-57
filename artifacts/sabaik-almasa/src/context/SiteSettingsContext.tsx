@@ -227,31 +227,30 @@ const DEFAULTS: SiteSettings = {
 
 const SiteSettingsContext = createContext<SiteSettings>(DEFAULTS)
 
-const DEFAULT_COMPANY_NAME = "الشركة"
+const DEFAULT_COMPANY_NAME = ""
 
 export function normalizeCompanyText(value: string, companyName = DEFAULT_COMPANY_NAME): string {
   const resolvedName = companyName.trim() || DEFAULT_COMPANY_NAME
-  const shouldReplace = (term: string) => resolvedName !== term && !resolvedName.includes(term)
-  let normalized = value
-    .replace(/\{\{company_name\}\}/g, resolvedName)
-    .replace(/مؤسسة\s+سبائك\s+الماسة\s+لتأجير\s+الحاويات\s+ونقل\s+الأنقاض/g, `${resolvedName} لتأجير الحاويات ونقل الأنقاض`)
-    .replace(/مؤسسة\s+سبائك\s+الماسه\s+لتأجير\s+الحاويات\s+ونقل\s+الأنقاض/g, `${resolvedName} لتأجير الحاويات ونقل الأنقاض`)
-    .replace(/حاويات\s+تأجير\s+حاويات\s+الرياض\s+0580595555\s+المتاحة/g, `حاويات ${resolvedName} المتاحة`)
-    .replace(/تأجير\s+حاويات\s+الرياض\s*\(\s*0580595555\s*\)/g, resolvedName)
-    .replace(/تأجير\s+حاويات\s+الرياض\s+0580595555/g, resolvedName)
-    .replace(/حاويات\s+مؤسسة\s+سبائك\s+الماسة/g, `حاويات ${resolvedName}`)
-    .replace(/حاويات\s+مؤسسة\s+سبائك\s+الماسه/g, `حاويات ${resolvedName}`)
+  const marker = "\u0000CURRENT_COMPANY_NAME\u0000"
+  let normalized = value.replace(/\{\{company_name\}\}/g, marker)
+  if (resolvedName) normalized = normalized.replaceAll(resolvedName, marker)
+  normalized = normalized
+    .replace(/حاويات\s+تأجير\s+حاويات\s+الرياض\s+0580595555\s+المتاحة/g, `حاويات ${marker} المتاحة`)
+    .replace(/تأجير\s+حاويات\s+الرياض\s*\(\s*0580595555\s*\)/g, marker)
+    .replace(/تأجير\s+حاويات\s+الرياض\s+0580595555/g, marker)
 
   for (const term of [
     "مؤسسة سبائك الماسة",
     "مؤسسة سبائك الماسه",
+    "شركة سبائك الماسة",
+    "شركة سبائك الماسه",
     "سبائك الماسة",
     "سبائك الماسه",
     "منصة حاويات",
-  ]) {
-    if (shouldReplace(term)) normalized = normalized.replaceAll(term, resolvedName)
+  ].sort((left, right) => right.length - left.length)) {
+    normalized = normalized.replaceAll(term, marker)
   }
-  return normalized
+  return normalized.replaceAll(marker, resolvedName)
 }
 
 export function replaceLegacyCompanyName(value: string | undefined, companyName: string): string | undefined {

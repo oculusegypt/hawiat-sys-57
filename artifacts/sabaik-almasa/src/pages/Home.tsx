@@ -280,8 +280,9 @@ export default function Home() {
   } = siteSettings
 
   const homeTitle = "تأجير حاويات الرياض | طلب الحاويات ومخلفات البناء والهدم"
-  const resolvedCompanyName = companyName || "الشركة"
-  const homeDescription = `تأجير حاويات الرياض وطلب الحاويات في الرياض لمخلفات البناء والهدم والمطاعم والمنشآت، مع حاويات نفايات وأنقاض وتوصيل وسحب سريع من ${resolvedCompanyName}.`
+  const resolvedCompanyName = companyName.trim()
+  const homeDescription = siteSettings.description ||
+    `خدمات تأجير الحاويات ونقل المخلفات${resolvedCompanyName ? ` من ${resolvedCompanyName}` : ""}.`
   const normalizedHiddenSections = new Set(hiddenSections.map(canonicalHomeSectionId))
 
   useDocumentSEO({
@@ -290,7 +291,7 @@ export default function Home() {
     canonical: getSiteUrl() ? `${getSiteUrl()}/` : undefined,
     ogImageAlt: "تأجير حاويات الأنقاض والنفايات بالرياض مع التوصيل والسحب",
   })
-  const homeSchema = homepageSchema({
+  const homeSchema = resolvedCompanyName ? homepageSchema({
     companyName: resolvedCompanyName,
     siteName: resolvedCompanyName,
     description: homeDescription,
@@ -307,8 +308,8 @@ export default function Home() {
     paymentMethods,
     socialLinks,
     googleBusinessProfile,
-  })
-  useDocumentSchema("home-schema", homeSchema, isLoaded)
+  }) : null
+  useDocumentSchema("home-schema", homeSchema, isLoaded && Boolean(resolvedCompanyName))
 
   useEffect(() => {
     window.scrollTo({ top: 0, left: 0, behavior: "instant" })

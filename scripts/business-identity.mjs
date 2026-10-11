@@ -1,4 +1,19 @@
-const LEGACY_CALL = ["053", "631", "2121"].join("");
+const LEGACY_CALLS = [["053", "631", "2121"].join(""), "0580595555"];
+const LEGACY_NAMES = [
+  "مؤسسة سبائك الماسة لتأجير الحاويات ونقل الأنقاض",
+  "مؤسسة سبائك الماسه لتأجير الحاويات ونقل الأنقاض",
+  "مؤسسة سبائك الماسة",
+  "مؤسسة سبائك الماسه",
+  "شركة سبائك الماسة",
+  "شركة سبائك الماسه",
+  "سبائك الماسة",
+  "سبائك الماسه",
+  "منصة حاويات",
+  "مؤسسة تقي",
+  "تقي جروب",
+  "Taqi Group Establishment",
+  "Taqi Group",
+];
 
 export function readBusinessIdentity(db) {
   const rows = db.prepare(`
@@ -22,14 +37,34 @@ export function readBusinessIdentity(db) {
 
 export function normalizeBusinessText(value, identity) {
   if (typeof value !== "string") return value;
-  return value
-    .replaceAll(LEGACY_CALL, identity.call)
-    .replaceAll("Taqi Group Establishment", identity.companyNameEnglish)
-    .replaceAll("Taqi Group", identity.companyNameEnglish)
-    .replaceAll("مؤسسة تقي", identity.companyName)
-    .replaceAll("تقي جروب", identity.companyName)
-    .replaceAll("سبائك الماسه", identity.companyName)
-    .replaceAll("منصة حاويات", identity.companyName);
+  const arabicToken = "\u0000BUSINESS_IDENTITY_AR\u0000";
+  const englishToken = "\u0000BUSINESS_IDENTITY_EN\u0000";
+  let normalized = value;
+
+  for (const [currentName, token] of [
+    [identity.companyName, arabicToken],
+    [identity.companyNameEnglish, englishToken],
+  ]) {
+    if (currentName) normalized = normalized.replaceAll(currentName, token);
+  }
+
+  normalized = normalized.replaceAll(
+    "حاويات تأجير حاويات الرياض 0580595555 المتاحة",
+    `حاويات ${arabicToken} المتاحة`,
+  );
+  for (const legacyName of LEGACY_NAMES) {
+    normalized = normalized.replaceAll(
+      legacyName,
+      legacyName.startsWith("Taqi Group") ? englishToken : arabicToken,
+    );
+  }
+  for (const legacyCall of LEGACY_CALLS) {
+    if (identity.call) normalized = normalized.replaceAll(legacyCall, identity.call);
+  }
+
+  return normalized
+    .replaceAll(arabicToken, identity.companyName || "")
+    .replaceAll(englishToken, identity.companyNameEnglish || identity.companyName || "");
 }
 
 export function normalizeSeedRecord(record, identity) {

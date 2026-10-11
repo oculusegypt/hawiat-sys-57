@@ -6,14 +6,14 @@ export function CEOMessage() {
   const { companyName, homepageContent } = useSiteSettings()
   const ceo = (homepageContent as any)?.ceo || (homepageContent?.sections as any)?.ceo || {}
 
-  const resolvedName = companyName || "خدمات الحاويات"
-  const title = ceo.title || "كلمة الإدارة العامة"
-  const subtitle = ceo.subtitle || "نبني شراكات موثوقة في إدارة المخلفات والأنقاض"
-  const p1 = ceo.message1 || `نعتبر أنفسنا شركاء نجاح حقيقيين لكافة المشاريع الإنشائية والتطويرية والتجارية في مدينة الرياض. التزامنا بتوفير حاويات متينة بمختلف المقاسات، وسرعة استجابة فائقة في التوصيل والسحب، ونقل آمن ومسؤول للأنقاض والمخلفات وفق أعلى الاشتراطات البيئية هو الأساس الذي بنينا عليه ريادتنا.`
-  const p2 = ceo.message2 || `ندرك أن النهضة العمرانية المتسارعة التي تشهدها العاصمة تتطلب دعماً لوجستياً فعالاً وموثوقاً لإدارة المخلفات، ونحن مستمرون في تطوير أسطولنا وخدماتنا لنكون دائماً الخيار الأول والموثوق لكافة عملائنا من مقاولين ومطورين وأفراد.`
-  const authorName = ceo.authorName || "الإدارة العامة"
-  const authorTitle = ceo.authorTitle || (companyName ? `${companyName} لتأجير الحاويات ونقل الأنقاض` : "خدمات تأجير الحاويات ونقل الأنقاض")
-  const authorImage = ceo.authorImage || "/images/ceo.webp"
+  const title = typeof ceo.title === "string" ? ceo.title.trim() : ""
+  const subtitle = typeof ceo.subtitle === "string" ? ceo.subtitle.trim() : ""
+  const p1 = typeof ceo.message1 === "string" ? ceo.message1.trim() : ""
+  const p2 = typeof ceo.message2 === "string" ? ceo.message2.trim() : ""
+  const authorName = typeof ceo.authorName === "string" ? ceo.authorName.trim() : ""
+  const authorTitle = typeof ceo.authorTitle === "string" ? ceo.authorTitle.trim() : ""
+  const authorImage = typeof ceo.authorImage === "string" ? ceo.authorImage.trim() : ""
+  if (![title, subtitle, p1, p2, authorName, authorTitle, authorImage].some(Boolean)) return null
 
   return (
     <section className="py-24 bg-primary text-white relative">
@@ -30,20 +30,19 @@ export function CEOMessage() {
             >
               <div className="absolute inset-0 rounded-full border-2 border-secondary/30 scale-105 animate-pulse"></div>
               <div className="absolute inset-0 rounded-full border border-secondary scale-110"></div>
-              <div className="w-full h-full rounded-full overflow-hidden border-4 border-white shadow-2xl relative z-10 bg-white">
-                <img 
-                  src={authorImage} 
-                  alt={`${authorName} — ${authorTitle}`}
+              {authorImage && (
+                <div className="w-full h-full rounded-full overflow-hidden border-4 border-white shadow-2xl relative z-10 bg-white">
+                  <img
+                    src={authorImage}
+                    alt={[authorName, authorTitle].filter(Boolean).join(" — ")}
                     className="w-full h-full object-cover object-[52%_center]"
-                   width={320}
-                   height={320}
-                   loading="lazy"
-                   decoding="async"
-                  onError={(e) => {
-                    e.currentTarget.style.display = "none"
-                  }}
-                />
-              </div>
+                    width={320}
+                    height={320}
+                    loading="lazy"
+                    decoding="async"
+                  />
+                </div>
+              )}
             </motion.div>
           </div>
 
@@ -57,19 +56,19 @@ export function CEOMessage() {
             >
               <Quote size={80} className="absolute -top-10 -right-8 text-white/10 transform rotate-180" />
               
-              <h2 className="text-2xl font-bold text-secondary mb-2">{title}</h2>
-              <h3 className="text-3xl font-bold mb-6">{subtitle}</h3>
+              {title && <h2 className="text-2xl font-bold text-secondary mb-2">{title}</h2>}
+              {subtitle && <h3 className="text-3xl font-bold mb-6">{subtitle}</h3>}
               
               <div className="space-y-4 text-lg text-gray-300 leading-relaxed italic mb-8 relative z-10">
-                <p>{p1}</p>
+                {p1 && <p>{p1}</p>}
                 {p2 && <p>{p2}</p>}
               </div>
               
               <div className="flex items-center gap-4">
                 <div className="h-0.5 w-12 bg-secondary"></div>
                 <div>
-                   <h4 className="font-bold text-xl text-white">{authorName}</h4>
-                   <p className="text-secondary text-sm">{authorTitle}</p>
+                    {authorName && <h4 className="font-bold text-xl text-white">{authorName}</h4>}
+                    {authorTitle && <p className="text-secondary text-sm">{authorTitle}</p>}
                 </div>
               </div>
             </motion.div>

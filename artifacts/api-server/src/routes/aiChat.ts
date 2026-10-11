@@ -128,7 +128,7 @@ function mapDbToContainerCards(
       price: c.pricePerDay > 0 ? c.pricePerDay : undefined,
       priceNote: c.priceNote || c.priceText || "حسب تفاصيل العقار والموقع",
       priceType: c.pricePerDay > 0 ? "fixed" : "quote",
-      image: c.imageUrl || "/images/hero-1.webp",
+      image: c.imageUrl || "",
       priceText: c.priceText || "",
       features: Array.isArray(c.features) ? c.features : [],
       bestFor: c.suitableFor || "",
@@ -149,7 +149,7 @@ function mapContainersToServiceCards(containers: ContainerCard[]): ServiceCard[]
       category,
       title: meta.title,
       description: meta.description,
-      image: first?.image || "/images/hero-1.webp",
+      image: first?.image || "",
       emoji: meta.emoji,
     };
   });
@@ -160,7 +160,7 @@ function mapContainersToServiceCards(containers: ContainerCard[]): ServiceCard[]
       category: "all",
       title: "جميع الباقات والخدمات",
       description: "استعرض كل الباقات المتاحة واختر الخدمة المناسبة لك",
-      image: containers[0]?.image || "/images/hero-1.webp",
+      image: containers[0]?.image || "",
       emoji: "📦",
     },
     ...categoryCards,
@@ -176,7 +176,7 @@ function mapContainersToOrderServiceCards(containers: ContainerCard[]): ServiceC
       category,
       title: category === "debris" ? "طلب حاوية أنقاض" : category === "waste" ? "طلب حاوية نفايات" : "طلب عقد نظافة",
       description: meta.description,
-      image: first?.image || "/images/hero-1.webp",
+      image: first?.image || "",
       emoji: meta.emoji,
     };
   });

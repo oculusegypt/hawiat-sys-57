@@ -418,18 +418,38 @@ console.log("  ✅ تم نسخ جميع المجلدات والصفحات الث
   }
 }
 
-// Keep a stable PNG logo path for Hostinger/static SEO consumers. The current
-// configured logo is an uploaded WebP, so convert it instead of shipping a
-// WebP file with a misleading .png extension.
+// Keep the stable PNG path for Hostinger/static SEO consumers, but always
+// derive it from the logo selected in Settings → Business Details.
 {
-  const logoSource = join(ROOT, "artifacts/api-server/uploads/1788222054250-32242ae35fc0.webp");
+  const settingsDb = new Database(ARCHIVE_SOURCE_DB, { readonly: true });
+  const configuredLogo = String(
+    settingsDb.prepare("SELECT value FROM site_settings WHERE key = 'company_logo'").get()?.value || "",
+  ).trim();
+  settingsDb.close();
   const logoTarget = join(ROOT, "build_php/images/logo.png");
-  if (!existsSync(logoSource)) {
-    throw new Error(`ملف شعار الموقع غير موجود: ${logoSource}`);
+  if (!configuredLogo) {
+    rmSync(logoTarget, { force: true });
+    console.log("  ℹ️ لم يُضبط شعار للمنشأة؛ لن يُستخدم شعار افتراضي ثابت");
+  } else {
+    let logoPath = configuredLogo.split(/[?#]/, 1)[0];
+    if (/^https?:\/\//i.test(logoPath)) logoPath = new URL(logoPath).pathname;
+    const logoFilename = decodeURIComponent(logoPath.split("/").pop() || "");
+    if (!logoFilename || logoFilename !== logoFilename.replace(/[\\/]/g, "")) {
+      throw new Error("مسار شعار المنشأة في الإعدادات غير صالح.");
+    }
+    const candidates = [
+      join(ROOT, "artifacts/api-server/uploads", logoFilename),
+      join(ROOT, "artifacts/sabaik-almasa/public/uploads", logoFilename),
+      join(ROOT, "artifacts/sabaik-almasa/public", logoPath.replace(/^\/+/, "")),
+    ];
+    const logoSource = candidates.find((candidate) => existsSync(candidate));
+    if (!logoSource) {
+      throw new Error(`تعذر العثور على ملف الشعار المحدد في الإعدادات: ${logoFilename}`);
+    }
+    mkdirSync(dirname(logoTarget), { recursive: true });
+    execFileSync("convert", [logoSource, "PNG32:" + logoTarget], { cwd: ROOT, stdio: "inherit" });
+    console.log("  ✅ تم تحويل شعار الإعدادات إلى images/logo.png");
   }
-  mkdirSync(dirname(logoTarget), { recursive: true });
-  execFileSync("convert", [logoSource, "PNG32:" + logoTarget], { cwd: ROOT, stdio: "inherit" });
-  console.log("  ✅ تم تجهيز الشعار بصيغة PNG في images/logo.png");
 }
 
 // Some Hostinger/Nginx configurations do not honor DirectoryIndex for
@@ -763,7 +783,7 @@ writeFileSync(join(buildPhpDir, "404.html"), `<!doctype html>
   <meta charset="utf-8">
   <meta name="robots" content="noindex, nofollow">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>الصفحة غير موجودة | سبائك الماسة</title>
+  <title>الصفحة غير موجودة</title>
   <style>body{font-family:Arial,sans-serif;background:#f8fafc;color:#1e3a5f;margin:0;padding:12vh 24px;text-align:center}main{max-width:620px;margin:auto;background:#fff;border-radius:18px;padding:42px 28px;box-shadow:0 12px 40px #1e3a5f18}h1{font-size:34px;margin:0 0 14px}p{color:#475569;line-height:1.8}a{display:inline-block;margin-top:14px;background:#1e3a5f;color:#fff;padding:12px 22px;border-radius:10px;text-decoration:none}</style>
 </head>
 <body><main><h1>الصفحة غير موجودة</h1><p>عذراً، لا يوجد محتوى على هذا العنوان.</p><a href="/">العودة إلى الرئيسية</a></main></body>

@@ -101,22 +101,18 @@ function getArabicAreaSlug(name: string): string {
     .replace(/\s+/g, "-");
 }
 
-function getStaticPages(base: string, siteName: string) {
+function getStaticPages(base: string): Array<{
+  path: string;
+  priority: string;
+  freq: string;
+  images: Array<{ loc: string; title: string }>;
+}> {
   return [
-    { path: "/",                               priority: "1.0",  freq: "daily",   images: [
-      { loc: `${base}/images/hero-1.webp`, title: `${siteName} — خدمات الرياض` },
-      { loc: `${base}/images/logo.png`,    title: `شعار ${siteName}` },
-    ]},
-    { path: "/about",                          priority: "0.9",  freq: "monthly", images: [
-      { loc: `${base}/images/shareek-mawsouq.webp`, title: `رسالة المدير التنفيذي — ${siteName}` },
-    ]},
+    { path: "/",                               priority: "1.0",  freq: "daily",   images: [] },
+    { path: "/about",                          priority: "0.9",  freq: "monthly", images: [] },
     { path: "/pricing",                        priority: "0.95", freq: "weekly",  images: [] },
-    { path: "/containers",                     priority: "0.9",  freq: "weekly",  images: [
-      { loc: `${base}/images/container-large.png`, title: "حاويات الأنقاض والنفايات بالرياض" },
-    ]},
-    { path: "/services",                       priority: "0.95", freq: "weekly",  images: [
-      { loc: `${base}/images/container-small.png`, title: "خدمات الرياض" },
-    ]},
+    { path: "/containers",                     priority: "0.9",  freq: "weekly",  images: [] },
+    { path: "/services",                       priority: "0.95", freq: "weekly",  images: [] },
     { path: "/contact",                        priority: "0.85", freq: "monthly", images: [] },
     { path: "/partners",                       priority: "0.75", freq: "monthly", images: [] },
     { path: "/areas",                          priority: "0.9",  freq: "weekly",  images: [] },
@@ -142,8 +138,7 @@ function escapeXml(str: string): string {
 
 async function buildXml(baseUrl: string): Promise<{ xml: string; totalUrls: number; staticPages: number; areaPages: number; servicePages: number; containerPages: number; blogPages: number; seoPages: number }> {
   const today = new Date().toISOString().slice(0, 10);
-  const siteName = (await getSetting("company_name")).trim() || "الشركة";
-  const STATIC_PAGES = getStaticPages(baseUrl, siteName);
+  const STATIC_PAGES = getStaticPages(baseUrl);
 
   // Fetch SEO-enabled services
   let seoServices: Array<{ id: number; seoSlug: string; seoTitle: string; images: string; title: string }> = [];
@@ -244,10 +239,6 @@ async function buildXml(baseUrl: string): Promise<{ xml: string; totalUrls: numb
     lines.push(`    <changefreq>monthly</changefreq>`);
     lines.push(`    <priority>0.80</priority>`);
     lines.push(`    <xhtml:link rel="alternate" hreflang="ar" href="${escapeXml(url)}"/>`);
-    lines.push(`    <image:image>`);
-    lines.push(`      <image:loc>${escapeXml(baseUrl + "/images/hero-1.webp")}</image:loc>`);
-    lines.push(`      <image:title>${escapeXml(`تأجير حاويات ${n.name} الرياض`)}</image:title>`);
-    lines.push(`    </image:image>`);
     lines.push(`  </url>`);
     lines.push(``);
   }
@@ -359,7 +350,7 @@ async function buildXml(baseUrl: string): Promise<{ xml: string; totalUrls: numb
     lines.push(`    <changefreq>monthly</changefreq>`);
     lines.push(`    <priority>0.75</priority>`);
     lines.push(`    <xhtml:link rel="alternate" hreflang="ar" href="${escapeXml(url)}"/>`);
-    const articleImage = post.coverImage || post.ogImage || "/images/waste-small.png";
+    const articleImage = post.coverImage || post.ogImage || "";
     if (articleImage) {
       const imgLoc = articleImage.startsWith("http") ? articleImage : `${baseUrl}${articleImage}`;
       lines.push(`    <image:image>`);

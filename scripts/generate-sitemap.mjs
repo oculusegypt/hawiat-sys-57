@@ -9,6 +9,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { requirePublicOrigin } from "./public-origin.mjs";
 import { entityPath } from "./friendly-slug.mjs";
+import { normalizeBusinessText } from "./business-identity.mjs";
 import {
   ARABIC_AREA_SLUGS,
   INDEXABLE_AREA_SLUGS,
@@ -26,8 +27,15 @@ const Database = require("better-sqlite3");
 const db = new Database(dbPath, { readonly: true });
 const settingRows = db.prepare("SELECT key, value FROM site_settings").all();
 const settingMap = Object.fromEntries(settingRows.map(row => [row.key, row.value]));
-const siteName = String(settingMap.company_name || "").trim() || "الشركة";
+const siteName = String(settingMap.company_name || "").trim();
+if (!siteName) throw new Error("إعداد اسم المنشأة مطلوب لإنشاء خريطة الموقع.");
 const baseUrl = requirePublicOrigin({ settings: settingMap });
+const businessIdentity = {
+  companyName: siteName,
+  companyNameEnglish: String(settingMap.company_name_en || "").trim(),
+  call: String(settingMap.company_phone_call || "").trim(),
+  whatsapp: String(settingMap.company_phone_whatsapp || "").trim(),
+};
 
 const xmlEscape = (value) => String(value)
   .replace(/&/g, "&amp;")
@@ -301,7 +309,7 @@ const xml = [
 ].join("\n");
 
 mkdirSync(dirname(outputPath), { recursive: true });
-writeFileSync(outputPath, xml, "utf8");
+writeFileSync(outputPath, normalizeBusinessText(xml, businessIdentity), "utf8");
 writeSeoInventory(root, db, baseUrl, [...referencedMediaPaths]);
 writeFileSync(
   join(root, "artifacts", "sabaik-almasa", "public", "robots.txt"),
