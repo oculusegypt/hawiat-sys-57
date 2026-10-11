@@ -47,14 +47,14 @@ content_type = "text/html"
 id = "_fHrj2SY5FYX9lyFf_NXU"
 uri = "file://docs/container-lifecycle-audit-2026-10-11.html"
 type = "html"
-title = "تقرير تدقيق دورة الحاويات — النسخة المحدّثة"
-description = "تقرير دورة العرض والتحقق من الطلب والعقد والتخصيص والحركات والفاتورة والتحصيل، مع توضيح حدود الإثبات والأثر المالي المحاكى."
+title = "تقرير تدقيق دورة الحاويات والماليات"
+description = "التقرير النهائي المحدث: يوضح ما ثبت في الطلب 108، واختبار الدورة المعزولة، والفجوات المالية والتشغيلية والتوصيات."
 logical_id = "95087904-3d6c-4f79-b068-1e3c75b22f2b"
-content_hash = "sha256:17ea59428b7a2c8bf48f2dcfba4f03416bd0a575647a1533de9b9575b2c5f1ad"
-size = 30408
-mtime_ms = 1791751191974
-storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:a7e29445-1f73-4f7e-bcf7-c137dbcc2d1d/95087904-3d6c-4f79-b068-1e3c75b22f2b/d9d430de-e89b-4ed5-b57a-47d03660e7a9"
-storage_version_token = "1791751223913840"
+content_hash = "sha256:d77ab5d3397ecffb30a3f0416f6b019358c096556850bb1f33ef2b1e52e39688"
+size = 42880
+mtime_ms = 1791753162878
+storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:1af5ad9d-e47c-4c4c-b18a-b9da3bfc8746/95087904-3d6c-4f79-b068-1e3c75b22f2b/7685f7d4-7015-42f1-94c6-a392670d1c82"
+storage_version_token = "1791754472924082"
 content_type = "text/html"
 
 [[outputs]]
