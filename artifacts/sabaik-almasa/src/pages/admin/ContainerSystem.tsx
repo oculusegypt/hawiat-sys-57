@@ -1409,7 +1409,42 @@ function ContainerPOS({ records, onDetails, onEdit, onDelete, onAdd }: { records
   )
 }
 
-function Overview({ snapshot, records, onAdd, onOpen, onAssign }: { snapshot?: any; records: ContainerSystemRecord[]; onAdd: (kind: RecordKind) => void; onOpen: (record: ContainerSystemRecord) => void; onAssign: (record: ContainerSystemRecord) => void }) {
+const RECENT_OPERATION_LABELS: Record<string, string> = {
+  contract: "عقد",
+  contract_line: "بند عقد",
+  container_assignment: "تخصيص حاوية",
+  container_movement: "حركة حاوية",
+  appointment: "موعد تشغيل",
+  work_order: "أمر تشغيل",
+  invoice: "فاتورة",
+  invoice_return: "مرتجع فاتورة",
+  payment: "تحصيل",
+  payment_return: "مرتجع تحصيل",
+  receipt: "سند قبض",
+  ledger_entry: "قيد مالي",
+}
+
+function safeActivityReference(reference: unknown): string | null {
+  if (typeof reference !== "string") return null
+  const value = reference.trim()
+  if (
+    !value ||
+    value.length > 64 ||
+    /^(?:https?:\/\/|www\.|\/|admin(?:\/|$)|api(?:\/|$))/i.test(value) ||
+    /(?:replit\.dev|replit\.app|picard\.replit|__replco)/i.test(value) ||
+    /[\u0000-\u001f]/.test(value)
+  ) return null
+  return value
+}
+
+function activityTimestamp(record: ContainerSystemRecord): number {
+  const updated = Date.parse(record.updatedAt)
+  if (Number.isFinite(updated)) return updated
+  const created = Date.parse(record.createdAt)
+  return Number.isFinite(created) ? created : 0
+}
+
+function Overview({ snapshot, records, loading, onAdd, onOpen, onAssign }: { snapshot?: any; records: ContainerSystemRecord[]; loading: boolean; onAdd: (kind: RecordKind) => void; onOpen: (record: ContainerSystemRecord) => void; onAssign: (record: ContainerSystemRecord) => void }) {
   const summary = snapshot?.summary as Record<string, unknown> | undefined
   const count = (kind: RecordKind) => records.filter(record => record.kind === kind && record.status !== "archived").length
   const today = new Date()
@@ -1434,7 +1469,14 @@ function Overview({ snapshot, records, onAdd, onOpen, onAssign }: { snapshot?: a
   const availableCount = numericSummary(summary, ["availableContainers", "available"], availableContainers.length || count("container"))
   const outstanding = numericSummary(summary, ["debt", "outstandingAmount", "outstanding"], records.filter(r => r.kind === "payment").reduce((sum, r) => sum + amountOf(r), 0))
   const openAlerts = numericSummary(summary, ["openAlerts", "alerts"], count("alert"))
-  const recent = (snapshot?.recent as ContainerSystemRecord[] | undefined)?.slice(0, 5) ?? records.slice(0, 5)
+  const recent = useMemo(() => records
+    .filter(record => {
+      if (!Object.hasOwn(RECENT_OPERATION_LABELS, record.kind) || record.status === "archived") return false
+      const payload = record.payload as Record<string, unknown> | null
+      return ![payload?.testData, payload?.isTest, payload?.isDemo].some(value => value === true || value === 1 || value === "true")
+    })
+    .sort((left, right) => activityTimestamp(right) - activityTimestamp(left))
+    .slice(0, 5), [records])
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
@@ -1466,14 +1508,18 @@ function Overview({ snapshot, records, onAdd, onOpen, onAssign }: { snapshot?: a
         <Card className="border-slate-200/80 shadow-[0_8px_28px_rgba(15,44,58,.05)]">
           <CardHeader className="flex flex-row items-center justify-between border-b border-slate-100 px-5 py-4"><div><CardTitle className="text-base text-slate-900">آخر حركة تشغيلية</CardTitle><p className="mt-1 text-xs text-slate-500">سجل زمني مختصر لأحدث التغييرات</p></div><ShieldCheck size={19} className="text-emerald-600" /></CardHeader>
           <CardContent className="p-0">
-            {recent.length === 0 ? <div className="p-8 text-center text-sm text-slate-500">ستظهر آخر العمليات هنا عند إضافة السجلات.</div> : recent.map((record, index) => (
+            {loading ? <div className="space-y-3 p-5" aria-label="جارٍ تحميل الحركات التشغيلية" data-testid="loading-recent-operations">{[0, 1, 2].map(index => <div key={index} className="flex items-center gap-3 animate-pulse"><div className="h-9 w-9 rounded-xl bg-slate-100" /><div className="flex-1 space-y-2"><div className="h-3 w-1/3 rounded bg-slate-100" /><div className="h-2 w-1/2 rounded bg-slate-100" /></div></div>)}</div> : recent.length === 0 ? <div className="flex flex-col items-center p-8 text-center" role="status" aria-live="polite" data-testid="text-empty-recent-operations"><div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-50 text-slate-400"><ShieldCheck size={20} /></div><p className="mt-3 text-sm font-bold text-slate-700">لا توجد حركات تشغيلية مسجلة حتى الآن</p><p className="mt-1 max-w-sm text-xs leading-6 text-slate-500">ستظهر هنا العقود والتخصيصات والتسليم والاسترجاع والفواتير بعد تسجيلها.</p></div> : recent.map((record, index) => {
+              const operationLabel = RECENT_OPERATION_LABELS[record.kind]
+              const reference = safeActivityReference(record.reference)
+              const dateValue = activityTimestamp(record) ? (Number.isFinite(Date.parse(record.updatedAt)) ? record.updatedAt : record.createdAt) : null
+              return (
               <div key={record.id} className="flex items-center gap-3 border-b border-slate-100 px-5 py-3.5 last:border-0" data-testid={`row-recent-${record.id}`}>
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-cyan-50 text-[10px] font-black text-cyan-800">{KIND_ICONS[record.kind as RecordKind] ?? "سجل"}</div>
-                <div className="min-w-0 flex-1"><p className="truncate text-sm font-bold text-slate-800">{String(record.payload.name ?? record.payload.customerName ?? record.reference ?? `سجل ${record.id}`)}</p><p className="text-[11px] text-slate-400">{KIND_LABELS[record.kind as RecordKind] ?? record.kind} · {formatRecordDate(record.createdAt)}</p></div>
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-cyan-50 text-[10px] font-black text-cyan-800">{KIND_ICONS[record.kind as RecordKind] ?? operationLabel}</div>
+                <div className="min-w-0 flex-1"><p className="truncate text-sm font-bold text-slate-800">{reference ? `${operationLabel} · ${reference}` : `${operationLabel} رقم ${record.id}`}</p><p className="text-[11px] text-slate-400">{dateValue ? formatRecordDate(dateValue) : "التاريخ غير متاح"}</p></div>
                 <RecordStatus status={record.status} />
                 {index === 0 && <span className="h-2 w-2 rounded-full bg-emerald-500" />}
               </div>
-            ))}
+            )})}
           </CardContent>
         </Card>
         <Card className="overflow-hidden border-0 bg-[#123d4e] text-white shadow-[0_14px_40px_rgba(18,61,78,.18)]">
@@ -2619,7 +2665,7 @@ export default function ContainerSystem() {
            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><p className="text-xs font-bold text-cyan-700">نظام الحاويات الكامل / {view === "contracts_list" ? "مركز العقود" : view === "customer" ? "مركز العملاء" : viewLabel(view)}</p><h2 className="mt-1 text-xl font-black text-slate-900">{view === "contracts_list" ? "مركز العقود" : view === "customer" ? "مركز العملاء" : viewLabel(view)}</h2>{view === "contracts_list" && <p className="mt-1 text-xs leading-6 text-slate-500">قراءة سريعة لحالة كل عقد والعميل والموقع وقيمة الخدمة لاتخاذ الإجراء التالي.</p>}{view === "customer" && <p className="mt-1 text-xs leading-6 text-slate-500">ملفات العملاء وعلاقاتهم التشغيلية والمالية في شاشة واحدة واضحة.</p>}{view === "operations" && <p className="mt-1 text-xs leading-6 text-slate-500">متابعة التسليم والاسترجاع ونقل الحاويات من لحظة الإسناد حتى إغلاق الحركة.</p>}</div>{(isCollection || view === "container_search") && <div className="relative w-full sm:w-80"><Search size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" /><Input value={search} onChange={event => setSearch(event.target.value)} placeholder={view === "contracts_list" ? "ابحث برقم العقد أو العميل أو الموقع أو الجوال" : view === "customer" ? "ابحث باسم العميل أو المرجع أو الجوال أو المدينة" : view === "operations" ? "ابحث برقم الحركة أو الحاوية أو العقد أو العميل" : "رقم الحاوية أو اسم العميل أو الجوال"} className="h-10 border-slate-200 bg-white pr-9" data-testid="input-search-container-records" />{search && <button type="button" onClick={() => setSearch("")} className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700" data-testid="button-clear-container-search"><X size={15} /></button>}</div>}</div>
           {notice && <div className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-800" role="status" data-testid="status-container-success"><CheckCircle2 size={17} /> {notice}</div>}
           {error ? <Card className="border-rose-200 bg-rose-50/50"><CardContent className="flex flex-col items-center gap-3 p-12 text-center"><AlertCircle size={27} className="text-rose-500" /><h3 className="font-bold text-rose-900">تعذر تحميل بيانات النظام</h3><p className="text-sm text-rose-700">تحقق من الاتصال ثم حاول مرة أخرى.</p><Button onClick={() => { snapshotQuery.refetch(); recordsQuery.refetch() }} variant="outline" className="gap-2 border-rose-200 bg-white text-rose-800" data-testid="button-retry-container-system"><RefreshCw size={15} /> إعادة المحاولة</Button></CardContent></Card>
-               : view === "overview" ? <Overview snapshot={snapshot} records={records} onAdd={openCreate} onOpen={setDetailRecord} onAssign={record => { setDetailRecord(null); setAssignmentContainerId(record.id); setAssignmentWizardOpen(true) }} />
+              : view === "overview" ? <Overview snapshot={snapshot} records={records} loading={loading} onAdd={openCreate} onOpen={setDetailRecord} onAssign={record => { setDetailRecord(null); setAssignmentContainerId(record.id); setAssignmentWizardOpen(true) }} />
                : view === "financial_center" ? <FinancialControlCenter records={snapshot?.records ?? records} onAdd={kind => openCreate(kind)} onNavigate={nextView => { setView(nextView); setSearch(""); if (nextView !== "reports") setReportId(null) }} />
               : view === "reports" ? reportId ? <ReportPage reportId={reportId} records={snapshot?.records ?? records} onBack={() => setReportId(null)} /> : <ReportsHub onOpen={setReportId} />
                : view === "settlements" ? <ContractSettlementWorkspace records={snapshot?.records ?? records} initialCustomerId={requestedCustomerId} initialContractId={requestedContractId} />

@@ -28,3 +28,17 @@ mtime_ms = 1791740839115
 storage_uri = "gcs://replit-rams-assets-riker/rams/assets/repl:2d9a771e-3d61-4d29-86e3-d9e83aa2f7bf/990d3da6-af4c-4a74-b7a3-c0ec0ef58ac0/b7dcc3fa-3866-494f-b664-75fc34d52924"
 storage_version_token = "1791740950364763"
 content_type = "application/octet-stream"
+
+[[outputs]]
+id = "pcZ99KK0cVUnBILX2CUwB"
+uri = "file://generated-artifacts/container-lifecycle-audit-2026-10-11.html"
+type = "html"
+title = "تقرير تدقيق دورة الحاويات والعقود"
+description = "تقرير عربي شامل بنتائج قاعدة البيانات الفعلية، ومراجعة مراحل الطلب والعقد والتشغيل والفوترة، مع نتيجة بناء حزمة Hostinger."
+logical_id = "c026edce-418d-4d7d-a318-70ee51161371"
+content_hash = "sha256:60447ffd7d143f2c9045e8cf57de17d7d34c3b81da6da715bc6a0bc13651b5fc"
+size = 32541
+mtime_ms = 1791741897892
+storage_uri = "gcs://replit-rams-assets-riker/rams/assets/repl:2d9a771e-3d61-4d29-86e3-d9e83aa2f7bf/c026edce-418d-4d7d-a318-70ee51161371/2c5071a8-811b-43ad-b953-352c1956bc17"
+storage_version_token = "1791741908193600"
+content_type = "text/html"

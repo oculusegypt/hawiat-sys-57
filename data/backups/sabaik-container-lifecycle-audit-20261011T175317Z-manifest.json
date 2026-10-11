@@ -3,7 +3,7 @@
   "sourceDatabase": "data/sabaik.db",
   "backupDatabase": "sabaik-container-lifecycle-audit-20261011T175317Z.db",
   "bytes": 2703360,
-  "sha256": "b397b736a8d1539719e146c27fbe5a3e69f9acc6538eb132ac6913f1790b284d",
+  "sha256": "9fdcbe24445cdb29e9c9154176c4cfbb307bca3ac69794ff985dd12a76735919",
   "integrityCheck": "ok",
   "tableCounts": {
     "active_visitors": 14,
@@ -37,5 +37,6 @@
     "structured_content": 0,
     "testimonials": 9,
     "whatsapp_messages": 0
-  }
+  },
+  "journalMode": "delete"
 }
