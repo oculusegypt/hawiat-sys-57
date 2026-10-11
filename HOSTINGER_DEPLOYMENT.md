@@ -68,11 +68,12 @@ https://sabaik.net/api/structured-data?path=/
 من جذر المشروع:
 
 ```bash
-node scripts/build-hostinger.mjs
+HOSTINGER_PRESERVE_SOURCE=1 node scripts/build-hostinger.mjs
 ```
 
-ينفذ السكربت فحص PHP ومسارات API، ويبني الواجهتين، وينسخ قاعدة المصدر
-والصور، ويشغل بوابة SEO على الأرشيف النهائي. يجب أن تنتهي العملية برسالة:
+يأخذ هذا الوضع لقطة متسقة من قاعدة المشروع دون تعديلها، ويبني الواجهتين،
+ويطبق تصحيحات SEO المعتمدة داخل الأرشيف فقط، ثم يفحص PHP ومسارات API ويشغل
+بوابة SEO على الأرشيف النهائي. يجب أن تنتهي العملية برسالة:
 
 ```text
 SEO QUALITY GATE: PASS

@@ -7,4 +7,4 @@ In a preservation-mode Hostinger build, a deliberately changed SEO title must st
 
 **Why:** Static pages are prerendered before the final Hostinger database is assembled; changing only one representation leaves metadata inconsistent or causes the release gate to fail.
 
-**How to apply:** For an approved archive-only SEO adjustment, update the same title in generated HTML and the packaged database, verify the source database and media remain unchanged, then rerun the SEO gate.
+**How to apply:** Build with `HOSTINGER_PRESERVE_SOURCE=1 node scripts/build-hostinger.mjs`. For an approved archive-only SEO adjustment, update the same title in generated HTML and the packaged database, verify the source database and media remain unchanged, then rerun the SEO gate.

@@ -9,7 +9,7 @@
 - **مخطط قاعدة البيانات**: `pnpm --filter @workspace/db run push`
 - **إعادة تعبئة البيانات**: `pnpm --filter @workspace/db run seed`
 - **فحص الأنواع (Typecheck)**: `pnpm run typecheck`
-- **البناء الموحد لهوستنجر (Build Archive)**: `node scripts/build-hostinger.mjs`
+- **البناء الموحد لهوستنجر (Build Archive)**: `HOSTINGER_PRESERVE_SOURCE=1 node scripts/build-hostinger.mjs`
 
 ## قاعدة البيانات (Database Architecture)
 
