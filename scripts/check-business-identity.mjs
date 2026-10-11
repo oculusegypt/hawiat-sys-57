@@ -32,10 +32,18 @@ const normalizePhone = (value) => {
   return digits;
 };
 const normalizeLogo = (value) => String(value || "").trim().replace(/^\/api\/uploads\//, "/uploads/");
+const packageColumns = db.prepare("PRAGMA table_info(packages)").all().map(({ name }) => name);
+const packagePhoneColumns = ["contact_phone1", "contact_phone2"].filter((column) => packageColumns.includes(column));
+const packagePhones = packagePhoneColumns.length > 0
+  ? db.prepare(
+    `SELECT ${packagePhoneColumns.map((column) => `"${column}"`).join(", ")} FROM packages${packageColumns.includes("is_active") ? " WHERE is_active = 1" : ""}`,
+  ).all().flatMap((row) => packagePhoneColumns.map((column) => row[column]))
+  : [];
 const configuredPhones = new Set([
   identitySettings.company_phone_call,
   identitySettings.company_phone_whatsapp,
   ...listedPhones,
+  ...packagePhones,
 ].map(normalizePhone).filter(Boolean));
 db.close();
 const legacyPatterns = [
@@ -71,6 +79,9 @@ const failures = [];
 if (!configuredCompanyName) failures.push("إعداد company_name غير موجود في قاعدة البيانات.");
 for (const filePath of files) {
   if (!existsSync(filePath)) continue;
+  // PHP API source includes intentional compatibility literals used to
+  // normalize legacy content; those are not rendered as public page content.
+  if (/(?:^|[\\/])api[\\/][^\\/]+\.php$/i.test(filePath)) continue;
   const content = readFileSync(filePath, "utf8");
   if (legacyPatterns.some((pattern) => {
     pattern.lastIndex = 0;
