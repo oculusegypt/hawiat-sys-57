@@ -101,6 +101,7 @@ async function main() {
   assert.equal(dispatchConflict?.resource, "driver");
   assert.equal(customer && site && request.phone, testPhone);
   assert.match(String(site.payload), /TEST ONLY/);
+  const existingCustomerPayload = String(customer.payload);
 
   const contractNumber = "TEST-CONTRACT-001";
   const contract = insertRecord("contract", "returned", contractNumber, {
@@ -202,6 +203,88 @@ async function main() {
   );
 
   try {
+    const intakeResponse = await fetch(`http://127.0.0.1:${port}/api/service-requests`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        isQuoteRequest: true,
+        clientName: "TEST ONLY — unverified new inquiry",
+        phone: "00966 500 000 001",
+        email: "new-inquiry@example.invalid",
+        serviceType: "TEST ONLY — customer identity regression",
+        containerSize: "12 yd (TEST ONLY)",
+        location: "TEST ONLY — address submitted by unverified requester",
+      }),
+    });
+    assert.equal(intakeResponse.status, 201);
+    const intakeBody = await intakeResponse.json() as {
+      id: number;
+      customerRecordId: number | null;
+    };
+    assert.ok(intakeBody.customerRecordId);
+    assert.notEqual(intakeBody.customerRecordId, customer.id,
+      "an unverified public phone must not claim an existing customer profile");
+    const unchangedCustomer = db.select().from(containerSystemRecordsTable)
+      .where(eq(containerSystemRecordsTable.id, customer.id)).get();
+    assert.equal(unchangedCustomer?.payload, existingCustomerPayload,
+      "public intake must not overwrite a possible existing customer's identity fields");
+    const provisionalCustomer = db.select().from(containerSystemRecordsTable)
+      .where(eq(containerSystemRecordsTable.id, intakeBody.customerRecordId!)).get();
+    assert.ok(provisionalCustomer);
+    const provisionalPayload = JSON.parse(provisionalCustomer.payload) as Record<string, unknown>;
+    assert.equal(provisionalPayload.identityVerification, "unverified");
+    assert.equal(provisionalPayload.identityReviewStatus, "pending");
+    assert.equal(provisionalPayload.firstRequestId, intakeBody.id);
+    const intakeSite = db.select().from(containerSystemRecordsTable).all().find(record =>
+      record.kind === "customer_site" &&
+      Number((JSON.parse(record.payload) as Record<string, unknown>).requestId) === intakeBody.id,
+    );
+    assert.ok(intakeSite, "the submitted test location must be stored as a request-specific site");
+    assert.equal(
+      (JSON.parse(intakeSite.payload) as Record<string, unknown>).address,
+      "TEST ONLY — address submitted by unverified requester",
+    );
+
+    const depositDraftResponse = await fetch(`http://127.0.0.1:${port}/api/admin/container-system/records`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization },
+      body: JSON.stringify({
+        kind: "bank_deposit",
+        status: "pending_approval",
+        payload: {
+          amount: 75,
+          date: "2026-10-12",
+          reference: "TEST ONLY — bank deposit without statement",
+        },
+      }),
+    });
+    assert.equal(depositDraftResponse.status, 201);
+    const depositDraft = await depositDraftResponse.json() as { id: number };
+    const depositApprovalResponse = await fetch(
+      `http://127.0.0.1:${port}/api/admin/container-system/records/${depositDraft.id}`,
+      {
+        method: "PATCH",
+        headers: { "content-type": "application/json", authorization },
+        body: JSON.stringify({ status: "approved" }),
+      },
+    );
+    assert.equal(depositApprovalResponse.status, 200, await depositApprovalResponse.clone().text());
+    const depositPostResponse = await fetch(
+      `http://127.0.0.1:${port}/api/admin/container-system/records/${depositDraft.id}`,
+      {
+        method: "PATCH",
+        headers: { "content-type": "application/json", authorization },
+        body: JSON.stringify({ status: "posted" }),
+      },
+    );
+    assert.equal(depositPostResponse.status, 200, await depositPostResponse.clone().text());
+    assert.equal(
+      (sqlite.prepare("SELECT status FROM bank_reconciliations WHERE deposit_record_id = ?")
+        .get(depositDraft.id) as { status: string } | undefined)?.status,
+      "unmatched",
+      "posting a deposit must not imply that a bank statement confirmed it",
+    );
+
     const bypassApproval = await fetch(`http://127.0.0.1:${port}/api/admin/container-system/records`, {
       method: "POST",
       headers: { "content-type": "application/json", authorization },

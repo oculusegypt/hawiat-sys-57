@@ -192,8 +192,8 @@ function hsEnsureDepositReconciliation(PDO $pdo, int $depositRecordId, string $k
         (deposit_record_id,deposit_reference,deposit_date,amount,linked_transaction_id,difference,status,audit_trail)
         SELECT ?,?,?,?,?,?,?,?
         WHERE NOT EXISTS (SELECT 1 FROM bank_reconciliations WHERE deposit_record_id = ?)")
-        ->execute([$depositRecordId, $depositReference, $date, $amount, $financialTransactionId, 0, 'matched',
-            json_encode([['at' => date('c'), 'action' => 'deposit_posted', 'sourceKind' => $kind, 'sourceId' => $depositRecordId]], JSON_UNESCAPED_UNICODE),
+        ->execute([$depositRecordId, $depositReference, $date, $amount, $financialTransactionId, 0, 'unmatched',
+            json_encode([['at' => date('c'), 'action' => 'deposit_posted_not_bank_confirmed', 'sourceKind' => $kind, 'sourceId' => $depositRecordId]], JSON_UNESCAPED_UNICODE),
             $depositRecordId]);
 }
 
@@ -350,92 +350,95 @@ function hsEnsureSchema(PDO $pdo): void {
     }
 }
 
-function hsSyncRequestsToCustomers(PDO $pdo): void {
-    $requests = $pdo->query("SELECT id, client_name, phone, email, service_type, location, created_at, customer_record_id FROM service_requests ORDER BY id ASC")->fetchAll(PDO::FETCH_ASSOC);
-    $findCustomer = $pdo->prepare("SELECT id, payload FROM container_system_records WHERE kind = 'customer' AND status != 'archived'");
-    $updateCustomer = $pdo->prepare("UPDATE container_system_records SET payload = :payload, updated_at = :updated_at WHERE id = :id");
-    $insertCustomer = $pdo->prepare("INSERT INTO container_system_records (kind, status, reference, payload, created_at, updated_at) VALUES ('customer', 'active', :reference, :payload, :now, :now)");
-    $findSite = $pdo->prepare("SELECT id, payload FROM container_system_records WHERE kind = 'customer_site' AND status != 'archived'");
-    $insertSite = $pdo->prepare("INSERT INTO container_system_records (kind, status, reference, payload, created_at, updated_at) VALUES ('customer_site', 'active', :reference, :payload, :now, :now)");
-    $linkRequest = $pdo->prepare("UPDATE service_requests SET customer_record_id = :customer_id WHERE id = :id");
+function hsCreateProvisionalCustomerForRequest(PDO $pdo, array $request): ?int {
+    $requestId = (int)($request['id'] ?? 0);
+    $phone = trim((string)($request['phone'] ?? ''));
+    if ($requestId <= 0 || $phone === '') return null;
 
-    foreach ($requests as $request) {
-        $phoneDigits = preg_replace('/\D+/', '', (string)($request['phone'] ?? ''));
-        if ($phoneDigits === '') continue;
-        $customer = null;
-        $findCustomer->execute();
-        foreach ($findCustomer->fetchAll(PDO::FETCH_ASSOC) as $candidate) {
-            $payload = hsPayload((string)($candidate['payload'] ?? ''));
-            if ($phoneDigits === preg_replace('/\D+/', '', (string)($payload['phone'] ?? ''))) {
-                $customer = ['id' => (int)$candidate['id'], 'payload' => $payload];
-                break;
-            }
-        }
+    $link = $pdo->prepare('SELECT customer_record_id FROM service_requests WHERE id = ? LIMIT 1');
+    $link->execute([$requestId]);
+    $existingLink = (int)($link->fetchColumn() ?: 0);
+    if ($existingLink > 0) return $existingLink;
 
+    $ownsTransaction = !$pdo->inTransaction();
+    if ($ownsTransaction) $pdo->beginTransaction();
+    try {
         $now = date('c');
-        if (!$customer) {
-            $payload = [
+        $customerReference = 'CUS-' . str_pad((string)$requestId, 5, '0', STR_PAD_LEFT);
+        $findCustomer = $pdo->prepare("SELECT id FROM container_system_records WHERE kind = 'customer' AND reference = ? LIMIT 1");
+        $findCustomer->execute([$customerReference]);
+        $customerId = (int)($findCustomer->fetchColumn() ?: 0);
+        if ($customerId <= 0) {
+            $customerPayload = [
                 'name' => trim((string)($request['client_name'] ?? '')) ?: 'عميل الطلب',
-                'phone' => (string)$request['phone'],
+                'phone' => $phone,
                 'email' => (string)($request['email'] ?? ''),
                 'source' => 'service_request',
-                'firstRequestId' => (int)$request['id'],
-                'lastRequestId' => (int)$request['id'],
-                'lastRequestClientName' => (string)($request['client_name'] ?? ''),
-                'lastRequestAt' => (string)($request['created_at'] ?? $now),
+                'firstRequestId' => $requestId,
+                'lastRequestId' => $requestId,
+                'identityVerification' => 'unverified',
+                'identityReviewStatus' => 'pending',
             ];
+            $insertCustomer = $pdo->prepare("INSERT INTO container_system_records
+                (kind, status, reference, payload, created_at, updated_at)
+                VALUES ('customer', 'active', ?, ?, ?, ?)");
             $insertCustomer->execute([
-                ':reference' => 'CUS-' . str_pad((string)$request['id'], 5, '0', STR_PAD_LEFT),
-                ':payload' => json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE),
-                ':now' => $now,
+                $customerReference,
+                json_encode($customerPayload, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE),
+                $now,
+                $now,
             ]);
-            $customer = ['id' => (int)$pdo->lastInsertId(), 'payload' => $payload];
-        } else {
-            $payload = $customer['payload'];
-            $payload['lastRequestId'] = (int)$request['id'];
-            $payload['lastRequestClientName'] = (string)($request['client_name'] ?? '');
-            $payload['lastRequestAt'] = (string)($request['created_at'] ?? $now);
-            if (!empty($request['email'])) $payload['email'] = (string)$request['email'];
-            $updateCustomer->execute([
-                ':payload' => json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE),
-                ':updated_at' => $now,
-                ':id' => $customer['id'],
-            ]);
+            $customerId = (int)$pdo->lastInsertId();
         }
 
         $location = trim((string)($request['location'] ?? ''));
         if ($location !== '' && $location !== 'غير محدد') {
-            $sameSite = false;
-            $findSite->execute();
-            foreach ($findSite->fetchAll(PDO::FETCH_ASSOC) as $siteRow) {
-                $sitePayload = hsPayload((string)($siteRow['payload'] ?? ''));
-                if ((int)($sitePayload['customerRecordId'] ?? 0) === $customer['id'] &&
-                    trim((string)($sitePayload['address'] ?? $sitePayload['location'] ?? '')) === $location) {
-                    $sameSite = true;
-                    break;
-                }
-            }
-            if (!$sameSite) {
+            $siteReference = 'SITE-' . str_pad((string)$requestId, 5, '0', STR_PAD_LEFT);
+            $findSite = $pdo->prepare("SELECT id FROM container_system_records WHERE kind = 'customer_site' AND reference = ? LIMIT 1");
+            $findSite->execute([$siteReference]);
+            if (!(int)$findSite->fetchColumn()) {
                 $sitePayload = [
-                    'customerRecordId' => $customer['id'],
-                    'name' => trim((string)($request['client_name'] ?? '')) . ' — عنوان الطلب #' . (int)$request['id'],
+                    'customerRecordId' => $customerId,
+                    'name' => trim((string)($request['client_name'] ?? '')) . ' — عنوان الطلب #' . $requestId,
                     'address' => $location,
                     'location' => $location,
-                    'requestId' => (int)$request['id'],
+                    'requestId' => $requestId,
                     'source' => 'service_request',
                     'serviceType' => (string)($request['service_type'] ?? ''),
                 ];
+                $insertSite = $pdo->prepare("INSERT INTO container_system_records
+                    (kind, status, reference, payload, created_at, updated_at)
+                    VALUES ('customer_site', 'active', ?, ?, ?, ?)");
                 $insertSite->execute([
-                    ':reference' => 'SITE-' . str_pad((string)$request['id'], 5, '0', STR_PAD_LEFT),
-                    ':payload' => json_encode($sitePayload, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE),
-                    ':now' => $now,
+                    $siteReference,
+                    json_encode($sitePayload, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE),
+                    $now,
+                    $now,
                 ]);
             }
         }
 
-        if ((int)($request['customer_record_id'] ?? 0) !== $customer['id']) {
-            $linkRequest->execute([':customer_id' => $customer['id'], ':id' => (int)$request['id']]);
-        }
+        $updateRequest = $pdo->prepare("UPDATE service_requests SET customer_record_id = ?
+            WHERE id = ? AND (customer_record_id IS NULL OR customer_record_id = 0)");
+        $updateRequest->execute([$customerId, $requestId]);
+        $link->execute([$requestId]);
+        $linkedCustomerId = (int)($link->fetchColumn() ?: 0);
+        if ($ownsTransaction) $pdo->commit();
+        return $linkedCustomerId > 0 ? $linkedCustomerId : $customerId;
+    } catch (Throwable $error) {
+        if ($ownsTransaction && $pdo->inTransaction()) $pdo->rollBack();
+        throw $error;
+    }
+}
+
+function hsSyncRequestsToCustomers(PDO $pdo): void {
+    $requests = $pdo->query("SELECT id, client_name, phone, email, service_type, location, created_at, customer_record_id
+        FROM service_requests WHERE customer_record_id IS NULL OR customer_record_id = 0 ORDER BY id ASC")
+        ->fetchAll(PDO::FETCH_ASSOC);
+    foreach ($requests as $request) {
+        // Legacy linked customers are left untouched; unverified phone matches
+        // must never rewrite or claim an existing profile during backfill.
+        hsCreateProvisionalCustomerForRequest($pdo, $request);
     }
 }
 

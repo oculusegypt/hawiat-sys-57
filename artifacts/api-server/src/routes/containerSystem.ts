@@ -2289,6 +2289,8 @@ router.post("/admin/container-system/contracts/:id/lifecycle", requireContainerP
         lifecycleAction: action,
         atomicLifecycle: true,
       };
+      const nextContractStatus = action === "deliver" ? "delivered" : "returned";
+      const nextAssetStatus = action === "deliver" ? "rented" : "available";
       const nextAssetPayload = {
         ...parsePayload(asset.payload),
         status: nextAssetStatus,
@@ -2296,8 +2298,6 @@ router.post("/admin/container-system/contracts/:id/lifecycle", requireContainerP
         lastMovementAt: now,
         lastMovementContractId: contractId,
       };
-      const nextContractStatus = action === "deliver" ? "delivered" : "returned";
-      const nextAssetStatus = action === "deliver" ? "rented" : "available";
 
       const updatedContract = tx.update(containerSystemRecordsTable).set({
         status: nextContractStatus,
@@ -2650,7 +2650,8 @@ router.post("/admin/container-system/records", async (req, res) => {
             depositAmount,
             financialPosting.id,
             difference,
-            "matched",
+             "unmatched",
+             JSON.stringify([{ at: new Date().toISOString(), action: "deposit_posted_not_bank_confirmed", sourceKind: kind, sourceId: created.id }]),
           );
        }
      } catch (error) {
@@ -2851,8 +2852,8 @@ router.patch("/admin/container-system/records/:id", async (req, res) => {
               depositAmount,
               financialPosting.id,
               0,
-              "matched",
-              JSON.stringify([{ at: new Date().toISOString(), action: "deposit_posted", sourceKind: current.kind, sourceId: id }]),
+               "unmatched",
+               JSON.stringify([{ at: new Date().toISOString(), action: "deposit_posted_not_bank_confirmed", sourceKind: current.kind, sourceId: id }]),
             );
           }
       } catch (error) {

@@ -1,95 +1,90 @@
 import { db, containerSystemRecordsTable, serviceRequestsTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 
 type ServiceRequest = typeof serviceRequestsTable.$inferSelect;
 
-function parsePayload(payload: string): Record<string, unknown> {
-  try {
-    const parsed = JSON.parse(payload);
-    return parsed && typeof parsed === "object" ? parsed : {};
-  } catch {
-    return {};
-  }
-}
-
-function normalizePhone(value: string | null | undefined): string {
-  const digits = (value ?? "").replace(/\D/g, "");
-  if (digits.startsWith("00966")) return `0${digits.slice(5)}`;
-  if (digits.startsWith("966")) return `0${digits.slice(3)}`;
-  return digits;
-}
-
 /**
- * Makes every order source visible in Container Operations as a customer and
- * reusable customer site. This is intentionally idempotent for phone/address.
+ * Gives an unverified public request its own provisional customer/site records.
+ * A phone number alone is not proof of identity: public forms cannot safely
+ * merge requests into an existing customer profile.
  */
 export async function syncCustomerFromRequest(request: ServiceRequest) {
-  const normalizedPhone = normalizePhone(request.phone);
-  if (!normalizedPhone) return { request, customer: null, site: null };
+  if (!request.phone.trim()) return { request, customer: null, site: null };
 
-  const records = await db.select().from(containerSystemRecordsTable);
-  const customer = records.find((record) =>
-    record.kind === "customer" &&
-    record.status !== "archived" &&
-    normalizePhone(String(parsePayload(record.payload).phone ?? "")) === normalizedPhone,
-  );
+  return db.transaction((tx) => {
+    const currentRequest = tx.select().from(serviceRequestsTable)
+      .where(eq(serviceRequestsTable.id, request.id)).get();
+    if (!currentRequest) return { request, customer: null, site: null };
 
-  const existingPayload = customer ? parsePayload(customer.payload) : {};
-  const customerPayload = {
-    ...existingPayload,
-    name: request.clientName || String(existingPayload.name ?? ""),
-    phone: request.phone || String(existingPayload.phone ?? ""),
-    email: request.email ?? String(existingPayload.email ?? ""),
-    ...(customer ? { lastRequestId: request.id, updatedFrom: "service_request" } : {
+    // A prior explicit link is authoritative; public intake must not replace it.
+    if (currentRequest.customerRecordId) {
+      const customer = tx.select().from(containerSystemRecordsTable)
+        .where(eq(containerSystemRecordsTable.id, currentRequest.customerRecordId)).get() ?? null;
+      return { request: currentRequest, customer, site: null };
+    }
+
+    const now = new Date().toISOString();
+    const customerReference = `CUS-${String(request.id).padStart(5, "0")}`;
+    const existingCustomer = tx.select().from(containerSystemRecordsTable)
+      .where(and(
+        eq(containerSystemRecordsTable.kind, "customer"),
+        eq(containerSystemRecordsTable.reference, customerReference),
+      )).get();
+    const customerPayload = {
+      name: request.clientName,
+      phone: request.phone,
+      email: request.email ?? "",
       source: "service_request",
       firstRequestId: request.id,
-    }),
-  };
+      lastRequestId: request.id,
+      identityVerification: "unverified",
+      identityReviewStatus: "pending",
+    };
+    const savedCustomer = existingCustomer ?? tx.insert(containerSystemRecordsTable).values({
+      kind: "customer",
+      status: "active",
+      reference: customerReference,
+      payload: JSON.stringify(customerPayload),
+      createdAt: now,
+      updatedAt: now,
+    }).returning().get();
 
-  const savedCustomer = customer
-    ? (await db.update(containerSystemRecordsTable).set({
-        payload: JSON.stringify(customerPayload),
-        updatedAt: new Date().toISOString(),
-      }).where(eq(containerSystemRecordsTable.id, customer.id)).returning())[0] ?? customer
-    : (await db.insert(containerSystemRecordsTable).values({
-        kind: "customer",
-        status: "active",
-        reference: `CUS-${String(request.id).padStart(5, "0")}`,
-        payload: JSON.stringify(customerPayload),
-      }).returning())[0];
-
-  const location = String(request.location ?? "").trim();
-  let site = null;
-  if (location && location !== "غير محدد") {
-    site = records.find((record) =>
-      record.kind === "customer_site" &&
-      record.status !== "archived" &&
-      Number(parsePayload(record.payload).customerRecordId) === savedCustomer.id &&
-      String(parsePayload(record.payload).address ?? parsePayload(record.payload).location ?? "").trim() === location,
-    ) ?? null;
-
-    if (!site) {
-      site = (await db.insert(containerSystemRecordsTable).values({
-        kind: "customer_site",
-        status: "active",
-        reference: `SITE-${String(request.id).padStart(5, "0")}`,
-        payload: JSON.stringify({
-          customerRecordId: savedCustomer.id,
-          name: `${request.clientName} — عنوان الطلب #${request.id}`,
-          address: location,
-          location,
-          source: "service_request",
-          requestId: request.id,
-          serviceType: request.serviceType,
-        }),
-      }).returning())[0];
+    const location = String(request.location ?? "").trim();
+    let site = null;
+    if (location && location !== "غير محدد") {
+      const siteReference = `SITE-${String(request.id).padStart(5, "0")}`;
+      site = tx.select().from(containerSystemRecordsTable)
+        .where(and(
+          eq(containerSystemRecordsTable.kind, "customer_site"),
+          eq(containerSystemRecordsTable.reference, siteReference),
+        )).get() ?? null;
+      if (!site) {
+        site = tx.insert(containerSystemRecordsTable).values({
+          kind: "customer_site",
+          status: "active",
+          reference: siteReference,
+          payload: JSON.stringify({
+            customerRecordId: savedCustomer.id,
+            name: `${request.clientName} — عنوان الطلب #${request.id}`,
+            address: location,
+            location,
+            source: "service_request",
+            requestId: request.id,
+            serviceType: request.serviceType,
+          }),
+          createdAt: now,
+          updatedAt: now,
+        }).returning().get();
+      }
     }
-  }
 
-  const [linkedRequest] = await db.update(serviceRequestsTable)
-    .set({ customerRecordId: savedCustomer.id, updatedAt: new Date().toISOString() })
-    .where(eq(serviceRequestsTable.id, request.id))
-    .returning();
+    const linkedRequest = tx.update(serviceRequestsTable)
+      .set({ customerRecordId: savedCustomer.id, updatedAt: now })
+      .where(and(
+        eq(serviceRequestsTable.id, request.id),
+        isNull(serviceRequestsTable.customerRecordId),
+      )).returning().get();
 
-  return { request: linkedRequest ?? request, customer: savedCustomer, site };
+    return { request: linkedRequest ?? currentRequest, customer: savedCustomer, site };
+  });
 }

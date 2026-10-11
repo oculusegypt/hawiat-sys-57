@@ -187,6 +187,7 @@ function syncContainerCompletion(
     movementKey?: string | null;
     movementType?: string | null;
     appointmentRecordId?: number | null;
+    legacyRequestId?: number | null;
   };
   const operationKey = String(operationalFields.operationKey ?? "").trim() || `service-request-${request.id}`;
   const movementType = String(operationalFields.movementType ?? action);

@@ -3,8 +3,8 @@ name: Production-like demo identity safety
 description: Avoid customer sync collisions when creating demo requests in a shared or production-like database.
 ---
 
-For production-like database tests, do not assume a familiar demo mobile number is reserved. Customer sync normalizes phone formats, so a test value can match a stored customer, overwrite fields from the submitted request, and create a customer-site row under the matched profile.
+Unverified intake phone numbers must never be used to link or overwrite an existing customer profile. Create a request-specific provisional customer and site, mark identity review as pending, and leave any existing links and customer data unchanged until a person verifies identity.
 
 **Why:** A demo request matched an existing customer after phone normalization; its prior payload and timestamp had to be restored from backup, and the newly created site had to be archived.
 
-**How to apply:** Take a database backup first. Use a non-dialable synthetic contact with no digits, pre-create clearly tagged demo customer/site records, and verify the request links to those exact records before creating contracts or financial entries. Check for unintended customer/site rows immediately after intake.
+**How to apply:** Apply this rule to public forms, AI/chat intake, and backfills in both Node and PHP. Tests must use an isolated database and synthetic contact data; assert that a same-phone existing customer remains byte-for-byte unchanged and that the provisional site belongs only to the new request. Any later identity merge needs explicit verification and an audit trail.

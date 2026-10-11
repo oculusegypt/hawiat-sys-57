@@ -81,4 +81,63 @@ foreach (['approved', 'posted', 'rejected', 'cancelled', 'active'] as $invalidIn
     expectSame(true, $statusRejected, "Financial status {$invalidInitialStatus} must not be assigned at creation");
 }
 
+$depositId = 98901;
+$depositPayload = ['amount' => 75, 'date' => '2026-10-12', 'reference' => 'TEST ONLY — deposit'];
+hsPostFinancialCore($pdo, 'bank_deposit', $depositId, $depositPayload, 'TEST-DEPOSIT-98901', 1);
+hsEnsureDepositReconciliation($pdo, $depositId, 'bank_deposit', $depositPayload, 'TEST-DEPOSIT-98901');
+expectSame('unmatched', (string)$pdo->query(
+    "SELECT status FROM bank_reconciliations WHERE deposit_record_id = {$depositId}"
+)->fetchColumn(), 'posting a deposit must not imply that a bank statement confirmed it');
+
+$identityPdo = new PDO('sqlite::memory:');
+$identityPdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+$identityPdo->exec("CREATE TABLE container_system_records (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, kind TEXT NOT NULL, status TEXT NOT NULL,
+    reference TEXT NOT NULL, payload TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+)");
+$identityPdo->exec("CREATE TABLE service_requests (
+    id INTEGER PRIMARY KEY, customer_record_id INTEGER, client_name TEXT, phone TEXT,
+    email TEXT, service_type TEXT, location TEXT, created_at TEXT
+)");
+$existingProfile = json_encode([
+    'name' => 'TEST ONLY — existing verified profile',
+    'phone' => '966500000001',
+    'email' => 'existing@example.invalid',
+], JSON_UNESCAPED_UNICODE);
+$insertExisting = $identityPdo->prepare("INSERT INTO container_system_records
+    (kind,status,reference,payload,created_at,updated_at) VALUES ('customer','active','CUS-EXISTING-1',?,datetime('now'),datetime('now'))");
+$insertExisting->execute([$existingProfile]);
+$existingCustomerId = (int)$identityPdo->lastInsertId();
+$identityPdo->exec("INSERT INTO service_requests
+    (id,customer_record_id,client_name,phone,email,service_type,location,created_at)
+    VALUES (77,NULL,'TEST ONLY — different requester','+966500000001',
+        'new-inquiry@example.invalid','TEST ONLY — intake identity regression',
+        'TEST ONLY — address submitted by unverified requester',datetime('now'))");
+
+hsSyncRequestsToCustomers($identityPdo);
+$linkedCustomerId = (int)$identityPdo->query("SELECT customer_record_id FROM service_requests WHERE id = 77")->fetchColumn();
+expectSame(true, $linkedCustomerId > 0 && $linkedCustomerId !== $existingCustomerId,
+    'PHP backfill must not merge an unverified phone into an existing customer');
+expectSame($existingProfile, (string)$identityPdo->query(
+    "SELECT payload FROM container_system_records WHERE id = {$existingCustomerId}"
+)->fetchColumn(), 'PHP intake must leave a possible existing customer profile unchanged');
+$provisional = json_decode((string)$identityPdo->query(
+    "SELECT payload FROM container_system_records WHERE id = {$linkedCustomerId}"
+)->fetchColumn(), true);
+expectSame('unverified', $provisional['identityVerification'] ?? null,
+    'PHP-created intake profiles must remain marked unverified');
+expectSame('pending', $provisional['identityReviewStatus'] ?? null,
+    'PHP-created intake profiles must require identity review');
+$site = json_decode((string)$identityPdo->query(
+    "SELECT payload FROM container_system_records WHERE kind = 'customer_site' AND reference = 'SITE-00077'"
+)->fetchColumn(), true);
+expectSame('TEST ONLY — address submitted by unverified requester', $site['address'] ?? null,
+    'PHP intake must preserve the submitted test address in its own site record');
+$identityPdo->exec("UPDATE service_requests SET customer_record_id = NULL WHERE id = 77");
+hsSyncRequestsToCustomers($identityPdo);
+expectSame(2, (int)$identityPdo->query("SELECT COUNT(*) FROM container_system_records WHERE kind = 'customer'")->fetchColumn(),
+    'repeated PHP backfill must reuse request-specific customer records');
+expectSame(1, (int)$identityPdo->query("SELECT COUNT(*) FROM container_system_records WHERE kind = 'customer_site'")->fetchColumn(),
+    'repeated PHP backfill must reuse request-specific site records');
+
 echo "PHP financial-method and initial-status assertions passed\n";

@@ -2533,35 +2533,19 @@ try {
 
         $newId = (int)$pdo->lastInsertId();
 
-        // Keep the PHP deployment in parity with Node: a public request also
-        // creates/reuses a customer and stores the submitted address as a site.
+        // Public phone numbers are unverified. Give this request its own
+        // provisional customer instead of claiming an existing profile.
         try {
-            $digits = preg_replace('/\D+/', '', $phone);
-            $allCustomers = $pdo->query("SELECT id, payload FROM container_system_records WHERE kind = 'customer' AND status != 'archived'")->fetchAll();
-            $customerId = null;
-            foreach ($allCustomers as $customerRow) {
-                $customerPayload = json_decode((string)$customerRow['payload'], true);
-                if (is_array($customerPayload) && preg_replace('/\D+/', '', (string)($customerPayload['phone'] ?? '')) === $digits && $digits !== '') {
-                    $customerId = (int)$customerRow['id'];
-                    break;
-                }
-            }
-            if (!$customerId) {
-                $customerPayload = json_encode(['name'=>$clientName, 'phone'=>$phone, 'email'=>$email, 'source'=>'service_request', 'firstRequestId'=>$newId], JSON_UNESCAPED_UNICODE);
-                $customerInsert = $pdo->prepare("INSERT INTO container_system_records (kind,status,reference,payload,created_at,updated_at) VALUES ('customer','active',:reference,:payload,:now,:now)");
-                $customerInsert->execute([':reference' => 'CUS-' . str_pad((string)$newId, 5, '0', STR_PAD_LEFT), ':payload' => $customerPayload, ':now' => $now]);
-                $customerId = (int)$pdo->lastInsertId();
-            }
-            if ($customerId && $location !== '') {
-                $sitePayload = json_encode(['customerRecordId'=>$customerId, 'name'=>$clientName . ' — عنوان الطلب #' . $newId, 'address'=>$location, 'location'=>$location, 'requestId'=>$newId, 'source'=>'service_request'], JSON_UNESCAPED_UNICODE);
-                $siteInsert = $pdo->prepare("INSERT INTO container_system_records (kind,status,reference,payload,created_at,updated_at) VALUES ('customer_site','active',:reference,:payload,:now,:now)");
-                $siteInsert->execute([':reference' => 'SITE-' . str_pad((string)$newId, 5, '0', STR_PAD_LEFT), ':payload' => $sitePayload, ':now' => $now]);
-            }
-            if ($customerId) {
-                $pdo->prepare("UPDATE service_requests SET customer_record_id = :customer WHERE id = :id")->execute([':customer'=>$customerId, ':id'=>$newId]);
-            }
-        } catch (\Throwable $ignored) {
-            // Never turn a successfully stored request into a failed response.
+            hsCreateProvisionalCustomerForRequest($pdo, [
+                'id' => $newId,
+                'client_name' => $clientName,
+                'phone' => $phone,
+                'email' => $email,
+                'service_type' => $serviceType,
+                'location' => $location,
+            ]);
+        } catch (\Throwable $error) {
+            error_log("Could not create provisional customer linkage for request #{$newId}");
         }
 
         // Create Notification in notifications table
@@ -3673,55 +3657,19 @@ try {
                     $newReqId = (int)$pdo->lastInsertId();
                 }
 
-                // Keep chat-confirmed orders in Container Operations too:
-                // reuse the customer by phone and add the address only once.
+                // Keep chat-confirmed orders in Container Operations. The
+                // submitted phone is unverified, so never merge by phone.
                 try {
-                    $digits = preg_replace('/\D+/', '', $phone);
-                    $customerId = null;
-                    $customers = $pdo->query("SELECT id, payload FROM container_system_records WHERE kind = 'customer' AND status != 'archived'")->fetchAll();
-                    foreach ($customers as $customerRow) {
-                        $customerPayload = json_decode((string)$customerRow['payload'], true);
-                        if (is_array($customerPayload) && $digits !== '' &&
-                            preg_replace('/\D+/', '', (string)($customerPayload['phone'] ?? '')) === $digits) {
-                            $customerId = (int)$customerRow['id'];
-                            break;
-                        }
-                    }
-                    if (!$customerId) {
-                        $customerInsert = $pdo->prepare("INSERT INTO container_system_records (kind,status,reference,payload,created_at,updated_at) VALUES ('customer','active',:reference,:payload,:now,:now)");
-                        $customerInsert->execute([
-                            ':reference' => 'CUS-' . str_pad((string)$newReqId, 5, '0', STR_PAD_LEFT),
-                            ':payload' => json_encode(['name'=>$clientName, 'phone'=>$phone, 'email'=>'', 'source'=>'service_request', 'firstRequestId'=>$newReqId], JSON_UNESCAPED_UNICODE),
-                            ':now' => $now,
-                        ]);
-                        $customerId = (int)$pdo->lastInsertId();
-                    }
-                    if ($customerId && trim($location) !== '' && trim($location) !== 'غير محدد') {
-                        $siteExists = $pdo->prepare("SELECT id FROM container_system_records WHERE kind = 'customer_site' AND status != 'archived' AND payload LIKE :needle LIMIT 1");
-                        $siteExists->execute([':needle' => '%"customerRecordId":' . $customerId . '%']);
-                        $hasSameSite = false;
-                        foreach ($siteExists->fetchAll() as $siteRow) {
-                            $sitePayload = json_decode((string)($siteRow['payload'] ?? ''), true);
-                            if (is_array($sitePayload) && trim((string)($sitePayload['address'] ?? $sitePayload['location'] ?? '')) === trim($location)) {
-                                $hasSameSite = true;
-                                break;
-                            }
-                        }
-                        if (!$hasSameSite) {
-                            $siteInsert = $pdo->prepare("INSERT INTO container_system_records (kind,status,reference,payload,created_at,updated_at) VALUES ('customer_site','active',:reference,:payload,:now,:now)");
-                            $siteInsert->execute([
-                                ':reference' => 'SITE-' . str_pad((string)$newReqId, 5, '0', STR_PAD_LEFT),
-                                ':payload' => json_encode(['customerRecordId'=>$customerId, 'name'=>$clientName . ' — عنوان الطلب #' . $newReqId, 'address'=>$location, 'location'=>$location, 'requestId'=>$newReqId, 'source'=>'service_request', 'serviceType'=>$serviceType], JSON_UNESCAPED_UNICODE),
-                                ':now' => $now,
-                            ]);
-                        }
-                    }
-                    if ($customerId) {
-                        $pdo->prepare("UPDATE service_requests SET customer_record_id = :customer WHERE id = :id")
-                            ->execute([':customer'=>$customerId, ':id'=>$newReqId]);
-                    }
-                } catch (\Throwable $ignored) {
-                    // The order has already been saved; indexing is best-effort.
+                    hsCreateProvisionalCustomerForRequest($pdo, [
+                        'id' => $newReqId,
+                        'client_name' => $clientName,
+                        'phone' => $phone,
+                        'email' => '',
+                        'service_type' => $serviceType,
+                        'location' => $location,
+                    ]);
+                } catch (\Throwable $error) {
+                    error_log("Could not create provisional customer linkage for request #{$newReqId}");
                 }
 
                  // The Hostinger AI route is independent from the Node route.
