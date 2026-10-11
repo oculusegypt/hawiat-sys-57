@@ -19,7 +19,7 @@ import { eq } from "drizzle-orm";
 const testPhone = "+966500000001";
 const testLocation = "TEST ONLY — موقع تجريبي، الرياض";
 const testAddress = "TEST ONLY — العنوان مخصص للاختبار ولا يستخدم للتوجيه";
-const testSecret = process.env.SESSION_SECRET;
+const testSecret: string = process.env.SESSION_SECRET ?? "";
 if (!testSecret) throw new Error("SESSION_SECRET must be set to a test-only value");
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 
@@ -149,19 +149,6 @@ async function main() {
     testData: true,
   });
 
-  postToFinancialCore({
-    sourceKind: "invoice",
-    sourceId: invoice.id,
-    reference: invoice.reference,
-    amount: 100,
-    date: "2026-08-10",
-    createdBy: admin.id,
-  });
-  db.update(containerSystemRecordsTable)
-    .set({ status: "posted" })
-    .where(eq(containerSystemRecordsTable.id, invoice.id))
-    .run();
-
   const portProbe = createServer();
   await new Promise<void>(resolve => portProbe.listen(0, "127.0.0.1", resolve));
   const address = portProbe.address() as AddressInfo;
@@ -215,6 +202,28 @@ async function main() {
   );
 
   try {
+    const missingInvoice = await settle("test-lifecycle-no-invoice-001", null);
+    assert.equal(missingInvoice.status, 422, "contracts with invoices must not accept unlinked payments");
+    const unpostedInvoice = await settle("test-lifecycle-unposted-invoice-001", invoice.id);
+    assert.equal(unpostedInvoice.status, 422, "draft invoices must not accept payment allocations");
+    assert.equal(
+      (sqlite.prepare("SELECT COUNT(*) AS count FROM container_system_records WHERE kind = 'payment'").get() as { count: number }).count,
+      0,
+    );
+
+    postToFinancialCore({
+      sourceKind: "invoice",
+      sourceId: invoice.id,
+      reference: invoice.reference,
+      amount: 100,
+      date: "2026-08-10",
+      createdBy: admin.id,
+    });
+    db.update(containerSystemRecordsTable)
+      .set({ status: "posted" })
+      .where(eq(containerSystemRecordsTable.id, invoice.id))
+      .run();
+
     const period = sqlite.prepare("UPDATE financial_periods SET status = 'closed' WHERE period_key = '2026-08'");
     period.run();
     const closedPeriod = await settle("test-lifecycle-closed-001", invoice.id);
@@ -256,7 +265,7 @@ async function main() {
         body: JSON.stringify({ action: "close" }),
       },
     );
-    assert.equal(closeResponse.status, 200, "a returned contract can close after all linked invoices are paid");
+    assert.equal(closeResponse.status, 201, "a returned contract can close after all linked invoices are paid");
     const closedContract = db.select().from(containerSystemRecordsTable)
       .where(eq(containerSystemRecordsTable.id, contract.id)).get();
     assert.equal(closedContract?.status, "closed");
