@@ -615,9 +615,19 @@ function GeneralTab() {
                <Input value={settings.company_name} onChange={e => setSettings(s => ({ ...s, company_name: e.target.value }))} placeholder="اكتب اسم المنشأة كما يظهر للعملاء" className="bg-gray-50" dir="rtl" />
             </div>
                <div className="space-y-1.5">
-                 <label className="text-sm font-bold text-gray-700">الرابط العام للموقع</label>
+                 <label className="text-sm font-bold text-gray-700">رابط الإنتاج للـ SEO</label>
                  <Input value={PUBLIC_SITE_URL} readOnly className="bg-slate-100 font-mono text-sm text-slate-700" dir="ltr" />
-                 <p className="text-xs text-gray-400">رابط الإنتاج ثابت ويُستخدم للـ Canonical وOpen Graph. لا يتم تغييره أو حفظه من هذه الصفحة.</p>
+                 <p className="text-xs text-gray-400">ثابت على sabaik.net ويُستخدم للـ Canonical وOpen Graph، ولا يتغير بتغير بيئة التشغيل.</p>
+               </div>
+               <div className="space-y-1.5">
+                 <label className="text-sm font-bold text-gray-700">نطاق التشغيل الحالي</label>
+                 <Input
+                   value={typeof window === "undefined" ? "" : window.location.origin}
+                   readOnly
+                   className="bg-slate-100 font-mono text-sm text-slate-700"
+                   dir="ltr"
+                 />
+                 <p className="text-xs text-gray-400">يُعرض تلقائيًا من النطاق الذي فُتحت منه لوحة الإدارة، ولا يُحفظ ولا يغيّر روابط SEO.</p>
                </div>
 
             {/* ── Logo uploader ─────────────────────────────────────── */}
