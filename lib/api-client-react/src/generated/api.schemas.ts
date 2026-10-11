@@ -121,6 +121,8 @@ export const ContainerContractLifecycleInputAction = {
 
 export interface ContainerContractLifecycleInput {
   action: ContainerContractLifecycleInputAction;
+  /** Optional location recorded with a delivery or return movement */
+  location?: string;
 }
 
 export interface ContainerContractLifecycleResult {

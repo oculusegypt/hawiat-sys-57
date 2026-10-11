@@ -9,4 +9,6 @@ import type { ContainerContractLifecycleInputAction } from './containerContractL
 
 export interface ContainerContractLifecycleInput {
   action: ContainerContractLifecycleInputAction;
+  /** Optional location recorded with a delivery or return movement */
+  location?: string;
 }

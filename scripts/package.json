@@ -6,6 +6,7 @@
   "scripts": {
     "validate:operational": "node ./validate-operational-invariants.mjs",
     "test:php-financial-methods": "php ./test-php-financial-methods.php",
+    "test:php-container-lifecycle": "php ./test-php-container-lifecycle.php",
     "generate-sitemap": "node ./generate-sitemap.mjs",
     "seo-quality-gate": "node ./seo-quality-gate.mjs",
     "prepare-seo-drafts": "node ./prepare-seo-drafts.mjs",

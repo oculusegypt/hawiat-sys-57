@@ -1829,7 +1829,8 @@ export const UpdateContainerContractLifecycleParams = zod.object({
 })
 
 export const UpdateContainerContractLifecycleBody = zod.object({
-  "action": zod.enum(['deliver', 'return', 'approve', 'reject', 'close'])
+  "action": zod.enum(['deliver', 'return', 'approve', 'reject', 'close']),
+  "location": zod.string().optional().describe('Optional location recorded with a delivery or return movement')
 })
 
 export const UpdateContainerContractLifecycleResponse = zod.object({
