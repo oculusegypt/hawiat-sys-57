@@ -297,6 +297,54 @@ function hsFinancialTruth(PDO $pdo, ?string $from = null, ?string $to = null): a
     return ['totals' => $row, 'counts' => $counts];
 }
 
+function hsPrepareServiceRequestsTable(PDO $pdo): void {
+    $pdo->exec("CREATE TABLE IF NOT EXISTS service_requests (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        client_name TEXT NOT NULL,
+        phone TEXT NOT NULL,
+        email TEXT,
+        service_type TEXT NOT NULL,
+        container_size TEXT,
+        container_count INTEGER NOT NULL DEFAULT 1,
+        property_type TEXT,
+        area_size TEXT,
+        location TEXT NOT NULL,
+        duration TEXT,
+        notes TEXT,
+        appointment_type TEXT NOT NULL DEFAULT 'immediate',
+        scheduled_at TEXT,
+        status TEXT NOT NULL DEFAULT 'pending',
+        admin_notes TEXT,
+        customer_record_id INTEGER,
+        container_record_id INTEGER,
+        contract_record_id INTEGER,
+        assigned_driver_id INTEGER,
+        assigned_vehicle_id INTEGER,
+        assigned_vehicle_plate TEXT,
+        driver_status TEXT NOT NULL DEFAULT 'unassigned',
+        driver_response_at TEXT,
+        driver_started_at TEXT,
+        driver_completed_at TEXT,
+        driver_notes TEXT,
+        driver_location_lat TEXT,
+        driver_location_lng TEXT,
+        driver_proof_photo_url TEXT,
+        driver_signature_data TEXT,
+        driver_receiver_name TEXT,
+        assigned_at TEXT,
+        session_id TEXT NOT NULL DEFAULT '',
+        acquisition_source TEXT NOT NULL DEFAULT 'مباشر',
+        attribution_referrer TEXT NOT NULL DEFAULT '',
+        attribution_landing_page TEXT NOT NULL DEFAULT '',
+        attribution_utm_source TEXT NOT NULL DEFAULT '',
+        attribution_utm_medium TEXT NOT NULL DEFAULT '',
+        attribution_utm_campaign TEXT NOT NULL DEFAULT '',
+        attribution_gclid TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    )");
+}
+
 function hsEnsureSchema(PDO $pdo): void {
     $pdo->exec("CREATE TABLE IF NOT EXISTS container_system_records (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -815,8 +863,311 @@ function hsSyncMovement(PDO $pdo, array $payload, int $actorId): void {
     hsAudit($pdo, (int)$asset['id'], (string)$asset['kind'], 'movement_sync', $before, json_encode($next, JSON_UNESCAPED_UNICODE), $actorId);
 }
 
+function hsContractOperationKind($value): string {
+    $normalized = mb_strtolower(trim((string)$value));
+    if (preg_match('/deliver|delivery|تسليم|إرسال|ارسال|إنزال|انزال|drop/u', $normalized)) return 'delivery';
+    if (preg_match('/return|pickup|استرجاع|إرجاع|ارجاع|سحب|رفع/u', $normalized)) return 'return';
+    return 'other';
+}
+
+function hsFindOpenContractOperation(array $records, array $requests, int $contractId, ?int $containerId = null, ?string $operationKind = null): ?array {
+    $terminal = ['completed', 'cancelled', 'rejected', 'closed'];
+    foreach ($requests as $request) {
+        $status = mb_strtolower((string)($request['status'] ?? ''));
+        $driverStatus = mb_strtolower((string)($request['driver_status'] ?? ''));
+        $matchesContract = (int)($request['contract_record_id'] ?? 0) === $contractId;
+        $matchesContainer = $containerId !== null && $containerId > 0
+            && (int)($request['container_record_id'] ?? 0) === $containerId;
+        if (in_array($status, $terminal, true) || in_array($driverStatus, $terminal, true)
+            || (!$matchesContract && !$matchesContainer)) continue;
+        $kind = hsContractOperationKind($request['service_type'] ?? '');
+        if ($operationKind !== null && $kind !== $operationKind) continue;
+        return [
+            'id' => (int)($request['id'] ?? 0),
+            'status' => (string)($request['driver_status'] ?? '') ?: (string)($request['status'] ?? ''),
+            'assignedDriverId' => (int)($request['assigned_driver_id'] ?? 0),
+        ];
+    }
+
+    foreach ($records as $record) {
+        if (($record['kind'] ?? '') !== 'work_order' || ($record['status'] ?? '') === 'archived') continue;
+        $payload = $record['payload'];
+        $matchesContract = (int)($payload['contractRecordId'] ?? 0) === $contractId;
+        $matchesContainer = $containerId !== null && $containerId > 0
+            && (int)($payload['containerRecordId'] ?? 0) === $containerId;
+        if (!$matchesContract && !$matchesContainer) continue;
+        $kind = hsContractOperationKind($payload['serviceType'] ?? $payload['operationType'] ?? '');
+        if ($operationKind !== null && $kind !== $operationKind) continue;
+        $operationStatus = mb_strtolower((string)($payload['driverStatus'] ?? $payload['status'] ?? $record['status']));
+        if (in_array($operationStatus, $terminal, true)
+            || in_array(mb_strtolower((string)$record['status']), $terminal, true)) continue;
+        return [
+            'id' => (int)$record['id'],
+            'status' => (string)($payload['driverStatus'] ?? $payload['status'] ?? $record['status']),
+            'assignedDriverId' => (int)($payload['assignedDriverId'] ?? 0),
+        ];
+    }
+    return null;
+}
+
+function hsUpdateContainerContractLifecycle(PDO $pdo, int $contractId, string $action, string $location, int $actorId, array $admin): array {
+    if (!in_array($action, ['deliver', 'return', 'approve', 'reject', 'close'], true)) {
+        throw new RuntimeException('إجراء دورة العقد غير مدعوم', 422);
+    }
+    $pdo->beginTransaction();
+    try {
+        $contractStmt = $pdo->prepare("SELECT * FROM container_system_records WHERE id = ? LIMIT 1");
+        $contractStmt->execute([$contractId]);
+        $contract = $contractStmt->fetch(PDO::FETCH_ASSOC);
+        if (!$contract || $contract['kind'] !== 'contract' || $contract['status'] === 'archived') {
+            throw new RuntimeException('العقد غير موجود أو مؤرشف', 404);
+        }
+        $contractPayload = hsPayload($contract['payload']);
+        if ($action === 'deliver' && !in_array($contract['status'], ['active', 'approved', 'issued', 'scheduled'], true)) {
+            throw new RuntimeException('لا يمكن تسليم العقد من حالته الحالية', 422);
+        }
+        if ($action === 'return' && $contract['status'] !== 'delivered') {
+            throw new RuntimeException('لا يمكن استرجاع الحاوية قبل تسجيل تسليمها', 422);
+        }
+        if (in_array($action, ['approve', 'reject'], true)) {
+            if (!in_array((string)($admin['role'] ?? ''), ['admin', 'manager'], true)) {
+                throw new RuntimeException('اعتماد العقد متاح للمدير أو المدير الرئيسي فقط', 422);
+            }
+            if (!in_array($contract['status'], ['draft', 'pending_approval', 'issued'], true)) {
+                throw new RuntimeException('لا يمكن اعتماد العقد من حالته الحالية', 422);
+            }
+            $now = date('c');
+            $nextStatus = $action === 'approve' ? 'approved' : 'rejected';
+            $nextPayload = array_merge($contractPayload, [
+                'approvalStatus' => $nextStatus,
+                $action === 'approve' ? 'approvedAt' : 'rejectedAt' => $now,
+                $action === 'approve' ? 'approvedBy' : 'rejectedBy' => $actorId,
+                'lifecycleAction' => $action,
+            ]);
+            $nextJson = json_encode($nextPayload, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+            $pdo->prepare("UPDATE container_system_records SET status = ?, payload = ?, updated_at = ? WHERE id = ?")
+                ->execute([$nextStatus, $nextJson, $now, $contractId]);
+            hsAudit($pdo, $contractId, 'contract', 'contract_' . $action, (string)$contract['payload'], $nextJson, $actorId);
+            $pdo->commit();
+            $contractStmt->execute([$contractId]);
+            return ['contract' => $contractStmt->fetch(PDO::FETCH_ASSOC), 'movement' => null, 'idempotent' => false];
+        }
+
+        $rawRecords = hsFindRecords($pdo);
+        $records = array_map('hsRecord', $rawRecords);
+        $requests = $pdo->query("SELECT * FROM service_requests")->fetchAll(PDO::FETCH_ASSOC);
+        $containerId = (int)($contractPayload['containerRecordId'] ?? 0) ?: null;
+        $openDelivery = hsFindOpenContractOperation($records, $requests, $contractId, $containerId, 'delivery');
+        if ($action === 'deliver' && $openDelivery) {
+            throw new RuntimeException("لا يمكن تسجيل التسليم؛ يوجد أمر إرسال قائم رقم {$openDelivery['id']}", 422);
+        }
+        if (in_array($action, ['return', 'close'], true)) {
+            $openOperation = hsFindOpenContractOperation($records, $requests, $contractId, $containerId);
+            if ($openOperation) {
+                $assignment = !empty($openOperation['assignedDriverId']) ? 'ومسند' : 'غير مسند';
+                throw new RuntimeException("لا يمكن تنفيذ الإجراء؛ يوجد أمر تشغيل {$openOperation['id']} حالته {$openOperation['status']} ومكلف بالسائق {$assignment}", 422);
+            }
+        }
+
+        if ($action === 'close') {
+            if ($contract['status'] !== 'returned') {
+                throw new RuntimeException('لا يمكن إغلاق العقد قبل استرجاع الحاوية وتسجيل التفريغ أو الإكمال التشغيلي', 422);
+            }
+            $contractNumber = trim((string)($contractPayload['contractNumber'] ?? $contract['reference']));
+            $collected = 0.0;
+            foreach (hsPostedCollections($records) as $row) {
+                $payload = $row['payload'];
+                $matches = trim((string)($payload['contractNumber'] ?? '')) === $contractNumber
+                    || (int)($payload['contractRecordId'] ?? $payload['contractId'] ?? 0) === $contractId;
+                $allocation = null;
+                if (is_array($payload['allocations'] ?? null)) {
+                    foreach ($payload['allocations'] as $item) {
+                        if (!is_array($item)) continue;
+                        if ((int)($item['contractId'] ?? 0) === $contractId) {
+                            $matches = true;
+                            $allocation = $item;
+                            break;
+                        }
+                    }
+                }
+                if ($matches) $collected += (float)($allocation['amount'] ?? $payload['amount'] ?? 0);
+            }
+            $returned = 0.0;
+            foreach ($records as $row) {
+                if ($row['kind'] !== 'payment_return' || $row['status'] !== 'posted') continue;
+                $payload = $row['payload'];
+                if ((int)($payload['contractRecordId'] ?? $payload['contractId'] ?? 0) === $contractId
+                    || trim((string)($payload['contractNumber'] ?? '')) === $contractNumber) {
+                    $returned += (float)($payload['amount'] ?? 0);
+                }
+            }
+            $total = (float)($contractPayload['total'] ?? $contractPayload['amount'] ?? 0);
+            $remaining = max($total - $collected + $returned, 0);
+            if ($remaining > 0.01) {
+                throw new RuntimeException('لا يمكن إغلاق العقد قبل اكتمال التسوية المالية؛ المتبقي ' . number_format($remaining, 2, '.', '') . ' ر.س', 422);
+            }
+            foreach ($records as $invoice) {
+                if ($invoice['kind'] !== 'invoice' || $invoice['status'] === 'archived') continue;
+                $invoicePayload = $invoice['payload'];
+                if ((int)($invoicePayload['contractRecordId'] ?? 0) !== $contractId
+                    && trim((string)($invoicePayload['contractNumber'] ?? '')) !== $contractNumber) continue;
+                $invoiceTotal = (float)($invoicePayload['total'] ?? $invoicePayload['amount'] ?? 0);
+                if (!is_finite($invoiceTotal) || $invoiceTotal <= 0.01) continue;
+                $invoiceRemaining = (float)($invoicePayload['remaining'] ?? ($invoiceTotal - (float)($invoicePayload['paid'] ?? 0)));
+                $postingStmt = $pdo->prepare("SELECT id FROM financial_transactions WHERE source_kind = 'invoice' AND source_id = ? AND status = 'posted' LIMIT 1");
+                $postingStmt->execute([(int)$invoice['id']]);
+                if ($invoice['status'] !== 'paid' || !is_finite($invoiceRemaining) || $invoiceRemaining > 0.01 || !$postingStmt->fetchColumn()) {
+                    throw new RuntimeException('لا يمكن إغلاق العقد قبل ترحيل جميع فواتيره وتسويتها بالكامل', 422);
+                }
+            }
+
+            $now = date('c');
+            $nextPayload = array_merge($contractPayload, [
+                'closedAt' => $now,
+                'lifecycleAction' => 'close',
+                'settlementStatus' => 'settled',
+                'paid' => $collected - $returned,
+                'remaining' => 0,
+            ]);
+            $nextJson = json_encode($nextPayload, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+            $pdo->prepare("UPDATE container_system_records SET status = 'closed', payload = ?, updated_at = ? WHERE id = ?")
+                ->execute([$nextJson, $now, $contractId]);
+            foreach ($rawRecords as $row) {
+                $payload = hsPayload($row['payload']);
+                if ((int)($payload['contractRecordId'] ?? 0) !== $contractId) continue;
+                if ($row['kind'] === 'contract_line' && $row['status'] !== 'archived') {
+                    $linePayload = array_merge($payload, [
+                        'status' => 'closed',
+                        'lineLifecycleStatus' => 'closed',
+                        'closedAt' => $now,
+                        'lifecycleAction' => 'contract_close',
+                    ]);
+                    $lineJson = json_encode($linePayload, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+                    $pdo->prepare("UPDATE container_system_records SET status = 'closed', payload = ?, updated_at = ? WHERE id = ?")
+                        ->execute([$lineJson, $now, (int)$row['id']]);
+                    hsAudit($pdo, (int)$row['id'], 'contract_line', 'contract_close_line', (string)$row['payload'], $lineJson, $actorId);
+                    continue;
+                }
+                if ($row['kind'] === 'container_assignment') {
+                    $assignmentPayload = array_merge($payload, ['assignmentStatus' => 'closed', 'closedAt' => $now]);
+                    $pdo->prepare("UPDATE container_system_records SET status = 'closed', payload = ?, updated_at = ? WHERE id = ?")
+                        ->execute([json_encode($assignmentPayload, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE), $now, (int)$row['id']]);
+                }
+            }
+            if ($containerId !== null) {
+                foreach ($rawRecords as $asset) {
+                    if ((int)$asset['id'] !== $containerId || !in_array($asset['kind'], ['container', 'container_asset'], true)) continue;
+                    $assetPayload = hsPayload($asset['payload']);
+                    $nextAssetPayload = array_merge($assetPayload, [
+                        'status' => 'available',
+                        'assignmentRecordId' => null,
+                        'assignedContractRecordId' => null,
+                        'assignedSiteRecordId' => null,
+                        'lastClosedContractId' => $contractId,
+                        'lastClosedAt' => $now,
+                    ]);
+                    $assetJson = json_encode($nextAssetPayload, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+                    $pdo->prepare("UPDATE container_system_records SET status = 'available', payload = ?, updated_at = ? WHERE id = ?")
+                        ->execute([$assetJson, $now, $containerId]);
+                    hsAudit($pdo, $containerId, (string)$asset['kind'], 'contract_close_asset_release', (string)$asset['payload'], $assetJson, $actorId);
+                    break;
+                }
+            }
+            hsAudit($pdo, $contractId, 'contract', 'contract_close', (string)$contract['payload'], $nextJson, $actorId);
+            $pdo->commit();
+            $contractStmt->execute([$contractId]);
+            return ['contract' => $contractStmt->fetch(PDO::FETCH_ASSOC), 'movement' => null, 'idempotent' => false];
+        }
+
+        $lifecycleKey = $action === 'deliver' ? 'deliverAt' : 'returnAt';
+        if (!empty($contractPayload[$lifecycleKey])) {
+            $pdo->commit();
+            return ['contract' => $contract, 'movement' => null, 'idempotent' => true];
+        }
+        $containerCode = trim((string)($contractPayload['containerCode'] ?? ''));
+        if ($containerCode === '') throw new RuntimeException('العقد لا يحتوي على رقم حاوية', 422);
+        $asset = null;
+        foreach ($rawRecords as $candidate) {
+            if (!in_array($candidate['kind'], ['container', 'container_asset'], true) || $candidate['status'] === 'archived') continue;
+            $assetPayload = hsPayload($candidate['payload']);
+            $code = trim((string)($assetPayload['assetCode'] ?? $assetPayload['code'] ?? $assetPayload['reference'] ?? ''));
+            if ($code === $containerCode) { $asset = $candidate; break; }
+        }
+        if (!$asset) throw new RuntimeException('الحاوية المرتبطة بالعقد غير موجودة', 422);
+        $requestStmt = $pdo->prepare("SELECT * FROM service_requests WHERE contract_record_id = ? LIMIT 1");
+        $requestStmt->execute([$contractId]);
+        $linkedRequest = $requestStmt->fetch(PDO::FETCH_ASSOC);
+        if ($linkedRequest && (int)($linkedRequest['container_record_id'] ?? 0) !== (int)$asset['id']) {
+            throw new RuntimeException('الطلب المرتبط لا يطابق أصل الحاوية في العقد', 422);
+        }
+        if (!hsMovementAllowed((string)$asset['status'], $action)) {
+            throw new RuntimeException('لا يمكن تنفيذ ' . ($action === 'deliver' ? 'التسليم' : 'الاسترجاع') . ' على حاوية حالتها الحالية ' . $asset['status'], 422);
+        }
+
+        $now = date('c');
+        $effectiveLocation = trim($location) !== '' ? trim($location) : trim((string)($contractPayload['location'] ?? ''));
+        $nextContractPayload = array_merge($contractPayload, [
+            $lifecycleKey => $now,
+            'lifecycleAction' => $action,
+            'atomicLifecycle' => true,
+        ]);
+        $nextContractStatus = $action === 'deliver' ? 'delivered' : 'returned';
+        $nextAssetStatus = $action === 'deliver' ? 'rented' : 'available';
+        $nextAssetPayload = array_merge(hsPayload($asset['payload']), [
+            'status' => $nextAssetStatus,
+            'lastMovementAt' => $now,
+            'lastMovementContractId' => $contractId,
+        ]);
+        if ($effectiveLocation !== '') $nextAssetPayload['location'] = $effectiveLocation;
+        $nextContractJson = json_encode($nextContractPayload, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+        $nextAssetJson = json_encode($nextAssetPayload, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+        $pdo->prepare("UPDATE container_system_records SET status = ?, payload = ?, updated_at = ? WHERE id = ?")
+            ->execute([$nextContractStatus, $nextContractJson, $now, $contractId]);
+        $pdo->prepare("UPDATE container_system_records SET status = ?, payload = ?, updated_at = ? WHERE id = ?")
+            ->execute([$nextAssetStatus, $nextAssetJson, $now, (int)$asset['id']]);
+        $movementKey = "contract-lifecycle-{$contractId}-{$action}";
+        $movementPayload = [
+            'operationKey' => $movementKey,
+            'movementKey' => $movementKey,
+            'contractRecordId' => $contractId,
+            'contractNumber' => $contractPayload['contractNumber'] ?? $contract['reference'],
+            'containerRecordId' => (int)$asset['id'],
+            'containerCode' => $containerCode,
+            'movementType' => $action,
+            'movementDate' => $now,
+            'location' => $effectiveLocation,
+            'source' => 'contract_lifecycle',
+            'operationalOnly' => false,
+        ];
+        $movementJson = json_encode($movementPayload, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+        $movementReference = "MOV-C{$contractId}-" . strtoupper($action);
+        $movementStmt = $pdo->prepare("INSERT INTO container_system_records
+            (kind, status, reference, payload, operation_key, created_by, created_at, updated_at)
+            VALUES ('container_movement', 'posted', ?, ?, ?, ?, ?, ?)");
+        $movementStmt->execute([$movementReference, $movementJson, $movementKey, $actorId, $now, $now]);
+        $movementId = (int)$pdo->lastInsertId();
+        hsAudit($pdo, $contractId, 'contract', 'atomic_' . $action, (string)$contract['payload'], $nextContractJson, $actorId);
+        hsAudit($pdo, (int)$asset['id'], (string)$asset['kind'], 'atomic_' . $action, (string)$asset['payload'], $nextAssetJson, $actorId);
+        hsAudit($pdo, $movementId, 'container_movement', 'create', null, $movementJson, $actorId);
+        $pdo->commit();
+
+        $contractStmt->execute([$contractId]);
+        $movementQuery = $pdo->prepare("SELECT * FROM container_system_records WHERE id = ? LIMIT 1");
+        $movementQuery->execute([$movementId]);
+        return [
+            'contract' => $contractStmt->fetch(PDO::FETCH_ASSOC),
+            'movement' => $movementQuery->fetch(PDO::FETCH_ASSOC),
+            'idempotent' => false,
+        ];
+    } catch (Throwable $error) {
+        if ($pdo->inTransaction()) $pdo->rollBack();
+        throw $error;
+    }
+}
+
 function hostingerContainerSystemRoute(PDO $pdo, string $path, string $method, array $input): void {
     if (!str_starts_with($path, '/admin/container-system')) return;
+    hsPrepareServiceRequestsTable($pdo);
     hsEnsureSchema($pdo);
     // Repair orders created before customer indexing was deployed. This keeps
     // Hostinger self-contained and makes the customer list an authoritative
@@ -824,6 +1175,160 @@ function hostingerContainerSystemRoute(PDO $pdo, string $path, string $method, a
     hsSyncRequestsToCustomers($pdo);
     $admin = hsAuth($pdo);
     $actorId = (int)$admin['id'];
+
+    if (preg_match('#^/admin/container-system/identity-review/(\d+)/resolve$#', $path, $matches) && $method === 'POST') {
+        if (!hsCanManage($admin, 'customer') || !in_array((string)($admin['role'] ?? ''), ['admin', 'manager'], true)) {
+            hsJson(['error' => 'مراجعة هوية العملاء متاحة للمدير أو المدير الرئيسي فقط'], 403);
+        }
+        $customerId = (int)$matches[1];
+        $action = strtolower(trim((string)($input['action'] ?? '')));
+        $reason = trim((string)($input['reason'] ?? ''));
+        $targetCustomerId = (int)($input['targetCustomerId'] ?? 0);
+        if ($customerId <= 0 || !in_array($action, ['approve', 'merge'], true) || strlen($reason) < 3) {
+            hsJson(['error' => 'رقم الملف والإجراء وسبب المراجعة مطلوبة'], 422);
+        }
+        if ($action === 'merge' && ($targetCustomerId <= 0 || $targetCustomerId === $customerId)) {
+            hsJson(['error' => 'اختر ملف عميل موثّقًا مختلفًا لدمج السجل فيه'], 422);
+        }
+
+        $now = date('c');
+        try {
+            $pdo->beginTransaction();
+            $sourceStmt = $pdo->prepare("SELECT * FROM container_system_records WHERE id = ? LIMIT 1");
+            $sourceStmt->execute([$customerId]);
+            $source = $sourceStmt->fetch(PDO::FETCH_ASSOC);
+            if (!$source || $source['kind'] !== 'customer' || $source['status'] === 'archived') {
+                throw new RuntimeException('ملف العميل غير موجود');
+            }
+            $sourcePayload = hsPayload($source['payload']);
+            if (($sourcePayload['identityReviewStatus'] ?? '') !== 'pending' || ($sourcePayload['identityVerification'] ?? '') !== 'unverified') {
+                throw new RuntimeException('تمت مراجعة ملف العميل مسبقًا أو أنه غير مؤهل للمراجعة');
+            }
+
+            $updatedRequestCount = 0;
+            $mergedIntoCustomerId = null;
+            if ($action === 'approve') {
+                $nextPayload = array_merge($sourcePayload, [
+                    'identityVerification' => 'verified',
+                    'identityReviewStatus' => 'approved',
+                    'identityReviewedAt' => $now,
+                    'identityReviewedBy' => $actorId,
+                    'identityReviewReason' => $reason,
+                ]);
+            } else {
+                $targetStmt = $pdo->prepare("SELECT * FROM container_system_records WHERE id = ? LIMIT 1");
+                $targetStmt->execute([$targetCustomerId]);
+                $target = $targetStmt->fetch(PDO::FETCH_ASSOC);
+                if (!$target || $target['kind'] !== 'customer' || $target['status'] === 'archived') {
+                    throw new RuntimeException('ملف العميل المستهدف غير موجود أو مؤرشف');
+                }
+                $targetPayload = hsPayload($target['payload']);
+                if (($targetPayload['identityVerification'] ?? '') !== 'verified' || ($targetPayload['identityReviewStatus'] ?? '') === 'pending') {
+                    throw new RuntimeException('لا يمكن الدمج إلا في ملف عميل سبق التحقق من هويته');
+                }
+
+                $rows = $pdo->query("SELECT id, kind, payload FROM container_system_records WHERE id NOT IN ({$customerId}, {$targetCustomerId})")->fetchAll(PDO::FETCH_ASSOC);
+                $relink = $pdo->prepare("UPDATE container_system_records SET payload = :payload, updated_at = :updated_at WHERE id = :id");
+                foreach ($rows as $row) {
+                    $rowPayload = hsPayload($row['payload']);
+                    if ((int)($rowPayload['customerRecordId'] ?? 0) !== $customerId) continue;
+                    $nextRowPayload = $rowPayload;
+                    $nextRowPayload['customerRecordId'] = $targetCustomerId;
+                    $nextJson = json_encode($nextRowPayload, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+                    $relink->execute([':payload' => $nextJson, ':updated_at' => $now, ':id' => (int)$row['id']]);
+                    hsAudit($pdo, (int)$row['id'], (string)$row['kind'], 'identity_customer_merge_relink', (string)$row['payload'], (string)$nextJson, $actorId);
+                }
+
+                $requestStmt = $pdo->prepare("UPDATE service_requests SET customer_record_id = :target, updated_at = :updated_at WHERE customer_record_id = :source");
+                $requestStmt->execute([':target' => $targetCustomerId, ':updated_at' => $now, ':source' => $customerId]);
+                $updatedRequestCount = $requestStmt->rowCount();
+                $mergedIntoCustomerId = $targetCustomerId;
+
+                $mergedIds = is_array($targetPayload['mergedProvisionalCustomerIds'] ?? null)
+                    ? array_values(array_unique(array_filter(array_map('intval', $targetPayload['mergedProvisionalCustomerIds']), static fn(int $id): bool => $id > 0)))
+                    : [];
+                $mergedIds[] = $customerId;
+                $nextTargetPayload = array_merge($targetPayload, [
+                    'mergedProvisionalCustomerIds' => array_values(array_unique($mergedIds)),
+                    'identityMergeUpdatedAt' => $now,
+                    'identityMergeUpdatedBy' => $actorId,
+                ]);
+                $nextTargetJson = json_encode($nextTargetPayload, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+                $pdo->prepare("UPDATE container_system_records SET payload = ?, updated_at = ? WHERE id = ?")
+                    ->execute([$nextTargetJson, $now, $targetCustomerId]);
+                hsAudit($pdo, $targetCustomerId, 'customer', 'identity_review_merge_target', (string)$target['payload'], (string)$nextTargetJson, $actorId);
+
+                $nextPayload = array_merge($sourcePayload, [
+                    'identityVerification' => 'verified',
+                    'identityReviewStatus' => 'merged',
+                    'identityReviewedAt' => $now,
+                    'identityReviewedBy' => $actorId,
+                    'identityReviewReason' => $reason,
+                    'mergedIntoCustomerId' => $targetCustomerId,
+                    'mergedAt' => $now,
+                    'mergedBy' => $actorId,
+                ]);
+            }
+
+            $nextJson = json_encode($nextPayload, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+            $nextStatus = $action === 'merge' ? 'archived' : (string)$source['status'];
+            $pdo->prepare("UPDATE container_system_records SET status = ?, payload = ?, updated_at = ? WHERE id = ?")
+                ->execute([$nextStatus, $nextJson, $now, $customerId]);
+            hsAudit($pdo, $customerId, 'customer', $action === 'approve' ? 'identity_review_approved' : 'identity_review_merged', (string)$source['payload'], (string)$nextJson, $actorId);
+            $pdo->commit();
+        } catch (Throwable $error) {
+            if ($pdo->inTransaction()) $pdo->rollBack();
+            $message = $error->getMessage();
+            $status = str_contains($message, 'غير موجود') ? 404 : (str_contains($message, 'مسبقًا') || str_contains($message, 'موثّقًا') || str_contains($message, 'سبق التحقق') ? 409 : 422);
+            hsJson(['error' => $message], $status);
+        }
+
+        $updatedStmt = $pdo->prepare("SELECT * FROM container_system_records WHERE id = ? LIMIT 1");
+        $updatedStmt->execute([$customerId]);
+        hsJson([
+            'action' => $action,
+            'customer' => hsRecord($updatedStmt->fetch(PDO::FETCH_ASSOC)),
+            'updatedRequestCount' => $updatedRequestCount,
+            'mergedIntoCustomerId' => $mergedIntoCustomerId,
+        ]);
+    }
+
+    if (preg_match('#^/admin/container-system/contracts/(\d+)/lifecycle$#', $path, $matches) && $method === 'POST') {
+        if (!hsCanManage($admin, 'contract')) {
+            hsJson(['error' => 'ليس لديك صلاحية لتنفيذ دورة العقد'], 403);
+        }
+        $contractId = (int)$matches[1];
+        $action = strtolower(trim((string)($input['action'] ?? '')));
+        if ($contractId <= 0) hsJson(['error' => 'رقم العقد غير صحيح'], 400);
+        if (!in_array($action, ['deliver', 'return', 'approve', 'reject', 'close'], true)) {
+            hsJson(['error' => 'إجراء دورة العقد غير مدعوم'], 422);
+        }
+        try {
+            $result = hsUpdateContainerContractLifecycle(
+                $pdo,
+                $contractId,
+                $action,
+                trim((string)($input['location'] ?? '')),
+                $actorId,
+                $admin,
+            );
+            hsJson([
+                'contract' => hsRecord($result['contract']),
+                'movement' => $result['movement'] ? hsRecord($result['movement']) : null,
+                'idempotent' => (bool)$result['idempotent'],
+            ], $result['idempotent'] ? 200 : 201);
+        } catch (Throwable $error) {
+            $status = in_array((int)$error->getCode(), [404, 409, 422], true) ? (int)$error->getCode() : 422;
+            $message = $status === 422 || $status === 404
+                ? $error->getMessage()
+                : 'تعذر تنفيذ دورة العقد بشكل ذري';
+            if (!in_array((int)$error->getCode(), [404, 409, 422], true)) {
+                error_log('[container-system] contract lifecycle failed: ' . $error->getMessage());
+                $message = 'تعذر تنفيذ دورة العقد بشكل ذري';
+            }
+            hsJson(['error' => $message], $status);
+        }
+    }
 
     if ($path === '/admin/container-system' && $method === 'GET') {
         $records = array_map('hsRecord', hsFindRecords($pdo));

@@ -19,14 +19,14 @@ content_type = "application/octet-stream"
 id = "8wpwjJWk2KepEi0Yl7z6j"
 uri = "file://hawiat-sys-hostinger.zip"
 type = "unspecified"
-title = "حزمة Hostinger — CleanFlow"
-description = "أرشيف الاستبدال الكامل، مع واجهة PHP وقاعدة SQLite والواجهة الرئيسية ومنصة CleanFlow."
+title = "حزمة هوستنجر — hawiat-sys-hostinger.zip"
+description = "حزمة البناء النهائية بعد اجتياز فحوص الأرشيف وSEO وPHP. تحتوي لقطة قاعدة الإنتاج؛ تعامل معها كملف سري."
 logical_id = "990d3da6-af4c-4a74-b7a3-c0ec0ef58ac0"
-content_hash = "sha256:6c8c44469b0b506a3ec25e20c0539047778a922f0e99e47505d000b2f4e2c38e"
-size = 19829286
-mtime_ms = 1791758069749
-storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:d62f614f-1695-43e2-ae73-b8132c49de08/990d3da6-af4c-4a74-b7a3-c0ec0ef58ac0/539b0031-d03d-4822-afa4-d5f33166cb14"
-storage_version_token = "1791758141738093"
+content_hash = "sha256:77759abe8f5cc5d332e924412d67f1df82f9459297b46c77480e6e90cebc9043"
+size = 19840228
+mtime_ms = 1791761126271
+storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:c72c350c-8f04-42ac-bdaf-f02d6ecface3/990d3da6-af4c-4a74-b7a3-c0ec0ef58ac0/13c47bf4-419e-4920-a55b-bb302db438c3"
+storage_version_token = "1791761280713589"
 content_type = "application/octet-stream"
 
 [[outputs]]
@@ -98,3 +98,17 @@ mtime_ms = 1791747934132
 storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:79c28253-442f-4679-ba83-2fa9cfc3b300/b246f199-01ad-4314-99f5-7fd27bfe45e9/db8604ab-9773-4225-9005-15def936ae2c"
 storage_version_token = "1791748057049366"
 content_type = "image/webp"
+
+[[outputs]]
+id = "ZpPZU_bxlyliTbNss9EZv"
+uri = "file://generated-artifacts/hostinger-lifecycle-report.html"
+type = "html"
+title = "تقرير دورة العقد وحزمة هوستنجر"
+description = "نتائج الاختبار المعزول، فحوص الحزمة، وبيان حدود استخدام قاعدة الإنتاج."
+logical_id = "d9908b31-af99-426f-9fe0-45e89c24f5e6"
+content_hash = "sha256:6d88875b56cff78ed01aec5c5967febebf531cf1e0fab4636925d5a5e26fffe0"
+size = 6161
+mtime_ms = 1791761198025
+storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:c72c350c-8f04-42ac-bdaf-f02d6ecface3/d9908b31-af99-426f-9fe0-45e89c24f5e6/48a67376-68dd-4bfd-96a4-0e6674a8ee0d"
+storage_version_token = "1791761251822484"
+content_type = "text/html"

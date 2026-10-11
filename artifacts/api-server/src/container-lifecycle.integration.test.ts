@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import { createHmac } from "node:crypto";
 import type { AddressInfo } from "node:net";
 import { createServer } from "node:net";
 import { spawn, type ChildProcess } from "node:child_process";
@@ -14,6 +13,7 @@ import {
 } from "@workspace/db";
 import { postToFinancialCore } from "@workspace/db";
 import { findScheduledDispatchConflict } from "./lib/containerDispatch.js";
+import { hashPassword } from "./routes/auth.js";
 import { eq } from "drizzle-orm";
 
 const testPhone = "+966500000001";
@@ -21,13 +21,9 @@ const testLocation = "TEST ONLY — موقع تجريبي، الرياض";
 const testAddress = "TEST ONLY — العنوان مخصص للاختبار ولا يستخدم للتوجيه";
 const testSecret: string = process.env.SESSION_SECRET ?? "";
 if (!testSecret) throw new Error("SESSION_SECRET must be set to a test-only value");
+const testAdminPassword = process.env.ADMIN_PASSWORD ?? "";
+if (!testAdminPassword) throw new Error("ADMIN_PASSWORD must be available for isolated admin-login testing");
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
-
-function makeToken(adminId: number) {
-  const body = Buffer.from(JSON.stringify({ adminId, ts: Date.now() })).toString("base64url");
-  const signature = createHmac("sha256", testSecret).update(body).digest("base64url");
-  return `${body}.${signature}`;
-}
 
 function insertRecord(kind: string, status: string, reference: string, payload: Record<string, unknown>) {
   return db.insert(containerSystemRecordsTable).values({
@@ -41,7 +37,7 @@ function insertRecord(kind: string, status: string, reference: string, payload: 
 async function main() {
   const admin = db.insert(adminsTable).values({
     username: "container-lifecycle-test-admin",
-    passwordHash: "not-used-by-this-test",
+    passwordHash: hashPassword(testAdminPassword),
     name: "TEST ONLY Admin",
     role: "admin",
   }).returning().get();
@@ -69,7 +65,7 @@ async function main() {
   const request = db.insert(serviceRequestsTable).values({
     clientName: "عميل اختبار — لا يستخدم للتشغيل",
     phone: testPhone,
-    serviceType: "اختبار دورة الحاوية",
+    serviceType: "TEST ONLY — container delivery",
     containerSize: "12 yd (TEST ONLY)",
     location: testLocation,
     scheduledAt: "2026-10-14T10:00:00.000Z",
@@ -82,6 +78,11 @@ async function main() {
   }).returning().get();
   const vehicle = insertRecord("vehicle", "available", "TEST-VEHICLE-001", {
     vehiclePlate: "TEST-0001",
+    testData: true,
+  });
+  const container = insertRecord("container_asset", "available", "TEST-CONTAINER-001", {
+    assetCode: "TEST-CONTAINER-001",
+    status: "available",
     testData: true,
   });
   const dispatchConflict = findScheduledDispatchConflict({
@@ -104,8 +105,10 @@ async function main() {
   const existingCustomerPayload = String(customer.payload);
 
   const contractNumber = "TEST-CONTRACT-001";
-  const contract = insertRecord("contract", "returned", contractNumber, {
+  const contract = insertRecord("contract", "active", contractNumber, {
     contractNumber,
+    containerRecordId: container.id,
+    containerCode: "TEST-CONTAINER-001",
     amount: 100,
     total: 100,
     paid: 0,
@@ -119,6 +122,14 @@ async function main() {
     serviceRequestId: request.id,
     testData: true,
   });
+  db.update(serviceRequestsTable)
+    .set({
+      contractRecordId: contract.id,
+      containerRecordId: container.id,
+      updatedAt: new Date().toISOString(),
+    })
+    .where(eq(serviceRequestsTable.id, request.id))
+    .run();
   const invoice = insertRecord("invoice", "draft", "TEST-INVOICE-001", {
     invoiceNumber: "TEST-INVOICE-001",
     contractRecordId: contract.id,
@@ -185,7 +196,7 @@ async function main() {
     }
   }
   assert.ok(ready, `Test API did not become ready:\n${startupOutput}`);
-  const authorization = `Bearer ${makeToken(admin.id)}`;
+  let authorization = "";
   const settle = async (operationKey: string, invoiceId: number | null, amount = 50) => fetch(
     `http://127.0.0.1:${port}/api/admin/container-system/financial/settle`,
     {
@@ -203,6 +214,19 @@ async function main() {
   );
 
   try {
+    const loginResponse = await fetch(`http://127.0.0.1:${port}/api/auth/login`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        username: "container-lifecycle-test-admin",
+        password: testAdminPassword,
+      }),
+    });
+    assert.equal(loginResponse.status, 200, "the isolated admin account must authenticate with the configured admin secret");
+    const loginBody = await loginResponse.json() as { token?: string };
+    assert.ok(loginBody.token, "admin login must return an authenticated session token");
+    authorization = `Bearer ${loginBody.token}`;
+
     const intakeResponse = await fetch(`http://127.0.0.1:${port}/api/service-requests`, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -309,6 +333,56 @@ async function main() {
       "a rejected direct posting must not leave an invoice record",
     );
 
+    const lifecycleUrl = `http://127.0.0.1:${port}/api/admin/container-system/contracts/${contract.id}/lifecycle`;
+    const blockedDelivery = await fetch(lifecycleUrl, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization },
+      body: JSON.stringify({ action: "deliver", location: testLocation }),
+    });
+    assert.equal(blockedDelivery.status, 422, "an open linked delivery request must block container delivery");
+
+    const requestStarted = await fetch(`http://127.0.0.1:${port}/api/service-requests/${request.id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json", authorization },
+      body: JSON.stringify({ status: "in_progress" }),
+    });
+    assert.equal(requestStarted.status, 200, await requestStarted.clone().text());
+    const requestCompleted = await fetch(`http://127.0.0.1:${port}/api/service-requests/${request.id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json", authorization },
+      body: JSON.stringify({ status: "completed" }),
+    });
+    assert.equal(requestCompleted.status, 200, await requestCompleted.clone().text());
+
+    const deliveryResponse = await fetch(lifecycleUrl, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization },
+      body: JSON.stringify({ action: "deliver", location: testLocation }),
+    });
+    assert.equal(deliveryResponse.status, 201, await deliveryResponse.clone().text());
+    const delivered = await deliveryResponse.json() as { contract: { status: string }; movement: { id: number } };
+    assert.equal(delivered.contract.status, "delivered");
+    assert.ok(delivered.movement.id > 0);
+    const rentedContainer = db.select().from(containerSystemRecordsTable)
+      .where(eq(containerSystemRecordsTable.id, container.id)).get();
+    assert.equal(rentedContainer?.status, "rented");
+
+    const returnResponse = await fetch(lifecycleUrl, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization },
+      body: JSON.stringify({ action: "return", location: testLocation }),
+    });
+    assert.equal(returnResponse.status, 201, await returnResponse.clone().text());
+    const returned = await returnResponse.json() as { contract: { status: string }; movement: { id: number } };
+    assert.equal(returned.contract.status, "returned");
+    assert.ok(returned.movement.id > delivered.movement.id);
+    assert.equal(
+      (sqlite.prepare("SELECT COUNT(*) AS count FROM container_system_records WHERE kind = 'container_movement' AND json_extract(payload, '$.contractRecordId') = ?")
+        .get(contract.id) as { count: number }).count,
+      2,
+      "delivery and return must each leave one linked movement",
+    );
+
     const missingInvoice = await settle("test-lifecycle-no-invoice-001", null);
     assert.equal(missingInvoice.status, 422, "contracts with invoices must not accept unlinked payments");
     const unpostedInvoice = await settle("test-lifecycle-unposted-invoice-001", invoice.id);
@@ -364,19 +438,19 @@ async function main() {
     const settledInvoice = db.select().from(containerSystemRecordsTable).where(eq(containerSystemRecordsTable.id, invoice.id)).get();
     assert.equal(settledInvoice?.status, "paid");
 
-    const closeResponse = await fetch(
-      `http://127.0.0.1:${port}/api/admin/container-system/contracts/${contract.id}/lifecycle`,
-      {
-        method: "POST",
-        headers: { "content-type": "application/json", authorization },
-        body: JSON.stringify({ action: "close" }),
-      },
-    );
+    const closeResponse = await fetch(lifecycleUrl, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization },
+      body: JSON.stringify({ action: "close" }),
+    });
     assert.equal(closeResponse.status, 201, "a returned contract can close after all linked invoices are paid");
     const closedContract = db.select().from(containerSystemRecordsTable)
       .where(eq(containerSystemRecordsTable.id, contract.id)).get();
     assert.equal(closedContract?.status, "closed");
-    console.log("container lifecycle integration assertions passed with isolated TEST ONLY contact and site data");
+    const releasedContainer = db.select().from(containerSystemRecordsTable)
+      .where(eq(containerSystemRecordsTable.id, container.id)).get();
+    assert.equal(releasedContainer?.status, "available");
+    console.log("container lifecycle integration assertions passed using isolated TEST ONLY data and admin-secret login");
   } finally {
     apiProcess.kill("SIGTERM");
     await new Promise<void>(resolve => {
