@@ -35,7 +35,85 @@ function step(label) {
 
 const SOURCE_DB = join(ROOT, "data/sabaik.db");
 const ARCHIVE_SOURCE_DB = join(ROOT, "build_php/.archive-source.db");
+// Use HOSTINGER_PRESERVE_SOURCE=1 to package an unmodified SQLite snapshot
+// and media set, while allowing only explicit archive-copy metadata overrides.
 const PRESERVE_SOURCE_DATA = process.env.HOSTINGER_PRESERVE_SOURCE === "1";
+const ARCHIVE_ONLY_SEO_TITLE_OVERRIDES = [
+  {
+    postId: 60,
+    expectedSeoSlug: "أفضل-شركة-تأجير-حاويات-الرياض-معايير-الاختيار-2026",
+    htmlPath: "blog/أفضل-شركة-تأجير-حاويات-الرياض-معايير-الاختيار-2026-60/index.html",
+    title: "أفضل شركة تأجير حاويات بالرياض | مقارنة عملية 2026",
+  },
+  {
+    postId: 74,
+    expectedSeoSlug: "farq-bayn-haouiya-12-wa-20-yarda",
+    htmlPath: "blog/الفرق-بين-حاوية-12-ياردة-و20-ياردة-أيهما-تحتاج-74/index.html",
+    title: "الفرق بين حاوية 12 و20 ياردة | أيهما أنسب لك؟",
+  },
+  {
+    postId: 61,
+    expectedSeoSlug: "حاوية-20-ياردة-الرياض-السعر-المواصفات",
+    htmlPath: "blog/حاوية-20-ياردة-الرياض-السعر-المواصفات-61/index.html",
+    title: "حاوية 20 ياردة الرياض — السعر والمواصفات 2026",
+  },
+];
+
+function applyArchiveOnlySeoTitleOverridesToDatabase(db) {
+  const updateTitle = db.prepare("UPDATE posts SET seo_title = ? WHERE id = ?");
+  const applyOverrides = db.transaction(() => {
+    for (const override of ARCHIVE_ONLY_SEO_TITLE_OVERRIDES) {
+      if (override.title.length > 65) {
+        throw new Error(`عنوان الأرشيف يتجاوز الحد المسموح: ${override.postId}`);
+      }
+      const post = db.prepare("SELECT seo_slug FROM posts WHERE id = ?").get(override.postId);
+      if (!post || post.seo_slug !== override.expectedSeoSlug) {
+        throw new Error(`تعذر مطابقة سجل المقال ${override.postId} بأمان داخل قاعدة الأرشيف`);
+      }
+      updateTitle.run(override.title, override.postId);
+    }
+  });
+  applyOverrides();
+  console.log(`  ✅ تم اختصار ${ARCHIVE_ONLY_SEO_TITLE_OVERRIDES.length} عناوين داخل قاعدة الأرشيف فقط`);
+}
+
+function applyArchiveOnlySeoTitleOverridesToHtml(buildRoot) {
+  const escapeHtml = (value) => String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+
+  for (const override of ARCHIVE_ONLY_SEO_TITLE_OVERRIDES) {
+    const htmlPath = join(buildRoot, override.htmlPath);
+    if (!existsSync(htmlPath)) {
+      throw new Error(`صفحة المقال المطلوبة لتعديل SEO غير موجودة: ${override.htmlPath}`);
+    }
+    let html = readFileSync(htmlPath, "utf8");
+    let titleTagUpdates = 0;
+    html = html.replace(/(<title\b[^>]*>)[\s\S]*?(<\/title>)/i, (_match, openTag, closeTag) => {
+      titleTagUpdates += 1;
+      return `${openTag}${escapeHtml(override.title)}${closeTag}`;
+    });
+    if (titleTagUpdates !== 1) {
+      throw new Error(`تعذر تحديث عنوان الصفحة الثابتة: ${override.htmlPath}`);
+    }
+
+    let socialTitleUpdates = 0;
+    html = html.replace(/<meta\b[^>]*>/gi, (tag) => {
+      if (!/\b(?:property|name)=["'](?:og:title|twitter:title)["']/i.test(tag)) return tag;
+      if (!/\bcontent=(["'])[\s\S]*?\1/i.test(tag)) return tag;
+      socialTitleUpdates += 1;
+      return tag.replace(/\bcontent=(["'])[\s\S]*?\1/i, `content="${escapeHtml(override.title)}"`);
+    });
+    if (socialTitleUpdates !== 2) {
+      throw new Error(`تعذر تحديث عناوين المشاركة الاجتماعية: ${override.htmlPath}`);
+    }
+    writeFileSync(htmlPath, html, "utf8");
+  }
+  console.log(`  ✅ تم تحديث عناوين الصفحات وOG/Twitter في HTML المصدّر فقط`);
+}
 
 function quoteIdentifier(value) {
   return `"${String(value).replaceAll('"', '""')}"`;
@@ -402,6 +480,9 @@ function copyDirRecursive(srcDir, dstDir, relativeDir = "") {
 }
 
 copyDirRecursive(distPublic, join(ROOT, "build_php"));
+if (PRESERVE_SOURCE_DATA) {
+  applyArchiveOnlySeoTitleOverridesToHtml(join(ROOT, "build_php"));
+}
 console.log("  ✅ تم نسخ جميع المجلدات والصفحات الثابتة إلى build_php/");
 
 // بعض السجلات القديمة في SQLite تشير إلى /images/<file> بينما الملف المصدر
@@ -547,6 +628,10 @@ copyFileSync(ARCHIVE_SOURCE_DB, DEST_DB);
 
 {
   const db = new Database(DEST_DB);
+
+  if (PRESERVE_SOURCE_DATA) {
+    applyArchiveOnlySeoTitleOverridesToDatabase(db);
+  }
 
   /**
    * الجداول التي يُنشئها Drizzle بعمود `order`
