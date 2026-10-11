@@ -1,7 +1,7 @@
 {
-  "name": "تأجير حاويات الرياض",
-  "short_name": "تأجير حاويات الرياض",
-  "description": "خدمات تأجير الحاويات ونقل الأنقاض ومخلفات البناء في الرياض.",
+  "name": "مؤسسة سبائك الماسة",
+  "short_name": "مؤسسة سبائك الماسة",
+  "description": "مؤسسة سبائك الماسة — الرائدون في تأجير حاويات المخلفات ونقل الأنقاض بالرياض. حاويات بمقاسات متعددة وسرعة في الأداء ودقة في المواعيد. اتصل الآن: 0580595555",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#ffffff",
@@ -10,21 +10,10 @@
   "dir": "rtl",
   "icons": [
     {
-      "src": "/favicon-512x512.png",
-      "sizes": "512x512",
-      "type": "image/png",
+      "src": "/uploads/1788222054250-32242ae35fc0.webp",
+      "sizes": "any",
+      "type": "image/webp",
       "purpose": "any maskable"
-    },
-    {
-      "src": "/favicon.png",
-      "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "any maskable"
-    },
-    {
-      "src": "/favicon.ico",
-      "sizes": "16x16 24x24 32x32 48x48 64x64 96x96 128x128 256x256",
-      "type": "image/x-icon"
     }
   ]
 }

@@ -35,6 +35,7 @@ function step(label) {
 
 const SOURCE_DB = join(ROOT, "data/sabaik.db");
 const ARCHIVE_SOURCE_DB = join(ROOT, "build_php/.archive-source.db");
+const PRESERVE_SOURCE_DATA = process.env.HOSTINGER_PRESERVE_SOURCE === "1";
 
 function quoteIdentifier(value) {
   return `"${String(value).replaceAll('"', '""')}"`;
@@ -98,20 +99,31 @@ function ensureHeroSlideLinkColumn(dbPath) {
   }
 }
 
-function prepareArchiveSourceDatabase() {
+async function prepareArchiveSourceDatabase() {
   rmSync(ARCHIVE_SOURCE_DB, { force: true });
   rmSync(`${ARCHIVE_SOURCE_DB}-wal`, { force: true });
   rmSync(`${ARCHIVE_SOURCE_DB}-shm`, { force: true });
   mkdirSync(dirname(ARCHIVE_SOURCE_DB), { recursive: true });
 
-  ensureHeroSlideLinkColumn(SOURCE_DB);
+  if (!PRESERVE_SOURCE_DATA) ensureHeroSlideLinkColumn(SOURCE_DB);
   const sourceInfo = inspectDatabase(SOURCE_DB);
   if (sourceInfo.integrity === "ok") {
-    copyFileSync(SOURCE_DB, ARCHIVE_SOURCE_DB);
-    for (const suffix of ["-wal", "-shm"]) {
-      if (existsSync(`${SOURCE_DB}${suffix}`)) copyFileSync(`${SOURCE_DB}${suffix}`, `${ARCHIVE_SOURCE_DB}${suffix}`);
+    if (PRESERVE_SOURCE_DATA) {
+      const sourceDb = new Database(SOURCE_DB, { readonly: true });
+      try {
+        await sourceDb.backup(ARCHIVE_SOURCE_DB);
+      } finally {
+        sourceDb.close();
+      }
+      ensureHeroSlideLinkColumn(ARCHIVE_SOURCE_DB);
+      console.log("  ✅ أُخذت لقطة SQLite متسقة دون تعديل قاعدة المشروع");
+    } else {
+      copyFileSync(SOURCE_DB, ARCHIVE_SOURCE_DB);
+      for (const suffix of ["-wal", "-shm"]) {
+        if (existsSync(`${SOURCE_DB}${suffix}`)) copyFileSync(`${SOURCE_DB}${suffix}`, `${ARCHIVE_SOURCE_DB}${suffix}`);
+      }
+      console.log("  ✅ قاعدة المصدر سليمة — ستُستخدم مباشرة في الأرشيف");
     }
-    console.log("  ✅ قاعدة المصدر سليمة — ستُستخدم مباشرة في الأرشيف");
     return;
   }
 
@@ -183,47 +195,57 @@ function prepareArchiveSourceDatabase() {
     archiveDb.close();
     sourceDb.close();
   }
+  if (PRESERVE_SOURCE_DATA) ensureHeroSlideLinkColumn(ARCHIVE_SOURCE_DB);
 }
 
-// Normalize article media and quarantine unused legacy images before taking
-// the archive database snapshot and generating the sitemap.
-run(
-  "node scripts/clean-legacy-article-images.mjs",
-  "استبدال صور المقالات القديمة ونقل الصور غير المستخدمة",
-  {},
-);
-run(
-  "pnpm --filter @workspace/scripts run repair-business-identity",
-  "توحيد هوية المؤسسة وأرقام التواصل قبل بناء الأرشيف",
-  {},
-);
-run(
-  "pnpm --filter @workspace/scripts run repair-seo-pages-content",
-  "تقوية محتوى صفحات SEO المنشورة وإزالة التكرار في الكلمات المفتاحية",
-  {},
-);
-run(
-  "pnpm --filter @workspace/scripts run repair-public-content",
-  "تصحيح الادعاءات الجغرافية والعناوين المشوهة قبل بناء الأرشيف",
-  {},
-);
-run(
-  "pnpm --filter @workspace/scripts run repair-short-post-content",
-  "توسيع المقالات القصيرة بمحتوى تحريري مرتبط بموضوعها",
-  {},
-);
+if (PRESERVE_SOURCE_DATA) {
+  step("بناء محافظ على قاعدة المشروع والوسائط");
+  console.log("  ⏭  تم تخطي إصلاحات النصوص وSEO ونقل الصور؛ ستُستخدم البيانات الحالية كما هي");
+} else {
+  // Normalize article media and quarantine unused legacy images before taking
+  // the archive database snapshot and generating the sitemap.
+  run(
+    "node scripts/clean-legacy-article-images.mjs",
+    "استبدال صور المقالات القديمة ونقل الصور غير المستخدمة",
+    {},
+  );
+  run(
+    "pnpm --filter @workspace/scripts run repair-business-identity",
+    "توحيد هوية المؤسسة وأرقام التواصل قبل بناء الأرشيف",
+    {},
+  );
+  run(
+    "pnpm --filter @workspace/scripts run repair-seo-pages-content",
+    "تقوية محتوى صفحات SEO المنشورة وإزالة التكرار في الكلمات المفتاحية",
+    {},
+  );
+  run(
+    "pnpm --filter @workspace/scripts run repair-public-content",
+    "تصحيح الادعاءات الجغرافية والعناوين المشوهة قبل بناء الأرشيف",
+    {},
+  );
+  run(
+    "pnpm --filter @workspace/scripts run repair-short-post-content",
+    "توسيع المقالات القصيرة بمحتوى تحريري مرتبط بموضوعها",
+    {},
+  );
+}
 
 // ── 0. إصلاح metadata وslugs مرة واحدة قبل أخذ ناتج البناء ───────────────────
-step("تحديث بيانات SEO قبل البناء (migration صريحة)");
-run(
-  "node node_modules/.pnpm/tsx@4.23.0/node_modules/tsx/dist/cli.mjs scripts/backfill-seo.mts",
-  "إكمال metadata وslugs الناقصة/المكررة",
-  {},
-);
+if (PRESERVE_SOURCE_DATA) {
+  console.log("  ⏭  تم تخطي backfill لبيانات SEO حفاظاً على سجلات قاعدة المشروع");
+} else {
+  step("تحديث بيانات SEO قبل البناء (migration صريحة)");
+  run(
+    "node node_modules/.pnpm/tsx@4.23.0/node_modules/tsx/dist/cli.mjs scripts/backfill-seo.mts",
+    "إكمال metadata وslugs الناقصة/المكررة",
+    {},
+  );
+}
 
 // Snapshot only after the explicit data migration so the archive, sitemap,
 // prerender and PHP API all consume the same database state.
-prepareArchiveSourceDatabase();
+await prepareArchiveSourceDatabase();
 
 // ── 1. توليد الخريطة قبل Vite حتى تدخل النسخة الحالية إلى dist ───────────────
 step("توليد خريطة الموقع قبل بناء الواجهة");
@@ -550,6 +572,26 @@ copyFileSync(ARCHIVE_SOURCE_DB, DEST_DB);
       const rows = db.prepare(
         `SELECT id, seo_slug FROM ${table} WHERE seo_slug IS NOT NULL AND trim(seo_slug) <> '' ORDER BY id ASC`,
       ).all();
+      if (PRESERVE_SOURCE_DATA) {
+        const duplicateCount = db.prepare(
+          `SELECT COUNT(*) AS count FROM (
+            SELECT lower(trim(seo_slug)) AS normalized_slug
+            FROM ${table}
+            WHERE seo_slug IS NOT NULL AND trim(seo_slug) <> ''
+            GROUP BY lower(trim(seo_slug))
+            HAVING COUNT(*) > 1
+          )`,
+        ).get().count;
+        if (duplicateCount > 0) {
+          console.warn(`  ⚠️ ${table}: تُركت قيم seo_slug كما هي؛ توجد ${duplicateCount} مجموعات مكررة`);
+          continue;
+        }
+        db.exec(
+          `CREATE UNIQUE INDEX IF NOT EXISTS idx_${table}_seo_slug_unique ON ${table}(seo_slug) WHERE seo_slug IS NOT NULL AND trim(seo_slug) <> ''`,
+        );
+        console.log(`  ⏭  ${table}: حُفظت قيم seo_slug الحالية دون إعادة كتابة`);
+        continue;
+      }
       const used = new Set();
       const updateSlug = db.prepare(`UPDATE ${table} SET seo_slug = ? WHERE id = ?`);
       for (const row of rows) {
