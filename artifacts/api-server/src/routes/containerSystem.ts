@@ -385,6 +385,13 @@ function validateFinancialLifecycle(
   }
 }
 
+function initialFinancialStatus(requestedStatus: unknown): "draft" | "pending_approval" {
+  const status = String(requestedStatus ?? "").trim();
+  if (!status) return "draft";
+  if (status === "draft" || status === "pending_approval") return status;
+  throw new Error("يجب بدء المستند المالي كمسودة أو إرساله للاعتماد؛ لا يُسمح بإنشائه مرحّلًا مباشرة");
+}
+
 function referenceFor(kind: string, payload: Record<string, unknown>, nextId: number): string {
   const prefix: Record<string, string> = {
     customer: "CUS", customer_site: "SITE", container_type: "CT", container_asset: "CONT", container_assignment: "ASN", vehicle: "CAR",
@@ -2368,6 +2375,14 @@ router.post("/admin/container-system/records", async (req, res) => {
   }
   if (!canManage(adminReq, kind)) return res.status(403).json({ error: "ليس لديك صلاحية لهذه العملية" });
   if (!payload || typeof payload !== "object") return res.status(400).json({ error: "بيانات السجل غير صالحة" });
+  let financialCreateStatus: "draft" | "pending_approval" | null = null;
+  if (financialLifecycleKinds.has(kind)) {
+    try {
+      financialCreateStatus = initialFinancialStatus(req.body.status);
+    } catch (error) {
+      return res.status(422).json({ error: error instanceof Error ? error.message : "حالة إنشاء الحركة المالية غير صحيحة" });
+    }
+  }
   try {
     await normalizeCategoryReferences(kind, payload);
     if (kind === "contract_line") await normalizeContractLinePayload(payload);
@@ -2482,16 +2497,8 @@ router.post("/admin/container-system/records", async (req, res) => {
   } catch (error) {
     return res.status(422).json({ error: "بيانات مالية غير صحيحة" });
   }
-  const requestedStatus = String(status);
-  if (financialLifecycleKinds.has(kind) && requestedStatus === "posted") {
-    const periodKey = String(payload.date ?? new Date().toISOString().slice(0, 10)).slice(0, 7);
-    const period = sqlite.prepare("SELECT status FROM financial_periods WHERE period_key = ?").get(periodKey) as { status?: string } | undefined;
-    if (period?.status === "closed") {
-      return res.status(422).json({ error: "FINANCIAL_PERIOD_CLOSED", periodKey });
-    }
-  }
   const normalizedStatus = financialLifecycleKinds.has(kind)
-    ? (["draft", "pending_approval"].includes(requestedStatus) ? requestedStatus : requestedStatus === "posted" ? "posted" : "draft")
+    ? financialCreateStatus ?? "draft"
     : kind === "container" || kind === "container_asset"
     ? canonicalAssetStatus(payload.status, String(status))
     : kind === "container_assignment" ? "reserved" : String(status);

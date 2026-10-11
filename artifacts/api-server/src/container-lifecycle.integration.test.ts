@@ -202,6 +202,30 @@ async function main() {
   );
 
   try {
+    const bypassApproval = await fetch(`http://127.0.0.1:${port}/api/admin/container-system/records`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization },
+      body: JSON.stringify({
+        kind: "invoice",
+        status: "posted",
+        payload: {
+          invoiceNumber: "TEST-INVOICE-DIRECT-POST-001",
+          contractRecordId: contract.id,
+          contractNumber,
+          customerRecordId: customer.id,
+          amount: 100,
+          total: 100,
+          date: "2026-08-10",
+        },
+      }),
+    });
+    assert.equal(bypassApproval.status, 422, "new financial records must not skip the approval lifecycle");
+    assert.equal(
+      (sqlite.prepare("SELECT COUNT(*) AS count FROM container_system_records WHERE kind = 'invoice'").get() as { count: number }).count,
+      1,
+      "a rejected direct posting must not leave an invoice record",
+    );
+
     const missingInvoice = await settle("test-lifecycle-no-invoice-001", null);
     assert.equal(missingInvoice.status, 422, "contracts with invoices must not accept unlinked payments");
     const unpostedInvoice = await settle("test-lifecycle-unposted-invoice-001", invoice.id);

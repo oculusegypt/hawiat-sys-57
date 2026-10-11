@@ -84,11 +84,51 @@
     li { margin: 5px 0; }
     code { direction: ltr; unicode-bidi: embed; color: #28515b; font: 12px/1.6 ui-monospace, SFMono-Regular, Consolas, monospace; overflow-wrap: anywhere; }
     .small { color: var(--muted); font-size: 13px; }
+    .flow-intro { margin-bottom: 16px; color: var(--muted); }
+    .lifecycle-flow { margin: 0; padding: 0; list-style: none; }
+    .lifecycle-step {
+      position: relative;
+      margin: 0 0 20px;
+      padding: 15px 20px;
+      background: var(--wash);
+      border: 1px solid var(--line);
+      border-right: 4px solid var(--teal);
+      border-radius: 12px;
+    }
+    .lifecycle-step:not(:last-child)::after {
+      content: "↓";
+      position: absolute;
+      right: 20px;
+      bottom: -24px;
+      color: var(--teal);
+      font-size: 20px;
+      font-weight: 700;
+      line-height: 1;
+    }
+    .flow-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 3px; }
+    .flow-number {
+      display: inline-grid;
+      width: 30px;
+      height: 30px;
+      flex: 0 0 30px;
+      place-items: center;
+      color: #fff;
+      background: var(--teal);
+      border-radius: 50%;
+      font-size: 13px;
+      font-weight: 700;
+    }
+    .flow-title { color: var(--teal-dark); font-weight: 700; }
+    .flow-detail { margin: 0; padding-right: 40px; color: var(--muted); font-size: 14px; }
+    .branch-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 16px; }
+    .branch-card { padding: 14px 16px; border: 1px solid var(--line); border-radius: 10px; background: #fff; }
+    .branch-card strong { display: block; margin-bottom: 3px; color: var(--teal-dark); }
     .foot { padding: 20px clamp(22px, 5vw, 58px) 28px; color: var(--muted); background: var(--wash); font-size: 13px; }
     @media (max-width: 760px) {
       main { margin: 0 auto; padding: 0; }
       article { border-radius: 0; }
       .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .branch-grid { grid-template-columns: 1fr; }
       section { padding-top: 23px; padding-bottom: 23px; }
     }
     @media print {
@@ -96,7 +136,8 @@
       main { max-width: none; margin: 0; padding: 0; }
       article { border: 0; border-radius: 0; box-shadow: none; }
       header { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
-      section { break-inside: avoid; }
+      section { break-inside: auto; }
+      .lifecycle-step, .branch-card, tr { break-inside: avoid; }
       .cards, .callout, .lead, th { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
     }
   </style>
@@ -105,8 +146,8 @@
 <main>
   <article>
     <header>
-      <p class="eyebrow">مراجعة تشغيلية مبنية على السجلات والشيفرة</p>
-      <h1>تقرير تدقيق دورة الحاويات والماليات</h1>
+      <p class="eyebrow">التقرير النهائي — مراجعة البيانات الفعلية واختبار المسارات المعزولة</p>
+      <h1>دورة حياة الطلب والعقد والفاتورة والتحصيل</h1>
       <p class="subtitle">فصلٌ واضح بين الطلب 108 المحفوظ في قاعدة المشروع، ودورة قبول كاملة أُجريت على نسخة معزولة من الاستقبال إلى إقفال العقد بمتبقي صفر.</p>
       <div class="meta">
         <span class="pill">تاريخ التحقق: 12 أكتوبر 2026</span>
@@ -128,6 +169,60 @@
         <div class="card"><b>100 ر.س</b><span>فاتورة اختبار سُددت 40 نقداً + 60 مدى؛ المتبقي صفر</span></div>
       </div>
       <p>المبلغ الصفري المقصود هنا هو <strong>الرصيد المتبقي بعد السداد</strong>، وليس فاتورة إجماليها صفر؛ الفاتورة ذات الإجمالي صفر مرفوضة. الدورة الجديدة تستخدم قيمة اختبار موجبة 100 ر.س وضريبة صفر، ولا تثبت وجود تحصيل أو أداء ميداني حقيقي. بقيت القاعدة الأصلية كما كانت خلال هذا الاستكمال: طلب واحد، 124 سجل نظام، ومعاملتان ماليتان.</p>
+    </section>
+
+    <section>
+      <h2>المسار الكامل: من استلام الطلب إلى اعتماد الإقفال ورصيد متبقٍ صفر</h2>
+      <p class="flow-intro">هذا هو المسار المقترح للتشغيل السليم، مع الفصل بين إثبات تنفيذ الخدمة وإثبات قبض المال. اختُبر مسار مماثل ببيانات اصطناعية في قاعدة معزولة؛ أما السجلات الموجودة فعلياً في قاعدة المشروع فلا تثبت تنفيذًا ميدانيًا أو تحصيلًا حقيقيًا.</p>
+      <ol class="lifecycle-flow">
+        <li class="lifecycle-step">
+          <div class="flow-head"><span class="flow-number">١</span><span class="flow-title">استلام الطلب وتثبيت بياناته</span></div>
+          <p class="flow-detail">تسجيل الخدمة والحجم والكمية والموقع والموعد والقناة والملاحظات. يبقى الطلب جديداً/قيد المراجعة حتى تُفحص المعلومات؛ اكتمال الحالة وحده لا يثبت التنفيذ.</p>
+        </li>
+        <li class="lifecycle-step">
+          <div class="flow-head"><span class="flow-number">٢</span><span class="flow-title">التحقق من العميل والموقع</span></div>
+          <p class="flow-detail">ربط الطلب بسجل عميل رسمي وموقع تابع له والتحقق من رقم الاتصال والعنوان. لا تُحدّث بيانات عميل قائم اعتماداً على تطابق هاتف غير مؤكد؛ استخدم بيانات اختبار غير قابلة للاتصال في التجارب.</p>
+        </li>
+        <li class="lifecycle-step">
+          <div class="flow-head"><span class="flow-number">٣</span><span class="flow-title">اعتماد السعر والشروط والضريبة</span></div>
+          <p class="flow-detail">اختيار نوع/حجم الخدمة المركزي، تحديد فترة التعاقد وبند السعر والكمية والضريبة وتاريخ الاستحقاق. أي سعر دون الحد الأدنى يتطلب استثناءً معتمداً؛ والإجمالي المالي يجب أن يكون أكبر من صفر.</p>
+        </li>
+        <li class="lifecycle-step">
+          <div class="flow-head"><span class="flow-number">٤</span><span class="flow-title">إنشاء العقد وحجز الأصل</span></div>
+          <p class="flow-detail">إنشاء العقد وربطه بالطلب والعميل والموقع، ثم تخصيص حاوية متاحة مرة واحدة فقط. يمنع التحقق التخصيص المتزامن أو تخصيص أصل غير متاح أو موقع لا يتبع العميل.</p>
+        </li>
+        <li class="lifecycle-step">
+          <div class="flow-head"><span class="flow-number">٥</span><span class="flow-title">إنشاء أمر العمل والإسناد</span></div>
+          <p class="flow-detail">جدولة الموعد وأمر العمل، وإسناد سائق ومركبة متاحين. يجب فحص تعارض الموارد عبر الطلبات وأوامر العمل معاً قبل تثبيت الإسناد.</p>
+        </li>
+        <li class="lifecycle-step">
+          <div class="flow-head"><span class="flow-number">٦</span><span class="flow-title">التسليم بإثبات تشغيلي</span></div>
+          <p class="flow-detail">يتقدم أمر العمل عبر القبول والبدء والطريق والوصول ثم الإكمال. مسار إكمال السائق يتطلب دليلاً مثل صورة وتوقيع واسم المستلم؛ الحركة الإدارية المباشرة ليست دليلاً ميدانياً ويجب تمييزها وتدقيقها.</p>
+        </li>
+        <li class="lifecycle-step">
+          <div class="flow-head"><span class="flow-number">٧</span><span class="flow-title">التفريغ ثم الاسترجاع وإعادة الأصل</span></div>
+          <p class="flow-detail">التفريغ حركة تشغيلية لا تعني استرجاع الحاوية ولا تسوية مالية. عند الإرجاع يُسجل إثباته، تُغلق أوامر العمل المفتوحة، وتعود الحاوية إلى «متاحة» بعد تحقق الحالة التشغيلية.</p>
+        </li>
+        <li class="lifecycle-step">
+          <div class="flow-head"><span class="flow-number">٨</span><span class="flow-title">مراجعة الفاتورة واعتمادها وترحيلها</span></div>
+          <p class="flow-detail"><code>draft → pending_approval → approved → posted</code>. يعتمدها مدير/مسؤول مخوّل ثم تُرحّل مرة واحدة: مدين ذمم العملاء <code>AR-001</code> ودائن إيراد الخدمة <code>REV-001</code>. لا يبدأ التحصيل على فاتورة غير مرحّلة.</p>
+        </li>
+        <li class="lifecycle-step">
+          <div class="flow-head"><span class="flow-number">٩</span><span class="flow-title">التحصيل الفعلي وتوزيعه وإثباته</span></div>
+          <p class="flow-detail">تسجيل مبلغ موجب وطريقة الدفع ورقم الفاتورة وتوزيع يساوي قيمة الإيصال، مع منع تجاوز رصيد العقد/الفاتورة. النقد يذهب إلى <code>CASH-001</code>، والتحويل/الشبكة/مدى/البطاقات إلى <code>BANK-001</code>؛ وهذا قيد محاسبي وليس اتصالاً ببوابة دفع.</p>
+        </li>
+        <li class="lifecycle-step">
+          <div class="flow-head"><span class="flow-number">١٠</span><span class="flow-title">مطابقة المستندات وإقفال الدورة</span></div>
+          <p class="flow-detail">تطابق الدفعات مع قيود الأستاذ والفاتورة والإيداع/كشف البنك، وتوثق الفروقات. بعد سداد كل الفواتير وإعادة الأصل وإغلاق التشغيل، يصبح المدفوع مساوياً للإجمالي والمتبقي صفراً ويُغلق العقد؛ ثم تُغلق الفترة المالية بعد المراجعة.</p>
+        </li>
+      </ol>
+      <div class="branch-grid">
+        <div class="branch-card"><strong>إذا رُفضت الفاتورة</strong>تبقى دون ترحيل وتعود للمسودة أو تُلغى حسب الصلاحية؛ لا تحصيل ولا قيد إيراد من مسودة.</div>
+        <div class="branch-card"><strong>إذا كان السداد جزئياً أو الفاتورة متأخرة</strong>تبقى الفاتورة برصيد متبقٍ وتظهر «مدفوعة جزئياً» أو «متأخرة» بحسب التاريخ؛ لا تُغلق دورة العقد حتى تسويتها.</div>
+        <div class="branch-card"><strong>إذا أُلغيت حركة مرحّلة أو سُجل مرتجع</strong>يحتاج الإلغاء سبباً وسلطة مناسبة وقيداً عكسياً. مرتجع الفاتورة ومرتجع التحصيل نوعان مختلفان؛ كلاهما يحتاج مراجعة ربط الرصيد والفاتورة قبل اعتباره تسوية مكتملة.</div>
+        <div class="branch-card"><strong>معنى «صفر» في هذا التقرير</strong>إجمالي الفاتورة الاختبارية 100 ر.س، والمدفوع 100 ر.س، والمتبقي 0 ر.س. إنشاء فاتورة إجماليها صفر غير مسموح ولا يمثل تحصيلاً.</div>
+      </div>
+      <div class="callout"><strong>حالة حزمة Hostinger:</strong> لم أُنشئ نسخة جديدة بعد؛ إعداد البناء المحافظ يضم قاعدة البيانات الحالية، بما فيها الدفعة التجريبية 8054 المقيدة نقداً دون قبض فعلي. يجب تحديد ما إذا كانت الحزمة ستضم هذه البيانات كما هي أو تنتظر تصحيحها المالي الموثق.</div>
     </section>
 
     <section>

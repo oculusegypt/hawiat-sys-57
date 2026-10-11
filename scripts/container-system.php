@@ -114,10 +114,29 @@ function hsFinancialTables(PDO $pdo): void {
     foreach ($accounts as $account) $stmt->execute($account);
 }
 
+function hsSettlementAccountForPaymentMethod(string $method): string {
+    $normalized = strtolower(trim($method));
+    if (in_array($normalized, ['نقدي', 'نقد', 'cash', 'cash payment'], true)) return 'CASH-001';
+    if (preg_match('/بنكي|تحويل|شبكة|مدى|فيزا|ماستركارد|visa|master\s?card|card|بطاقة|pos/iu', $normalized) === 1) {
+        return 'BANK-001';
+    }
+    throw new RuntimeException('طريقة الدفع غير مدعومة؛ اختر نقدي أو مدى أو بطاقة أو تحويلًا بنكيًا');
+}
+
+function hsInitialFinancialStatus(string $requestedStatus): string {
+    $status = trim($requestedStatus);
+    if ($status === '') return 'draft';
+    if (in_array($status, ['draft', 'pending_approval'], true)) return $status;
+    throw new RuntimeException('يجب بدء المستند المالي كمسودة أو إرساله للاعتماد؛ لا يُسمح بإنشائه مرحّلًا مباشرة');
+}
+
 function hsPostFinancialCore(PDO $pdo, string $kind, int $sourceId, array $payload, string $reference, ?int $actorId): void {
     $amount = (float)($payload['amount'] ?? $payload['total'] ?? 0);
     if ($amount <= 0) throw new RuntimeException('لا يمكن ترحيل قيمة مالية غير موجبة');
     if ($kind === 'receipt' && !empty($payload['sourcePaymentId'])) return;
+    $settlementAccount = in_array($kind, ['payment', 'receipt', 'payment_return'], true)
+        ? hsSettlementAccountForPaymentMethod((string)($payload['paymentMethod'] ?? ''))
+        : null;
     hsFinancialTables($pdo);
     $date = (string)($payload['date'] ?? date('Y-m-d'));
     $exists = $pdo->prepare("SELECT id FROM financial_transactions WHERE source_kind = ? AND source_id = ?");
@@ -134,8 +153,8 @@ function hsPostFinancialCore(PDO $pdo, string $kind, int $sourceId, array $paylo
     $debit = 'ADJ-001'; $credit = 'CASH-001';
     if ($kind === 'invoice') [$debit,$credit] = ['AR-001','REV-001'];
     elseif ($kind === 'invoice_return') [$debit,$credit] = ['REV-001','AR-001'];
-    elseif ($kind === 'payment' || $kind === 'receipt') [$debit,$credit] = [str_contains((string)($payload['paymentMethod'] ?? ''),'بنكي') || str_contains((string)($payload['paymentMethod'] ?? ''),'شبكة') ? 'BANK-001' : 'CASH-001','AR-001'];
-    elseif (in_array($kind,['payment_return'],true)) [$debit,$credit] = ['REFUND-001', str_contains((string)($payload['paymentMethod'] ?? ''),'بنكي') ? 'BANK-001' : 'CASH-001'];
+    elseif ($kind === 'payment' || $kind === 'receipt') [$debit,$credit] = [$settlementAccount,'AR-001'];
+    elseif ($kind === 'payment_return') [$debit,$credit] = ['REFUND-001',$settlementAccount];
     elseif (in_array($kind,['expense','daily_expense','fuel_expense','salary_payment','salary_advance'],true)) [$debit,$credit] = ['EXP-001','CASH-001'];
     elseif ($kind === 'purchase') [$debit,$credit] = ['INV-001','AP-001'];
     elseif ($kind === 'purchase_return') [$debit,$credit] = ['AP-001','INV-001'];
@@ -1588,18 +1607,18 @@ function hostingerContainerSystemRoute(PDO $pdo, string $path, string $method, a
         $payload = hsNormalizeFinancial($kind, $payload);
         hsValidateRecord($pdo, $kind, $payload);
         $requestedStatus = (string)($input['status'] ?? '');
-        if (in_array($kind, hsFinancialLifecycleKinds(), true) && $requestedStatus === 'posted') {
-            $periodKey = substr((string)($payload['date'] ?? date('Y-m-d')), 0, 7);
-            $periodStmt = $pdo->prepare("SELECT status FROM financial_periods WHERE period_key = ? LIMIT 1");
-            $periodStmt->execute([$periodKey]);
-            if ($periodStmt->fetchColumn() === 'closed') {
-                hsJson(['error' => 'FINANCIAL_PERIOD_CLOSED', 'periodKey' => $periodKey], 422);
+        $initialFinancialStatus = null;
+        if (in_array($kind, hsFinancialLifecycleKinds(), true)) {
+            try {
+                $initialFinancialStatus = hsInitialFinancialStatus($requestedStatus);
+            } catch (RuntimeException $error) {
+                hsJson(['error' => $error->getMessage()], 422);
             }
         }
         $status = in_array($kind, ['container', 'container_asset'], true)
             ? hsCanonicalAssetStatus((string)($payload['status'] ?? ''), (string)($input['status'] ?? 'available'))
             : (in_array($kind, hsFinancialLifecycleKinds(), true)
-                ? (in_array($requestedStatus, ['draft', 'pending_approval', 'posted'], true) ? $requestedStatus : 'draft')
+                ? $initialFinancialStatus
                 : (string)($input['status'] ?? 'active'));
         $pdo->beginTransaction();
         try {
