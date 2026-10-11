@@ -42,3 +42,59 @@ mtime_ms = 1791741897892
 storage_uri = "gcs://replit-rams-assets-riker/rams/assets/repl:2d9a771e-3d61-4d29-86e3-d9e83aa2f7bf/c026edce-418d-4d7d-a318-70ee51161371/2c5071a8-811b-43ad-b953-352c1956bc17"
 storage_version_token = "1791741908193600"
 content_type = "text/html"
+
+[[outputs]]
+id = "_fHrj2SY5FYX9lyFf_NXU"
+uri = "file://docs/container-lifecycle-audit-2026-10-11.html"
+type = "html"
+title = "تقرير تدقيق دورة الحاويات — 11 أكتوبر 2026"
+description = "تقرير شامل بالأرقام الفعلية المسجلة، وتحليل مراحل الطلبات ومخزون الاختبار والضوابط البرمجية والمخاطر والتوصيات. مصدره قاعدة المشروع المحلية، وليس قاعدة Hostinger الحية."
+logical_id = "95087904-3d6c-4f79-b068-1e3c75b22f2b"
+content_hash = "sha256:8ac29bfd8b81140fc4a34de5c64f770cc98b63753aabe6aa20f914e8ce2290a8"
+size = 23767
+mtime_ms = 1791748007962
+storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:79c28253-442f-4679-ba83-2fa9cfc3b300/95087904-3d6c-4f79-b068-1e3c75b22f2b/ab172a50-3072-43a3-8add-37e41a7ff3fe"
+storage_version_token = "1791748055363703"
+content_type = "text/html"
+
+[[outputs]]
+id = "DJyP2KWOwl_hM1RlYhrc6"
+uri = "file://artifacts/sabaik-almasa/public/images/hero-slide-2.webp"
+type = "image"
+title = "صورة الهيرو 2 — تحميل حاوية"
+description = "صورة بانورامية 16:9 مع شعار منصة حاويات الرسمي، بديلة لموضع الشريحة الثانية."
+logical_id = "3f050f71-4710-4166-8a35-e42b57191496"
+content_hash = "sha256:8702bf15d242da0bcba758512d975fe8124933601130f29f32f10451afddf196"
+size = 68992
+mtime_ms = 1791747933388
+storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:79c28253-442f-4679-ba83-2fa9cfc3b300/3f050f71-4710-4166-8a35-e42b57191496/9e675020-4048-41a7-89aa-68a43bf02508"
+storage_version_token = "1791748055981691"
+content_type = "image/webp"
+
+[[outputs]]
+id = "8Bv9P_kmRGdhmENnbk6kq"
+uri = "file://artifacts/sabaik-almasa/public/images/hero-slide-3.webp"
+type = "image"
+title = "صورة الهيرو 3 — أسطول الحاويات"
+description = "صورة بانورامية 16:9 مع شعار منصة حاويات الرسمي، بديلة لموضع الشريحة الثالثة."
+logical_id = "910d7f32-3d51-4112-8263-e825cc5774a5"
+content_hash = "sha256:4f354b201c7d20f0b39a399ac82ceda3524b88bf576083615670f79857da60f5"
+size = 58176
+mtime_ms = 1791747933728
+storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:79c28253-442f-4679-ba83-2fa9cfc3b300/910d7f32-3d51-4112-8263-e825cc5774a5/83ae2fb4-98da-486d-97ee-f725d2744edc"
+storage_version_token = "1791748056511013"
+content_type = "image/webp"
+
+[[outputs]]
+id = "WAIYWtmgcIdtGqbjPld_g"
+uri = "file://artifacts/sabaik-almasa/public/images/hero-slide-5.webp"
+type = "image"
+title = "صورة الهيرو 4 — توصيل الحاوية"
+description = "الصورة المعروضة في موضع الشريحة الرابعة؛ إعداد المنصة يربط هذا الموضع بالملف hero-slide-5.webp. صورة بانورامية 16:9 مع الشعار الرسمي."
+logical_id = "b246f199-01ad-4314-99f5-7fd27bfe45e9"
+content_hash = "sha256:a4717195a306234de941f3b5c4059862271acc7928be38fba056db4baec9b9d0"
+size = 114772
+mtime_ms = 1791747934132
+storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:79c28253-442f-4679-ba83-2fa9cfc3b300/b246f199-01ad-4314-99f5-7fd27bfe45e9/db8604ab-9773-4225-9005-15def936ae2c"
+storage_version_token = "1791748057049366"
+content_type = "image/webp"

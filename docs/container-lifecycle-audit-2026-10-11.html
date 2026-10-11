@@ -1,0 +1,292 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>تقرير تدقيق دورة الحاويات — 11 أكتوبر 2026</title>
+  <style>
+    :root {
+      --ink: #162b35;
+      --muted: #536b75;
+      --line: #d9e4e7;
+      --paper: #fff;
+      --wash: #f2f7f7;
+      --teal: #087c78;
+      --teal-dark: #075956;
+      --orange: #e67828;
+      --red: #a83126;
+      --red-bg: #fff2ef;
+      --amber: #855411;
+      --amber-bg: #fff7e9;
+      --green-bg: #eaf7f2;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: #eaf0f1;
+      font: 16px/1.8 Tahoma, Arial, sans-serif;
+    }
+    main { max-width: 1120px; margin: 28px auto; padding: 0 18px; }
+    article {
+      overflow: hidden;
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      box-shadow: 0 16px 46px rgba(18, 50, 58, .08);
+    }
+    header {
+      padding: 38px clamp(22px, 5vw, 58px) 30px;
+      color: #fff;
+      background: linear-gradient(125deg, #073c40, #087c78 72%, #15968b);
+    }
+    .eyebrow { margin: 0 0 8px; color: #b8e7df; font-size: 13px; font-weight: 700; }
+    h1 { margin: 0; font-size: clamp(26px, 4vw, 38px); line-height: 1.35; }
+    .subtitle { max-width: 820px; margin: 12px 0 0; color: #e3f3f1; }
+    .meta { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 22px; }
+    .pill {
+      display: inline-block;
+      padding: 3px 11px;
+      color: #eafffc;
+      border: 1px solid rgba(255,255,255,.3);
+      border-radius: 999px;
+      font-size: 12px;
+    }
+    section { padding: 28px clamp(22px, 5vw, 58px); border-top: 1px solid var(--line); }
+    h2 { margin: 0 0 15px; color: var(--teal-dark); font-size: 22px; line-height: 1.45; }
+    h3 { margin: 22px 0 9px; font-size: 17px; }
+    p { margin: 8px 0; }
+    .lead {
+      padding: 17px 20px;
+      background: var(--red-bg);
+      border-right: 4px solid var(--red);
+      border-radius: 10px;
+    }
+    .lead strong { color: var(--red); }
+    .cards { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin: 20px 0 4px; }
+    .card { padding: 14px 16px; background: var(--wash); border: 1px solid var(--line); border-radius: 12px; }
+    .card b { display: block; color: var(--teal-dark); font-size: 27px; line-height: 1.3; }
+    .card span { color: var(--muted); font-size: 13px; }
+    .callout { margin: 15px 0; padding: 14px 17px; background: var(--amber-bg); border-right: 4px solid #d08b24; border-radius: 9px; }
+    .good { background: var(--green-bg); border-right-color: var(--teal); }
+    .table-wrap { overflow-x: auto; margin: 12px 0 18px; }
+    table { width: 100%; border-collapse: collapse; min-width: 620px; }
+    th, td { padding: 10px 12px; text-align: right; vertical-align: top; border-bottom: 1px solid var(--line); }
+    th { color: var(--teal-dark); background: #f2f7f7; font-size: 13px; }
+    td { font-size: 14px; }
+    .number { direction: ltr; unicode-bidi: embed; white-space: nowrap; }
+    .status { font-weight: 700; white-space: nowrap; }
+    .status-red { color: var(--red); }
+    .status-amber { color: var(--amber); }
+    .status-green { color: var(--teal-dark); }
+    ul { margin: 7px 0; padding-right: 23px; }
+    li { margin: 5px 0; }
+    code { direction: ltr; unicode-bidi: embed; color: #28515b; font: 12px/1.6 ui-monospace, SFMono-Regular, Consolas, monospace; overflow-wrap: anywhere; }
+    .small { color: var(--muted); font-size: 13px; }
+    .foot { padding: 20px clamp(22px, 5vw, 58px) 28px; color: var(--muted); background: var(--wash); font-size: 13px; }
+    @media (max-width: 760px) {
+      main { margin: 0 auto; padding: 0; }
+      article { border-radius: 0; }
+      .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      section { padding-top: 23px; padding-bottom: 23px; }
+    }
+    @media print {
+      body { background: #fff; font-size: 12px; }
+      main { max-width: none; margin: 0; padding: 0; }
+      article { border: 0; border-radius: 0; box-shadow: none; }
+      header { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+      section { break-inside: avoid; }
+      .cards, .callout, .lead, th { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+    }
+  </style>
+</head>
+<body>
+<main>
+  <article>
+    <header>
+      <p class="eyebrow">مراجعة تشغيلية مبنية على السجلات والشيفرة</p>
+      <h1>تقرير تدقيق دورة الحاويات والطلبات الحالية</h1>
+      <p class="subtitle">من استقبال الطلب إلى العقد والتخصيص والإرسال والاسترجاع والإغلاق والفاتورة والتحصيل — مع فصل النتائج المسجلة عن الضوابط الموجودة في الشيفرة.</p>
+      <div class="meta">
+        <span class="pill">تاريخ الفحص: 11 أكتوبر 2026</span>
+        <span class="pill">قراءة فقط — لم تُعدّل السجلات</span>
+        <span class="pill">البيانات: قاعدة المشروع المحلية</span>
+      </div>
+    </header>
+
+    <section>
+      <h2>الخلاصة التنفيذية</h2>
+      <div class="lead">
+        <strong>لا يوجد في قاعدة البيانات المفحوصة ما يثبت تنفيذ دورة تشغيل مكتملة لأي طلب من الطلبات الحالية.</strong>
+        توجد 10 طلبات، وكلها ما زالت «قيد الانتظار». لم يُربط أي منها بعميل أو عقد أو حاوية أو سائق أو مركبة، ولم تظهر أوامر تشغيل أو حركات تسليم/استرجاع أو فواتير أو قيود تحصيل مرتبطة بها.
+      </div>
+      <div class="cards">
+        <div class="card"><b>10</b><span>طلبات حالية مفحوصة</span></div>
+        <div class="card"><b>10/10</b><span>قيد الانتظار وغير معينة</span></div>
+        <div class="card"><b>0/10</b><span>وصلت إلى مرحلة تشغيل لاحقة</span></div>
+        <div class="card"><b>13</b><span>سجلاً غير معروف النوع ضمن سجل الحاويات</span></div>
+      </div>
+      <p>النتيجة العملية: نسبة انتقال الطلبات الحالية إلى مرحلة تشغيلية موثقة هي <strong>0%</strong>. هذا لا يثبت أن النظام لا يستطيع تنفيذ الدورة؛ بل يثبت أن بياناته الحالية لا تحتوي على تنفيذ فعلي يمكن التحقق منه. لا يصح اعتماد أعداد المخزون والسائقين الحالية كطاقة حقيقية، لأن جميع سجلات الحاويات والسائقين موسومة بأنها بيانات اختبار.</p>
+    </section>
+
+    <section>
+      <h2>1. النطاق ومصدر الأرقام</h2>
+      <ul>
+        <li>تم فحص قاعدة البيانات الحالية <code>data/sabaik.db</code> باستعلامات قراءة فقط، ومقارنة مجاميع الجداول الرئيسية مع أحدث نسخة احتياطية متاحة وقت الفحص: <code>data/backups/sabaik-pre-container-review-20261011T192844Z.db</code>. تطابقت الأعداد الأساسية بينهما.</li>
+        <li>الطلبات المشمولة هي السجلات ذات المعرّفات <span class="number">98–107</span>. وقت إنشائها المسجل واحد لجميعها: <code>2026-10-11T17:04:30.696Z</code> (UTC). تزامن الوقت قرينة على إدخالها كدفعة واحدة، لكنه لا يكفي وحده لإثبات أنها تجريبية أو حقيقية.</li>
+        <li>هذه الأرقام تصف قاعدة المشروع المتاحة في مساحة العمل، <strong>ولا تمثل تأكيداً لقاعدة Hostinger الحية أو بيانات الإنتاج</strong>؛ لم يتوفر اتصال إنتاج موثق أثناء هذا الفحص.</li>
+        <li>لم أُنشئ طلباً أو عقداً أو حركة مالية، ولم أغيّر أو أحذف أي سجل أو نسخة احتياطية.</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>2. الطلبات الموجودة فعلياً في السجل</h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>نوع الخدمة والحجم المسجل</th><th>العدد</th><th>النسبة من 10</th></tr></thead>
+          <tbody>
+            <tr><td>مخلفات/ركام — حاوية 12 ياردة</td><td>3</td><td>30%</td></tr>
+            <tr><td>مخلفات/ركام — حاوية 20 ياردة</td><td>3</td><td>30%</td></tr>
+            <tr><td>نفايات — حاوية 6 ياردات</td><td>2</td><td>20%</td></tr>
+            <tr><td>نفايات — كبّاس كهربائي 2 ياردة</td><td>1</td><td>10%</td></tr>
+            <tr><td>عقد تنظيف</td><td>1</td><td>10%</td></tr>
+            <tr><th>الإجمالي</th><th>10</th><th>100%</th></tr>
+          </tbody>
+        </table>
+      </div>
+      <ul>
+        <li>الاسم والهاتف ونوع الخدمة والموقع والحجم مسجلة في الطلبات العشرة، وكلها محددة كطلبات فورية.</li>
+        <li>كل الطلبات بحالة <strong>pending</strong>، وحالة السائق <strong>unassigned</strong>. لا يوجد بينها طلب مؤكد أو قيد التنفيذ أو مكتمل أو ملغى.</li>
+        <li>لا يوجد ربط بملف عميل في أي من الطلبات العشرة، رغم وجود <strong>35</strong> سجل عميل و<strong>36</strong> موقع عميل في سجل النظام. لا تكشف قاعدة البيانات وحدها إن كان السبب استيراداً سابقاً أو تعثر مزامنة أو إدخالاً يدوياً.</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>3. تتبع مراحل العملية على الطلبات الحالية</h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>المرحلة</th><th>الموجود في البيانات</th><th>النتيجة</th></tr></thead>
+          <tbody>
+            <tr><td>استقبال الطلب</td><td>10 طلبات</td><td class="status status-green">موجود</td></tr>
+            <tr><td>ربط الطلب بملف العميل</td><td>0 من 10</td><td class="status status-red">غير موثق</td></tr>
+            <tr><td>إنشاء العقد وربطه بالطلب</td><td>0 عقد</td><td class="status status-red">لا توجد حركة</td></tr>
+            <tr><td>تخصيص الحاوية وتسجيل الإسناد</td><td>0 تخصيص</td><td class="status status-red">لا توجد حركة</td></tr>
+            <tr><td>أمر إرسال/سائق/مركبة</td><td>0 أمر تشغيل، 0 مركبة مسجلة</td><td class="status status-red">لا توجد حركة</td></tr>
+            <tr><td>التسليم أو حركة إنزال الحاوية</td><td>0 حركة</td><td class="status status-red">لا توجد حركة</td></tr>
+            <tr><td>الاسترجاع والتفريغ</td><td>0 حركة</td><td class="status status-red">لا توجد حركة</td></tr>
+            <tr><td>إغلاق العقد</td><td>0 عقد</td><td class="status status-red">لا توجد حركة</td></tr>
+            <tr><td>إصدار الفاتورة</td><td>0 فاتورة</td><td class="status status-red">لا توجد حركة</td></tr>
+            <tr><td>التحصيل والترحيل المالي</td><td>0 دفعة، 0 تخصيص مالي، 0 قيد في النواة المالية</td><td class="status status-red">لا توجد حركة</td></tr>
+            <tr><td>سجل التدقيق التشغيلي</td><td>0 إدخال في جدول تدقيق الحاويات</td><td class="status status-red">لا يوجد أثر تدقيقي</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>إجمالي سجل النظام <strong>107 صفوف</strong>: 20 حاوية، 35 عميلاً، 36 موقعاً، 3 سائقين، و13 صفاً غير معروف النوع. لا توجد ضمن الأنواع التشغيلية المسجلة عقود أو فواتير أو حركات أو أوامر عمل.</p>
+    </section>
+
+    <section>
+      <h2>4. تقييم الأصول والقدرة التشغيلية</h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>المورد المسجل</th><th>العدد والحالة في قاعدة البيانات</th><th>ما يمكن تأكيده</th></tr></thead>
+          <tbody>
+            <tr><td>الحاويات</td><td>20، حالتها «متاحة»</td><td>كل 20 موسومة <code>testData=true</code>؛ العدد الحقيقي المتاح غير مثبت.</td></tr>
+            <tr><td>السائقون</td><td>3، حالتهم «متاح»</td><td>كل 3 موسومون <code>testData=true</code>؛ لا يثبت السجل توافر سائقين حقيقيين.</td></tr>
+            <tr><td>المركبات</td><td>0 سجل</td><td>لا توجد بيانات تكفي لإثبات جاهزية أسطول إرسال.</td></tr>
+            <tr><td>العملاء/المواقع</td><td>35 عميلاً و36 موقعاً</td><td>سجلات رئيسية موجودة، لكن لا يرتبط أي منها بالطلبات العشرة الحالية.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="callout"><strong>تنبيه:</strong> لا ينبغي إظهار «20 حاوية متاحة» أو «3 سائقين متاحين» باعتبارها قدرة فعلية قبل إزالة وسم الاختبار بعد التحقق الميداني، وإضافة بيانات المركبات والسائقين الحقيقيين.</div>
+    </section>
+
+    <section>
+      <h2>5. ما تثبته مراجعة الشيفرة — وليس تشغيل الطلبات</h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>الجزء</th><th>ضوابط موجودة في الشيفرة</th><th>التقييم بالدليل الحالي</th></tr></thead>
+          <tbody>
+            <tr>
+              <td>استقبال الطلب وربط العميل</td>
+              <td>الواجهة الخلفية تتحقق من الحقول الأساسية والكمية، وتحاول ربط الطلب بملف عميل.</td>
+              <td>الربط مُنفذ كمحاولة غير مانعة؛ فشل المزامنة لا يمنع حفظ الطلب. النتيجة: <strong>0/10</strong> مرتبط، ويجب التحقق هل هذه الطلبات مستوردة أم نتجت عن إخفاق المزامنة. المرجع: <code>artifacts/api-server/src/routes/serviceRequests.ts:523–676</code>.</td>
+            </tr>
+            <tr>
+              <td>العقد والتخصيص</td>
+              <td>تحقق من نوع وسلامة سجل العقد، الموقع والعميل والأصل، حالة توفر الحاوية، ومنع وجود تخصيص متزامن؛ التحديثات التشغيلية تُجمع في معاملات قاعدة بيانات وتسجل تدقيقاً.</td>
+              <td>ضوابط ظاهرة في التنفيذ البرمجي، لكن لا توجد سجلات حالية لاختبار نتائجها عملياً. المرجع: <code>artifacts/api-server/src/routes/containerSystem.ts:2335–2628</code>.</td>
+            </tr>
+            <tr>
+              <td>الإرسال والتسليم والاسترجاع</td>
+              <td>الانتقالات مقيدة بحالة العقد؛ لا يسمح بالاسترجاع قبل التسليم، ولا بالإغلاق مع أمر تشغيل مفتوح. تسجيل التسليم/الاسترجاع يحدّث العقد والأصل والحركة والتدقيق في معاملة واحدة.</td>
+              <td>تصميم الضوابط موجود في الشيفرة، لكن عدد أوامر التشغيل والحركات المسجلة حالياً صفر. المرجع: <code>artifacts/api-server/src/routes/containerSystem.ts:2048–2333</code>.</td>
+            </tr>
+            <tr>
+              <td>الفاتورة والتحصيل</td>
+              <td>مسار التسوية يتحقق من مبلغ التوزيع والفاتورة المرحلة وحدود التحصيل، ويستخدم مفتاح منع التكرار، ويربط الدفعة والأستاذ والفاتورة والنواة المالية بمعاملة قاعدة بيانات واحدة.</td>
+              <td>ضوابط مهمة موجودة؛ لا توجد دفعات أو فواتير حقيقية في السجلات الحالية لإثبات عملها عبر حالة إنتاجية. المرجع: <code>artifacts/api-server/src/routes/containerSystem.ts:1718–2028</code>.</td>
+            </tr>
+            <tr>
+              <td>إغلاق العقد</td>
+              <td>يشترط الاسترجاع وعدم وجود أمر مفتوح وتسوية المبلغ. إذا كانت هناك فواتير مرتبطة، يجب أن تكون مدفوعة ومرحلة.</td>
+              <td class="status status-amber">قرار سياسة مطلوب: لا يوجد شرط صريح يمنع الإغلاق عند عدم وجود أي فاتورة مرتبطة، متى تحققت التسوية على العقد. إذا كانت فاتورة إلزامية لكل عقد، فيلزم تثبيت ذلك كشرط. المرجع: <code>containerSystem.ts:2119–2167</code>.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="small">مراجعة الشيفرة تثبت وجود مسارات تحقق في المصدر، لكنها لا تعادل اختباراً حياً أو قبولاً تشغيلياً، ولا تثبت سلامة الإعدادات أو البيانات على خادم الإنتاج.</p>
+    </section>
+
+    <section>
+      <h2>6. ملاحظات جودة البيانات والمخاطر</h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>الأولوية</th><th>النتيجة</th><th>الأثر/ما يلزم التحقق منه</th></tr></thead>
+          <tbody>
+            <tr>
+              <td class="status status-red">مرتفعة</td>
+              <td>لا يوجد مسار تشغيلي موثق بعد استقبال أي من الطلبات العشرة.</td>
+              <td>لا يمكن إثبات العقد أو التخصيص أو الإرسال أو الاسترجاع أو الفاتورة أو الإغلاق على الطلبات الحالية.</td>
+            </tr>
+            <tr>
+              <td class="status status-amber">متوسطة</td>
+              <td>13 من أصل 107 صفوف في سجل الحاويات تحمل قيماً لا تطابق أنواع السجلات التشغيلية المعروفة (12.1%). شكل حقولها أقرب إلى بيانات جلسات/صفحات، دون إثبات مصدرها.</td>
+              <td>مسار القراءة غير المقيّد بنوع يستبعد المؤرشف فقط؛ لذلك قد يعيد هذه الصفوف مع السجلات التشغيلية. يلزم حصرها والتحقق من مصدرها وعزلها بأمان قبل أي تعديل.</td>
+            </tr>
+            <tr>
+              <td class="status status-amber">متوسطة</td>
+              <td>كل سجلات الحاويات والسائقين موسومة بأنها اختبارية، ولا يوجد سجل مركبة.</td>
+              <td>أي قرار تخصيص أو وعد بموعد إرسال يحتاج إلى سجل أصول ميداني موثق قبل اعتماده.</td>
+            </tr>
+            <tr>
+              <td class="status status-amber">قرار مطلوب</td>
+              <td>إلزامية الفاتورة عند إغلاق العقد غير مفروضة صراحةً عند عدم وجود فاتورة مرتبطة.</td>
+              <td>حسم السياسة المحاسبية، ثم إضافة تحقق مناسب إن كانت الفاتورة شرطاً إلزامياً للإغلاق.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="small">الصفوف الـ13 غير المعروفة لم تُحذف أو تُعدّل، ولم تُدرج معرّفات جلساتها أو مراجعها في هذا التقرير.</p>
+    </section>
+
+    <section>
+      <h2>7. التوصيات بالترتيب</h2>
+      <ol>
+        <li><strong>تأكيد مصدر الطلبات العشرة:</strong> طابقها مع الطلبات الحقيقية في النظام التشغيلي أو الإنتاجي، واحسم ما إذا كانت إدخالاً دفعة واحدة أو بيانات اختبار. أصلح روابط العملاء بعد التحقق، ولا تفترض أن الطلبات قد أُنجزت لمجرد وجودها.</li>
+        <li><strong>التحقق من قاعدة الإنتاج:</strong> أعد استخراج الأرقام نفسها من قاعدة Hostinger أو قاعدة الإنتاج المعتمدة، مع تسجيل وقت الاستخراج والمنطقة الزمنية. لا تخلط أرقام مساحة العمل بالأرقام الحية.</li>
+        <li><strong>تثبيت سجل الأصول الحقيقي:</strong> تحقق من أرقام الحاويات والسائقين والمركبات الفعلية وحالاتها، وافصل بيانات الاختبار عن السجل التشغيلي.</li>
+        <li><strong>احتواء الصفوف الـ13 غير المعروفة:</strong> حدّد مصدر إدخالها، وخذ نسخة احتياطية وتحقق من أثرها على الشاشات وواجهات API. استخدم العزل/التصحيح الموثق، ولا تحذف قبل تأكيد المالك.</li>
+        <li><strong>اختبار دورة كاملة في نسخة معزولة:</strong> أنشئ طلب اختبار، اربطه بعميل، أنشئ عقداً وفاتورة، خصص حاوية وسائقاً ومركبة، نفّذ إرسالاً وتسليماً واسترجاعاً وتسوية وإغلاقاً، ثم تحقق من منع التداخل وسلامة سجل التدقيق والقيود المالية.</li>
+        <li><strong>حسم قاعدة الفاتورة:</strong> قرر هل يمكن إغلاق عقد بلا فاتورة، ثم اجعل سلوك النظام مطابقاً للسياسة.</li>
+      </ol>
+    </section>
+
+    <footer class="foot">
+      <strong>الحكم النهائي:</strong> توجد بنية برمجية لضوابط رئيسية في دورة الحاويات والتحصيل، لكن السجلات الحالية لا تقدم دليلاً على تشغيل فعلي بعد الاستلام. جاهزية التشغيل الفعلية غير قابلة للإثبات قبل ربط الطلبات ببيانات العملاء والأصول الحقيقية، ثم التحقق من قاعدة الإنتاج واختبار دورة كاملة مع الفاتورة والإغلاق.
+      <p>أُعدّ هذا التقرير في 11 أكتوبر 2026 من بيانات قاعدة المشروع وقراءة المصدر؛ لا يحتوي على أسماء أو أرقام هواتف العملاء.</p>
+    </footer>
+  </article>
+</main>
+</body>
+</html>
