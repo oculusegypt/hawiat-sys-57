@@ -19,3 +19,4 @@
 - [Replit preview manifest Shield](replit-preview-manifest-shield.md) — preview may rewrite a valid same-origin manifest request through Replit Shield and show a 401/CORS console warning.
 - [Atomic financial settlement](atomic-financial-settlement.md) — operational payments and financial-ledger entries must commit together; exact retries stay safe after period close.
 - [Shared dispatch resources](shared-dispatch-resources.md) — service requests and work orders share drivers and vehicles, so assignments must check both schedules.
+- [Production-like demo identity safety](demo-identity-safety.md) — normalized phone matching can merge fixtures into real customer profiles; use non-dialable demo identities and inspect side effects first.
