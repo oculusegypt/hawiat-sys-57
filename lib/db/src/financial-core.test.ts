@@ -14,6 +14,52 @@ const payment = postToFinancialCore({
   paymentMethod: "نقدي", allocations: [{ contractId: 1, invoiceId: 91001, amount: 100 }],
 });
 assert.equal(payment.idempotent, false);
+
+const expectedSettlementAccounts: Array<[string, string]> = [
+  ["نقدي", "CASH-001"],
+  ["تحويل بنكي", "BANK-001"],
+  ["مدى", "BANK-001"],
+  ["فيزا", "BANK-001"],
+  ["ماستركارد", "BANK-001"],
+  ["Visa", "BANK-001"],
+  ["Mastercard", "BANK-001"],
+];
+for (const [index, [paymentMethod, expectedAccount]] of expectedSettlementAccounts.entries()) {
+  const sourceId = 91100 + index;
+  postToFinancialCore({
+    sourceKind: "payment",
+    sourceId,
+    reference: `PAY-METHOD-TEST-${index}`,
+    amount: 1,
+    date: "2026-08-11",
+    createdBy: 1,
+    paymentMethod,
+  });
+  const entry = sqlite.prepare(`
+    SELECT jl.account_code
+    FROM financial_transactions ft
+    JOIN financial_journal_entries je ON je.transaction_id = ft.id
+    JOIN financial_journal_lines jl ON jl.journal_entry_id = je.id
+    WHERE ft.source_kind = 'payment' AND ft.source_id = ? AND jl.debit = 1
+  `).get(sourceId) as { account_code: string } | undefined;
+  assert.equal(entry?.account_code, expectedAccount, `${paymentMethod} must post to the correct settlement account`);
+}
+
+assert.throws(() => postToFinancialCore({
+  sourceKind: "payment",
+  sourceId: 91199,
+  reference: "PAY-METHOD-UNKNOWN",
+  amount: 1,
+  date: "2026-08-11",
+  createdBy: 1,
+  paymentMethod: "DEMO — no real payment",
+}), /طريقة الدفع غير مدعومة/);
+assert.equal(
+  sqlite.prepare("SELECT id FROM financial_transactions WHERE source_kind = 'payment' AND source_id = 91199").get(),
+  undefined,
+  "unknown methods must not create a posted cash transaction",
+);
+
 assert.equal(postToFinancialCore({
   sourceKind: "payment", sourceId: 91002, reference: "PAY-TEST-01", amount: 100,
   date: "2026-08-11", operationKey: "test-payment-91002", createdBy: 1,
@@ -50,11 +96,11 @@ const atomicPosting = db.transaction(tx => {
   }).returning().get();
   const posted = postToFinancialCoreInTransaction({
     sourceKind: "payment", sourceId: paymentRecord.id, reference: paymentRecord.reference, amount: 25,
-    date: "2026-08-15", operationKey: "test-payment-atomic-91005", createdBy: 1,
+    date: "2026-08-15", operationKey: "test-payment-atomic-91005", createdBy: 1, paymentMethod: "نقدي",
   });
   const retry = postToFinancialCoreInTransaction({
     sourceKind: "payment", sourceId: paymentRecord.id, reference: paymentRecord.reference, amount: 25,
-    date: "2026-08-15", operationKey: "test-payment-atomic-91005", createdBy: 1,
+    date: "2026-08-15", operationKey: "test-payment-atomic-91005", createdBy: 1, paymentMethod: "نقدي",
   });
   return { paymentRecord, posted, retry };
 });
@@ -73,6 +119,7 @@ assert.equal(postToFinancialCore({
   date: "2026-08-15",
   operationKey: "test-payment-atomic-91005",
   createdBy: 1,
+  paymentMethod: "نقدي",
 }).idempotent, true, "an exact retry should remain idempotent after the posting period closes");
 
 let rolledBackPaymentId = 0;

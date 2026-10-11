@@ -46,12 +46,21 @@ export type FinancialTruthContract = {
   totalCredit: number;
 };
 
+function settlementAccount(paymentMethod: string): "CASH-001" | "BANK-001" {
+  const normalized = paymentMethod.trim().toLowerCase();
+  if (/^(نقدي|نقد|cash|cash payment)$/.test(normalized)) return "CASH-001";
+  if (/(بنكي|تحويل|شبكة|مدى|فيزا|ماستركارد|visa|master\s?card|card|بطاقة|pos)/i.test(normalized)) {
+    return "BANK-001";
+  }
+  throw new Error("طريقة الدفع غير مدعومة؛ اختر نقدي أو مدى أو بطاقة أو تحويلًا بنكيًا");
+}
+
 const accountFor = (kind: string, paymentMethod = ""): [string, string] => {
   if (kind === "invoice") return ["AR-001", "REV-001"];
   // An invoice return reverses the original revenue and receivable.
   if (kind === "invoice_return") return ["REV-001", "AR-001"];
-  if (kind === "payment_return") return ["REFUND-001", paymentMethod.includes("بنكي") ? "BANK-001" : "CASH-001"];
-  if (kind === "payment" || kind === "receipt") return [paymentMethod.includes("بنكي") || paymentMethod.includes("شبكة") ? "BANK-001" : "CASH-001", "AR-001"];
+  if (kind === "payment_return") return ["REFUND-001", settlementAccount(paymentMethod)];
+  if (kind === "payment" || kind === "receipt") return [settlementAccount(paymentMethod), "AR-001"];
   if (kind === "deposit" || kind === "bank_deposit") return ["BANK-001", "CASH-001"];
   if (kind === "other_revenue") return ["CASH-001", "REV-OTHER"];
   if (kind === "purchase") return ["INV-001", "AP-001"];

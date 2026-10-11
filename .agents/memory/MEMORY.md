@@ -20,3 +20,4 @@
 - [Atomic financial settlement](atomic-financial-settlement.md) — operational payments and financial-ledger entries must commit together; exact retries stay safe after period close.
 - [Shared dispatch resources](shared-dispatch-resources.md) — service requests and work orders share drivers and vehicles, so assignments must check both schedules.
 - [Production-like demo identity safety](demo-identity-safety.md) — normalized phone matching can merge fixtures into real customer profiles; use non-dialable demo identities and inspect side effects first.
+- [Production-like database testing](production-like-db-testing.md) — run synthetic lifecycle and financial tests against an isolated SQLite copy, never the production-like source.

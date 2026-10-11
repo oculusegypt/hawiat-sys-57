@@ -169,7 +169,7 @@ async function prepareContainerCompletion(request: typeof serviceRequestsTable.$
   };
 }
 
-type DbWriter = Pick<typeof db, "update" | "insert">;
+type DbWriter = Pick<typeof db, "select" | "update" | "insert">;
 
 function syncContainerCompletion(
   writer: DbWriter,
@@ -197,6 +197,7 @@ function syncContainerCompletion(
   };
   const nextAssetPayload = {
     ...parseContainerPayload(prepared.asset.payload),
+    status: assetStatus,
     location: request.location,
     lastMovementAt: now,
     lastWorkOrderId: request.id,
@@ -267,6 +268,52 @@ function syncContainerCompletion(
       }),
       updatedAt: now,
     }).where(eq(containerSystemRecordsTable.id, prepared.appointment.id)).run();
+  }
+  const legacyRequestId = Number(operationalFields.legacyRequestId ?? 0);
+  if (legacyRequestId > 0) {
+    const linkedRequest = writer.select().from(serviceRequestsTable)
+      .where(eq(serviceRequestsTable.id, legacyRequestId)).get();
+    if (linkedRequest &&
+        linkedRequest.contractRecordId === prepared.contract.id &&
+        ["pending", "in_progress"].includes(String(linkedRequest.status))) {
+      const requestCompletion = {
+        status: "completed",
+        driverStatus: "completed",
+        assignedDriverId: request.assignedDriverId,
+        assignedVehicleId: request.assignedVehicleId,
+        assignedVehiclePlate: request.assignedVehiclePlate,
+        driverResponseAt: request.driverResponseAt,
+        driverStartedAt: request.driverStartedAt,
+        driverCompletedAt: request.driverCompletedAt ?? now,
+        driverNotes: request.driverNotes,
+        driverLocationLat: request.driverLocationLat,
+        driverLocationLng: request.driverLocationLng,
+        driverProofPhotoUrl: request.driverProofPhotoUrl,
+        driverSignatureData: request.driverSignatureData,
+        driverReceiverName: request.driverReceiverName,
+      };
+      writer.update(serviceRequestsTable).set({
+        ...requestCompletion,
+        updatedAt: now,
+      }).where(eq(serviceRequestsTable.id, legacyRequestId)).run();
+      writer.insert(containerSystemAuditTable).values({
+        recordId: legacyRequestId,
+        kind: "service_request",
+        action: "linked_work_order_completed",
+        beforePayload: JSON.stringify({
+          status: linkedRequest.status,
+          driverStatus: linkedRequest.driverStatus,
+        }),
+        afterPayload: JSON.stringify({
+          status: requestCompletion.status,
+          driverStatus: requestCompletion.driverStatus,
+          workOrderId: request.id,
+          proofPhotoUrl: request.driverProofPhotoUrl,
+          receiverName: request.driverReceiverName,
+        }),
+        actorId,
+      }).run();
+    }
   }
   writer.insert(containerSystemAuditTable).values([
     {

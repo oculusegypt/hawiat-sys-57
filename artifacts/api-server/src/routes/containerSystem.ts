@@ -1388,7 +1388,7 @@ router.post("/admin/container-system/contracts/workflow", requireContainerPermis
           payload: JSON.stringify({ ...assignmentPayload, contractRecordId: contract.id, siteRecordId: siteId, containerRecordId: assetId, contractNumber, assignmentStatus: "reserved" }),
           createdBy: adminReq.adminId,
         }).returning().get();
-        const nextAssetPayload = { ...assetPayload, assignmentRecordId: assignment.id, assignedContractRecordId: contract.id, assignedSiteRecordId: siteId };
+        const nextAssetPayload = { ...assetPayload, status: "reserved", assignmentRecordId: assignment.id, assignedContractRecordId: contract.id, assignedSiteRecordId: siteId };
         tx.update(containerSystemRecordsTable).set({ status: "reserved", payload: JSON.stringify(nextAssetPayload), updatedAt: now }).where(eq(containerSystemRecordsTable.id, assetId)).run();
       }
       let appointment: typeof containerSystemRecordsTable.$inferSelect | null = null;
@@ -1407,12 +1407,36 @@ router.post("/admin/container-system/contracts/workflow", requireContainerPermis
         if (serviceRequest.contractRecordId && serviceRequest.contractRecordId !== contract.id) {
           throw new Error("طلب الخدمة مرتبط بعقد آخر بالفعل");
         }
+        if (!["pending", "in_progress"].includes(String(serviceRequest.status))) {
+          throw new Error("حالة طلب الخدمة لا تسمح بإنشاء عقد أو أمر تشغيل");
+        }
+        const previousRequestState = {
+          status: serviceRequest.status,
+          customerRecordId: serviceRequest.customerRecordId,
+          containerRecordId: serviceRequest.containerRecordId,
+          contractRecordId: serviceRequest.contractRecordId,
+        };
+        const nextRequestStatus = serviceRequest.status === "pending" ? "in_progress" : serviceRequest.status;
         serviceRequest = tx.update(serviceRequestsTable).set({
+          status: nextRequestStatus,
           customerRecordId: customerId,
           containerRecordId: assetId > 0 ? assetId : null,
           contractRecordId: contract.id,
           updatedAt: now,
         }).where(eq(serviceRequestsTable.id, existingRequestId)).returning().get();
+        tx.insert(containerSystemAuditTable).values({
+          recordId: existingRequestId,
+          kind: "service_request",
+          action: "contract_workflow_link",
+          beforePayload: JSON.stringify(previousRequestState),
+          afterPayload: JSON.stringify({
+            status: nextRequestStatus,
+            customerRecordId: customerId,
+            containerRecordId: assetId > 0 ? assetId : null,
+            contractRecordId: contract.id,
+          }),
+          actorId: adminReq.adminId,
+        }).run();
       }
       // A contract operation is an operational work order, not a customer
       // request. Keep an explicitly supplied commercial request linked, but
@@ -1431,6 +1455,7 @@ router.post("/admin/container-system/contracts/workflow", requireContainerPermis
           phone: String(servicePayload.phone ?? customerPayload.phone ?? ""),
           email: String(servicePayload.email ?? customerPayload.email ?? ""),
           operationType: String(appointmentPayload.appointmentType ?? "delivery") === "pickup" ? "PICKUP_CONTAINER" : "DELIVER_CONTAINER",
+          legacyRequestId: existingRequestId > 0 ? existingRequestId : null,
           serviceType: String(servicePayload.serviceType ?? "تسليم حاوية"),
           containerCode: String(contractPayload.containerCode ?? assetPayload.assetCode ?? assetPayload.code ?? asset?.reference ?? ""),
           location: String(servicePayload.location ?? contractPayload.location ?? "يحدد لاحقًا"),
@@ -2259,6 +2284,7 @@ router.post("/admin/container-system/contracts/:id/lifecycle", requireContainerP
       };
       const nextAssetPayload = {
         ...parsePayload(asset.payload),
+        status: nextAssetStatus,
         ...(location ? { location } : {}),
         lastMovementAt: now,
         lastMovementContractId: contractId,
@@ -2504,6 +2530,7 @@ router.post("/admin/container-system/records", async (req, res) => {
         if (!contract || contract.kind !== "contract" || contract.status === "archived") throw new Error("العقد المرتبط غير موجود أو مؤرشف");
         const nextAssetPayload = {
           ...parsePayload(asset.payload),
+          status: "reserved",
           assignmentRecordId: inserted.id,
           assignedContractRecordId: Number(payload.contractRecordId),
           assignedSiteRecordId: Number(payload.siteRecordId),
