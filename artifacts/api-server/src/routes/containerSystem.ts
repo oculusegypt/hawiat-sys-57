@@ -1315,7 +1315,7 @@ router.post("/admin/container-system/identity-review/:id/resolve", requireContai
   });
 
   if ("error" in outcome) {
-    res.status(outcome.status).json({ error: outcome.error });
+    res.status(typeof outcome.status === "number" ? outcome.status : 409).json({ error: outcome.error });
     return;
   }
   res.json(ResolveCustomerIdentityReviewResponse.parse({

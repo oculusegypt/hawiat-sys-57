@@ -297,6 +297,54 @@ function hsFinancialTruth(PDO $pdo, ?string $from = null, ?string $to = null): a
     return ['totals' => $row, 'counts' => $counts];
 }
 
+function hsPrepareServiceRequestsTable(PDO $pdo): void {
+    $pdo->exec("CREATE TABLE IF NOT EXISTS service_requests (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        client_name TEXT NOT NULL,
+        phone TEXT NOT NULL,
+        email TEXT,
+        service_type TEXT NOT NULL,
+        container_size TEXT,
+        container_count INTEGER NOT NULL DEFAULT 1,
+        property_type TEXT,
+        area_size TEXT,
+        location TEXT NOT NULL,
+        duration TEXT,
+        notes TEXT,
+        appointment_type TEXT NOT NULL DEFAULT 'immediate',
+        scheduled_at TEXT,
+        status TEXT NOT NULL DEFAULT 'pending',
+        admin_notes TEXT,
+        customer_record_id INTEGER,
+        container_record_id INTEGER,
+        contract_record_id INTEGER,
+        assigned_driver_id INTEGER,
+        assigned_vehicle_id INTEGER,
+        assigned_vehicle_plate TEXT,
+        driver_status TEXT NOT NULL DEFAULT 'unassigned',
+        driver_response_at TEXT,
+        driver_started_at TEXT,
+        driver_completed_at TEXT,
+        driver_notes TEXT,
+        driver_location_lat TEXT,
+        driver_location_lng TEXT,
+        driver_proof_photo_url TEXT,
+        driver_signature_data TEXT,
+        driver_receiver_name TEXT,
+        assigned_at TEXT,
+        session_id TEXT NOT NULL DEFAULT '',
+        acquisition_source TEXT NOT NULL DEFAULT 'مباشر',
+        attribution_referrer TEXT NOT NULL DEFAULT '',
+        attribution_landing_page TEXT NOT NULL DEFAULT '',
+        attribution_utm_source TEXT NOT NULL DEFAULT '',
+        attribution_utm_medium TEXT NOT NULL DEFAULT '',
+        attribution_utm_campaign TEXT NOT NULL DEFAULT '',
+        attribution_gclid TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    )");
+}
+
 function hsEnsureSchema(PDO $pdo): void {
     $pdo->exec("CREATE TABLE IF NOT EXISTS container_system_records (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1119,6 +1167,7 @@ function hsUpdateContainerContractLifecycle(PDO $pdo, int $contractId, string $a
 
 function hostingerContainerSystemRoute(PDO $pdo, string $path, string $method, array $input): void {
     if (!str_starts_with($path, '/admin/container-system')) return;
+    hsPrepareServiceRequestsTable($pdo);
     hsEnsureSchema($pdo);
     // Repair orders created before customer indexing was deployed. This keeps
     // Hostinger self-contained and makes the customer list an authoritative

@@ -21,13 +21,12 @@ function lifecycleExpectFailure(callable $callback, int $expectedCode, string $m
 
 $pdo = new PDO('sqlite::memory:');
 $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-$pdo->exec("CREATE TABLE service_requests (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    client_name TEXT, phone TEXT, email TEXT, service_type TEXT, location TEXT,
-    created_at TEXT, status TEXT NOT NULL DEFAULT 'pending',
-    customer_record_id INTEGER, container_record_id INTEGER, contract_record_id INTEGER,
-    driver_status TEXT NOT NULL DEFAULT 'unassigned', assigned_driver_id INTEGER
-)");
+hsPrepareServiceRequestsTable($pdo);
+$serviceRequestColumns = array_column($pdo->query("PRAGMA table_info(service_requests)")->fetchAll(PDO::FETCH_ASSOC), 'name');
+lifecycleExpectSame(true, in_array('assigned_vehicle_id', $serviceRequestColumns, true),
+    'service request preparation must create the full current schema before migrations run');
+lifecycleExpectSame(true, in_array('attribution_gclid', $serviceRequestColumns, true),
+    'service request preparation must include attribution columns');
 hsEnsureSchema($pdo);
 
 $insertRecord = static function (string $kind, string $status, string $reference, array $payload) use ($pdo): int {
@@ -56,9 +55,9 @@ $contractId = $insertRecord('contract', 'active', 'TEST-ONLY-CONTRACT-1', [
     'location' => 'TEST ONLY — customer site',
 ]);
 $pdo->prepare("INSERT INTO service_requests
-    (client_name, phone, service_type, location, created_at, status, container_record_id, contract_record_id, driver_status)
-    VALUES ('TEST ONLY — lifecycle fixture', 'TEST ONLY', 'تسليم حاوية', 'TEST ONLY', ?, 'pending', ?, ?, 'assigned')")
-    ->execute([date('c'), $containerId, $contractId]);
+    (client_name, phone, service_type, location, created_at, updated_at, status, container_record_id, contract_record_id, driver_status)
+    VALUES ('TEST ONLY — lifecycle fixture', 'TEST ONLY', 'تسليم حاوية', 'TEST ONLY', ?, ?, 'pending', ?, ?, 'assigned')")
+    ->execute([date('c'), date('c'), $containerId, $contractId]);
 $requestId = (int)$pdo->lastInsertId();
 $lineId = $insertRecord('contract_line', 'active', 'TEST-ONLY-LINE-1', [
     'contractRecordId' => $contractId,
