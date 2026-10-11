@@ -26,7 +26,7 @@ import {
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const require = createRequire(join(root, "lib", "db", "package.json"));
 const Database = require("better-sqlite3");
-const archivePath = join(root, process.env.HOSTINGER_ARCHIVE || "cleanflow-services-hostinger.zip");
+const archivePath = join(root, process.env.HOSTINGER_ARCHIVE || "hawiat-sys-hostinger.zip");
 const publicSitemap = join(root, "artifacts", "sabaik-almasa", "public", "sitemap.xml");
 const distSitemap = join(root, "artifacts", "sabaik-almasa", "dist", "public", "sitemap.xml");
 const buildSitemap = join(root, "build_php", "sitemap.xml");

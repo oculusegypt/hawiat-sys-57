@@ -2,7 +2,7 @@
 /**
  * Collect the old project images into a separate preservation archive.
  *
- * This archive is deliberately independent from cleanflow-services-hostinger.zip.
+ * This archive is deliberately independent from hawiat-sys-hostinger.zip.
  * It scans the project without touching source files, preserves the complete
  * "صور حسام" folder, and records every source path in a manifest.
  */
@@ -208,7 +208,7 @@ writeFileSync(
   [
     "أرشيف صور المشاريع القديمة — CleanFlow Services",
     "",
-    "هذه النسخة منفصلة عن حزمة الإنتاج cleanflow-services-hostinger.zip.",
+    "هذه النسخة منفصلة عن حزمة الإنتاج hawiat-sys-hostinger.zip.",
     "تم جمع الصور المذكورة في الطلب، وكل محتويات مجلد صور حسام، من كامل المشروع.",
     "لا تُرفع محتويات هذا الأرشيف إلى public_html.",
     "تفاصيل المصادر والأحجام والبصمات موجودة في MANIFEST.json.",

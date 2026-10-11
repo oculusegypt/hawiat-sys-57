@@ -35,6 +35,7 @@ function step(label) {
 
 const SOURCE_DB = join(ROOT, "data/sabaik.db");
 const ARCHIVE_SOURCE_DB = join(ROOT, "build_php/.archive-source.db");
+const ARCHIVE_FILENAME = "hawiat-sys-hostinger.zip";
 // Use HOSTINGER_PRESERVE_SOURCE=1 to package an unmodified SQLite snapshot
 // and media set, while allowing only explicit archive-copy metadata overrides.
 const PRESERVE_SOURCE_DATA = process.env.HOSTINGER_PRESERVE_SOURCE === "1";
@@ -1189,10 +1190,12 @@ rmSync(ARCHIVE_SOURCE_DB, { force: true });
 rmSync(`${ARCHIVE_SOURCE_DB}-wal`, { force: true });
 rmSync(`${ARCHIVE_SOURCE_DB}-shm`, { force: true });
 
-step("إنشاء الأرشيف cleanflow-services-hostinger.zip");
-const zipPath = join(ROOT, "cleanflow-services-hostinger.zip");
+step(`إنشاء الأرشيف ${ARCHIVE_FILENAME}`);
+const zipPath = join(ROOT, ARCHIVE_FILENAME);
+const previousArchivePath = join(ROOT, "cleanflow-services-hostinger.zip");
 const compatibilityZipPath = join(ROOT, "taqi-group-hostinger.zip");
 rmSync(zipPath, { force: true });
+rmSync(previousArchivePath, { force: true });
 // This filename belonged to a previous product. Never recreate it as a
 // misleading compatibility archive.
 rmSync(compatibilityZipPath, { force: true });
@@ -1202,13 +1205,13 @@ if (process.platform === "win32") {
 } else {
   // اضغط محتوى build_php لا المجلد نفسه؛ Hostinger يفك الأرشيف مباشرة داخل
   // public_html، ولذلك يجب أن تكون index.html وapi/ وdata/ وuploads/ في الجذر.
-  run("cd build_php && zip -r ../cleanflow-services-hostinger.zip .", "zip");
+  run(`cd build_php && zip -r ../${ARCHIVE_FILENAME} .`, "zip");
 }
 
 if (existsSync(zipPath)) {
   const sizeKb = Math.round(statSync(zipPath).size / 1024);
   console.log(`\n${"═".repeat(60)}`);
-  console.log(`✅ الأرشيف الرسمي جاهز: cleanflow-services-hostinger.zip (${sizeKb} KB)`);
+  console.log(`✅ الأرشيف الرسمي جاهز: ${ARCHIVE_FILENAME} (${sizeKb} KB)`);
   console.log(`${"═".repeat(60)}\n`);
   run(
     "pnpm --filter @workspace/scripts run seo-quality-gate",

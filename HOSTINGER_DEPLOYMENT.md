@@ -37,7 +37,7 @@ data/sabaik.db
 استخدم هذا الملف فقط:
 
 ```text
-cleanflow-services-hostinger.zip
+hawiat-sys-hostinger.zip
 ```
 
 قبل فك الضغط على Hostinger:
@@ -45,7 +45,7 @@ cleanflow-services-hostinger.zip
 1. خذ نسخة احتياطية من الموقع الحالي وقاعدة البيانات إن وجدت.
 2. احذف الملفات القديمة من `public_html`، خصوصاً `api/` و`data/` و`uploads/`
    ومجلد `taqi-group-platform/` إن كان موجوداً.
-3. ارفع `cleanflow-services-hostinger.zip` إلى `public_html`.
+3. ارفع `hawiat-sys-hostinger.zip` إلى `public_html`.
 4. فك الضغط مباشرة داخل `public_html`، وليس داخل مجلد فرعي.
 5. تأكد من وجود `index.html` و`api/` و`data/` و`uploads/` في جذر
    `public_html`.
@@ -80,5 +80,5 @@ SEO QUALITY GATE: PASS
 
 ## نتيجة الإصلاح الحالي
 
-تمت إعادة بناء `cleanflow-services-hostinger.zip` بنجاح، ونجحت بوابة SEO
+تمت إعادة بناء `hawiat-sys-hostinger.zip` بنجاح، ونجحت بوابة SEO
 النهائية. لا تعتمد أو تعيد رفع أي أرشيف باسم `taqi-group-hostinger.zip`.
