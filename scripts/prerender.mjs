@@ -16,6 +16,7 @@ import { mkdirSync, readFileSync, writeFileSync, existsSync, rmSync } from "node
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { requirePublicOrigin } from "./public-origin.mjs";
+import { normalizeBusinessText } from "./business-identity.mjs";
 import { entityPath, entitySlug, legacyEntitySlug } from "./friendly-slug.mjs";
 import {
   ARABIC_AREA_SLUGS,
@@ -37,6 +38,13 @@ const siteCompanyName = settingMap.company_name?.trim() || "";
 if (!siteCompanyName) {
   throw new Error("إعداد اسم المنشأة في «بيانات المنشأة» مطلوب قبل إنشاء صفحات SEO.");
 }
+const businessIdentity = {
+  companyName: siteCompanyName,
+  companyNameEnglish: String(settingMap.company_name_en || "").trim(),
+  call: String(settingMap.company_phone_call || "").trim(),
+  whatsapp: String(settingMap.company_phone_whatsapp || "").trim(),
+};
+const normalizeIdentityText = (value) => normalizeBusinessText(String(value || ""), businessIdentity);
 // Keep the homepage title search-focused while the schema identity comes from
 // the configured company name above.
 const HOMEPAGE_SEO_TITLE = "تأجير حاويات الرياض | طلب الحاويات ومخلفات البناء والهدم";
@@ -47,7 +55,7 @@ const GOLDEN_SEO_KEYWORDS_TEXT = "";
 const SITE_URL = requirePublicOrigin({ settings: settingMap });
 const HOMEPAGE_SEO_DESCRIPTION = `تأجير حاويات الرياض وطلب الحاويات في الرياض لمخلفات البناء والهدم والمطاعم والمنشآت، مع حاويات نفايات وأنقاض وتوصيل وسحب سريع من ${siteCompanyName}.`;
 function normalizeMetaDescription(value, context = "") {
-  let text = String(value || "").replace(/\s+/g, " ").trim();
+  let text = normalizeIdentityText(value).replace(/\s+/g, " ").trim();
   if (!text) {
     text = `${siteCompanyName} لخدمات تأجير الحاويات ونقل مخلفات البناء والهدم.`;
   }
@@ -172,7 +180,7 @@ const socialLinks = [
   settingMap.company_google_business_profile,
 ].map(value => String(value || "").trim()).filter(value => /^https?:\/\//i.test(value));
 
-const markdownText = (value) => String(value || "").replace(/\s+/g, " ").trim();
+const markdownText = (value) => normalizeIdentityText(value).replace(/\s+/g, " ").trim();
 const llmsLines = [
   `# ${markdownText(siteCompanyName)}`,
   siteDescription ? `\n> ${markdownText(siteDescription)}` : "",
@@ -214,7 +222,7 @@ const address = {
 const manifest = {
   name: siteCompanyName,
   short_name: siteCompanyName,
-  description: settingMap.site_desc?.trim() || "",
+  description: normalizeIdentityText(settingMap.site_desc).trim(),
   start_url: "/",
   display: "standalone",
   background_color: "#ffffff",
@@ -222,7 +230,7 @@ const manifest = {
   lang: "ar",
   dir: "rtl",
   icons: siteLogo
-    ? [{ src: "/images/logo.png", sizes: "512x512", type: "image/png", purpose: "any maskable" }]
+    ? [{ src: siteLogo, sizes: "any", type: imageMimeType(siteLogo), purpose: "any maskable" }]
     : [],
 };
 writeFileSync(join(distPublic, "manifest.json"), `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
@@ -280,10 +288,10 @@ const cssHref = cssMatch ? `/${cssMatch.replace(/^\/+/, "")}` : "/assets/index.c
 const jsHref  = jsMatch?.[1] || "/assets/index.js";
 
 // ── أدوات مساعدة ──────────────────────────────────────────────────────────
-function esc(s)  { return String(s || "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+function esc(s)  { return normalizeIdentityText(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
 function raw(s)  { return String(s || ""); }
 function sanitizeHtml(html) {
-  return (html || "")
+  return normalizeIdentityText(html || "")
     // Rich text fields occasionally contain a pasted document rather than a
     // fragment. Keep its useful body content, but never nest a document in
     // the prerendered page.
@@ -1147,6 +1155,10 @@ function updateIndexSeo(html) {
   next = replace(next, /(<meta\s+name="author"\s+content=")[^"]*(")/i, `$1${esc(siteCompanyName)}$2`);
   next = upsert(next, /<meta\s+name=["']site-public-url["'][^>]*>/i, `<meta name="site-public-url" content="${esc(SITE_URL)}" />`);
   next = upsert(next, /<link\s+rel=["']canonical["'][^>]*>/i, `<link rel="canonical" href="${esc(publicUrl("/"))}" />`);
+  if (siteLogo) {
+    next = upsert(next, /<link[^>]+rel=["']icon["'][^>]*>/i, `<link rel="icon" href="${esc(siteLogo)}" />`);
+    next = upsert(next, /<link[^>]+rel=["']apple-touch-icon["'][^>]*>/i, `<link rel="apple-touch-icon" href="${esc(siteLogo)}" />`);
+  }
   // The source index is also Vite's SPA fallback for admin and utility
   // routes. Remove its route-conditional helper from the prerendered
   // homepage before adding the static LCP preload, avoiding duplicate

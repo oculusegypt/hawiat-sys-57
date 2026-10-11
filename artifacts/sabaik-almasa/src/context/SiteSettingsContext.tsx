@@ -228,6 +228,25 @@ const DEFAULTS: SiteSettings = {
 const SiteSettingsContext = createContext<SiteSettings>(DEFAULTS)
 
 const DEFAULT_COMPANY_NAME = ""
+const BUSINESS_PHONE_PATTERN_SOURCE = String.raw`(?:\+?966)?0?5\d{8}`
+let currentCompanyPhoneCall = ""
+let currentCompanyPhoneWhatsapp = ""
+
+function normalizeCompanyPhones(value: string): string {
+  const callNumber = currentCompanyPhoneCall || currentCompanyPhoneWhatsapp
+  if (!callNumber) {
+    return value.replace(new RegExp(`(?<!\\d)${BUSINESS_PHONE_PATTERN_SOURCE}(?!\\d)`, "g"), "")
+  }
+
+  const whatsappNumber = currentCompanyPhoneWhatsapp || callNumber
+  const whatsappPattern = new RegExp(
+    `((?:واتساب|واتس\\s*اب|واتسآب|whatsapp)[^\\d]{0,24})${BUSINESS_PHONE_PATTERN_SOURCE}`,
+    "gi",
+  )
+  return value
+    .replace(whatsappPattern, (_match, prefix: string) => `${prefix}${whatsappNumber}`)
+    .replace(new RegExp(`(?<!\\d)${BUSINESS_PHONE_PATTERN_SOURCE}(?!\\d)`, "g"), callNumber)
+}
 
 export function normalizeCompanyText(value: string, companyName = DEFAULT_COMPANY_NAME): string {
   const resolvedName = companyName.trim() || DEFAULT_COMPANY_NAME
@@ -250,7 +269,7 @@ export function normalizeCompanyText(value: string, companyName = DEFAULT_COMPAN
   ].sort((left, right) => right.length - left.length)) {
     normalized = normalized.replaceAll(term, marker)
   }
-  return normalized.replaceAll(marker, resolvedName)
+  return normalizeCompanyPhones(normalized.replaceAll(marker, resolvedName))
 }
 
 export function replaceLegacyCompanyName(value: string | undefined, companyName: string): string | undefined {
@@ -356,6 +375,8 @@ async function fetchSettings(): Promise<FetchedSiteSettings> {
   const compName = typeof data.company_name === "string" && data.company_name.trim()
     ? data.company_name.trim()
     : DEFAULT_COMPANY_NAME
+  currentCompanyPhoneCall = typeof data.company_phone_call === "string" ? data.company_phone_call.trim() : ""
+  currentCompanyPhoneWhatsapp = typeof data.company_phone_whatsapp === "string" ? data.company_phone_whatsapp.trim() : ""
   return {
     logoUrl: typeof data.company_logo === "string" ? data.company_logo.trim() : "",
     companyName: compName,
@@ -363,8 +384,8 @@ async function fetchSettings(): Promise<FetchedSiteSettings> {
       ? replaceLegacyCompanyName(data.site_desc.trim(), compName) || ""
       : "",
     phones,
-    phoneCall: typeof data.company_phone_call === "string" ? data.company_phone_call.trim() : "",
-    phoneWhatsapp: typeof data.company_phone_whatsapp === "string" ? data.company_phone_whatsapp.trim() : "",
+    phoneCall: currentCompanyPhoneCall,
+    phoneWhatsapp: currentCompanyPhoneWhatsapp,
     address: typeof data.company_address === "string" ? data.company_address.trim() : "",
     city: typeof data.company_city === "string" ? data.company_city.trim() : "",
     region: typeof data.company_region === "string" ? data.company_region.trim() : "",
