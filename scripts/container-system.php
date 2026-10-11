@@ -120,6 +120,9 @@ function hsPostFinancialCore(PDO $pdo, string $kind, int $sourceId, array $paylo
     if ($kind === 'receipt' && !empty($payload['sourcePaymentId'])) return;
     hsFinancialTables($pdo);
     $date = (string)($payload['date'] ?? date('Y-m-d'));
+    $exists = $pdo->prepare("SELECT id FROM financial_transactions WHERE source_kind = ? AND source_id = ?");
+    $exists->execute([$kind, $sourceId]);
+    if ($exists->fetchColumn()) return;
     $period = substr($date, 0, 7);
     $periodStmt = $pdo->prepare("SELECT status FROM financial_periods WHERE period_key = ?");
     $periodStmt->execute([$period]);
@@ -128,9 +131,6 @@ function hsPostFinancialCore(PDO $pdo, string $kind, int $sourceId, array $paylo
     $periodEnd = date('Y-m-t', strtotime("{$period}-01"));
     $pdo->prepare("INSERT OR IGNORE INTO financial_periods (period_key,starts_on,ends_on,status) VALUES (?,?,?,'open')")
         ->execute([$period, "{$period}-01", $periodEnd]);
-    $exists = $pdo->prepare("SELECT id FROM financial_transactions WHERE source_kind = ? AND source_id = ?");
-    $exists->execute([$kind, $sourceId]);
-    if ($exists->fetchColumn()) return;
     $debit = 'ADJ-001'; $credit = 'CASH-001';
     if ($kind === 'invoice') [$debit,$credit] = ['AR-001','REV-001'];
     elseif ($kind === 'invoice_return') [$debit,$credit] = ['REV-001','AR-001'];
@@ -1263,6 +1263,15 @@ function hostingerContainerSystemRoute(PDO $pdo, string $path, string $method, a
         foreach ($rows as $row) {
             if ($row['kind'] === 'payment' && (string)($row['payload']['operationKey'] ?? '') === $operationKey) {
                 if ((float)($row['payload']['amount'] ?? 0) !== $amount || json_encode($row['payload']['allocations'] ?? [], JSON_UNESCAPED_UNICODE) !== json_encode($allocations, JSON_UNESCAPED_UNICODE)) hsJson(['error' => 'مفتاح العملية مستخدم لحمولة مختلفة'], 409);
+                $pdo->beginTransaction();
+                try {
+                    hsPostFinancialCore($pdo, 'payment', (int)$row['id'], $row['payload'], (string)$row['reference'], (int)($row['createdBy'] ?? 0) ?: null);
+                    $pdo->commit();
+                } catch (Throwable $error) {
+                    if ($pdo->inTransaction()) $pdo->rollBack();
+                    error_log('[container-system] idempotent payment posting failed: ' . $error->getMessage());
+                    hsJson(['error' => 'تعذر استكمال ترحيل الدفعة السابقة؛ لم يُنشأ تحصيل مكرر'], 422);
+                }
                 $ledger = null;
                 foreach ($rows as $candidate) if ($candidate['kind'] === 'ledger_entry' && (int)($candidate['payload']['sourceId'] ?? 0) === (int)$row['id']) { $ledger = $candidate; break; }
                 hsJson(['payment' => $row, 'ledgerEntry' => $ledger, 'idempotent' => true]);
@@ -1301,9 +1310,21 @@ function hostingerContainerSystemRoute(PDO $pdo, string $path, string $method, a
             $paid = max($paid, 0);
             $total = (float)($contract['payload']['total'] ?? $contract['payload']['amount'] ?? 0);
             if ($total > 0 && $paid + $allocation['amount'] > $total + 0.01) hsJson(['error' => 'قيمة التحصيل تتجاوز المتبقي في العقد'], 422);
+            $contractInvoices = array_values(array_filter($rows, static function (array $row) use ($allocation, $contract, $number): bool {
+                if ($row['kind'] !== 'invoice' || $row['status'] === 'archived') return false;
+                return (int)($row['payload']['contractRecordId'] ?? 0) === $allocation['contractId']
+                    || (string)($row['payload']['contractNumber'] ?? '') === $number;
+            }));
+            if ($contractInvoices !== [] && $allocation['invoiceId'] === null) {
+                hsJson(['error' => 'حدد فاتورة مرحّلة للتحصيل في العقد ' . $number], 422);
+            }
             if ($allocation['invoiceId']) {
                 $invoice = null; foreach ($rows as $row) if ($row['kind'] === 'invoice' && (int)$row['id'] === $allocation['invoiceId']) $invoice = $row;
                   if (!$invoice || $invoice['status'] === 'archived' || ((int)($invoice['payload']['contractRecordId'] ?? 0) !== $allocation['contractId'] && (string)($invoice['payload']['contractNumber'] ?? '') !== $number)) hsJson(['error' => 'الفاتورة لا تتبع العقد المحدد'], 422);
+                  if (!in_array($invoice['status'], ['posted', 'due', 'overdue', 'partially_paid'], true)) hsJson(['error' => 'لا يمكن التحصيل على فاتورة غير مرحّلة أو مغلقة'], 422);
+                  $invoicePosting = $pdo->prepare("SELECT id FROM financial_transactions WHERE source_kind = 'invoice' AND source_id = ? AND status = 'posted' LIMIT 1");
+                  $invoicePosting->execute([(int)$invoice['id']]);
+                  if (!$invoicePosting->fetchColumn()) hsJson(['error' => 'الفاتورة لم تُرحّل إلى النواة المالية بعد'], 422);
                  $invoiceTotal = (float)($invoice['payload']['total'] ?? $invoice['payload']['amount'] ?? 0);
                  $invoicePaid = 0.0;
                  foreach (hsPostedCollections($rows) as $payment) {
@@ -1360,7 +1381,8 @@ function hostingerContainerSystemRoute(PDO $pdo, string $path, string $method, a
             $ledgerId = (int)$pdo->lastInsertId();
             foreach ($contractRows as $index => $item) {
                 $next = $item['contract']['payload']; $next['paid'] = $item['paid'] + $allocations[$index]['amount']; $next['remaining'] = max($item['total'] - $next['paid'], 0);
-                $pdo->prepare("UPDATE container_system_records SET payload=:payload,status=:status,updated_at=:updated_at WHERE id=:id")->execute([':payload' => json_encode($next, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE), ':status' => $next['remaining'] <= 0.01 && $item['total'] > 0 ? 'settled' : $item['contract']['status'], ':updated_at' => $now, ':id' => $item['contract']['id']]);
+                $next['settlementStatus'] = $next['remaining'] <= 0.01 ? 'settled' : 'open';
+                $pdo->prepare("UPDATE container_system_records SET payload=:payload,status=:status,updated_at=:updated_at WHERE id=:id")->execute([':payload' => json_encode($next, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE), ':status' => $item['contract']['status'], ':updated_at' => $now, ':id' => $item['contract']['id']]);
                 $invoiceId = (int)($allocations[$index]['invoiceId'] ?? 0);
                 if ($invoiceId > 0) {
                     foreach ($rows as $invoice) {

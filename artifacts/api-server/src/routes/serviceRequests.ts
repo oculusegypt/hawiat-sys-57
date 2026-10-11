@@ -6,6 +6,7 @@ import { createNotification } from "../lib/pushNotifications";
 import { requireAdmin, requireAdminOnly, requireDriver, requireRequestAssignment, requireManagerOrAdmin, requireAnySectionPermission, requireSectionPermission, type AdminRequest } from "../middleware/adminAuth";
 import { sourceForRow } from "../lib/attribution";
 import { syncCustomerFromRequest } from "../lib/customerSync";
+import { dispatchConflictMessage, findScheduledDispatchConflict, type ScheduledDispatch } from "../lib/containerDispatch";
 import { refreshPrivateUploadUrl } from "../lib/privateUploadUrl";
 import crypto from "node:crypto";
 
@@ -62,32 +63,6 @@ function isReturnWork(request: typeof serviceRequestsTable.$inferSelect) {
 
 function isEmptyingWork(request: typeof serviceRequestsTable.$inferSelect) {
   return /تفريغ|empty|unload/i.test(`${request.serviceType} ${request.notes ?? ""}`);
-}
-
-function durationInMs(value?: string | null) {
-  const text = String(value ?? "").toLowerCase();
-  const hours = Number(text.match(/(\d+(?:\.\d+)?)\s*(?:hour|hours|ساعة|ساعات)/)?.[1] ?? 0);
-  const minutes = Number(text.match(/(\d+(?:\.\d+)?)\s*(?:min|mins|minute|minutes|دقيقة|دقائق)/)?.[1] ?? 0);
-  const total = hours * 60 + minutes;
-  return (Number.isFinite(total) && total > 0 ? total : 60) * 60 * 1000;
-}
-
-function dispatchWindow(request: typeof serviceRequestsTable.$inferSelect) {
-  if (!request.scheduledAt) return null;
-  const start = Date.parse(request.scheduledAt);
-  if (!Number.isFinite(start)) return null;
-  const hasTime = /T\d{2}:\d{2}/.test(request.scheduledAt);
-  const end = start + (hasTime ? durationInMs(request.duration) : 24 * 60 * 60 * 1000);
-  return { start, end };
-}
-
-function dispatchWindowsOverlap(
-  left: typeof serviceRequestsTable.$inferSelect,
-  right: typeof serviceRequestsTable.$inferSelect,
-) {
-  const leftWindow = dispatchWindow(left);
-  const rightWindow = dispatchWindow(right);
-  return Boolean(leftWindow && rightWindow && leftWindow.start < rightWindow.end && rightWindow.start < leftWindow.end);
 }
 
 function operationalRecordAsWorkOrder(record: typeof containerSystemRecordsTable.$inferSelect) {
@@ -841,25 +816,47 @@ router.patch("/service-requests/:id/assignment", requireAdmin, requireSectionPer
   const operationalRow = await db.select().from(containerSystemRecordsTable)
     .where(eq(containerSystemRecordsTable.id, id)).get();
   if (operationalRow?.kind === "work_order") {
-    const current = operationalRecordAsWorkOrder(operationalRow);
-    if (isAssetlessContractWorkOrder(current)) {
-      return res.status(404).json({ error: "عقد النظافة لا يحتاج إلى إسناد أو أمر تشغيل" });
-    }
-    const currentPayload = parseContainerPayload(operationalRow.payload);
-    if (["completed", "rejected"].includes(current.driverStatus)) {
-      return res.status(409).json({ error: "لا يمكن إعادة إسناد أمر عمل مغلق" });
-    }
     const now = new Date().toISOString();
-    const nextPayload = {
-      ...currentPayload,
-      assignedDriverId: driverId,
-      assignedVehicleId: vehicleId,
-      assignedVehiclePlate: vehiclePlate,
-      assignedAt: driverId ? now : null,
-      driverStatus: driverId ? "assigned" : "unassigned",
-      status: driverId ? "assigned" : "new",
-    };
-    const updated = db.transaction((tx) => {
+    const outcome = db.transaction((tx) => {
+      const freshRow = tx.select().from(containerSystemRecordsTable).where(eq(containerSystemRecordsTable.id, id)).get();
+      if (!freshRow || freshRow.kind !== "work_order") return { error: "أمر العمل غير موجود", status: 404 as const };
+      const freshOrder = operationalRecordAsWorkOrder(freshRow);
+      if (isAssetlessContractWorkOrder(freshOrder)) {
+        return { error: "عقد النظافة لا يحتاج إلى إسناد أو أمر تشغيل", status: 404 as const };
+      }
+      if (["completed", "rejected", "cancelled", "closed"].includes(freshOrder.driverStatus)) {
+        return { error: "لا يمكن إعادة إسناد أمر عمل مغلق", status: 409 as const };
+      }
+      const existingDispatches: ScheduledDispatch[] = [
+        ...tx.select().from(serviceRequestsTable).all().map(request => ({
+          ...request,
+          source: "service_request" as const,
+        })),
+        ...tx.select().from(containerSystemRecordsTable).all()
+          .filter(record => record.kind === "work_order" && record.status !== "archived")
+          .map(record => ({
+            ...operationalRecordAsWorkOrder(record),
+            source: "work_order" as const,
+          })),
+      ];
+      const conflict = findScheduledDispatchConflict({
+        ...freshOrder,
+        source: "work_order",
+        assignedDriverId: driverId,
+        assignedVehicleId: vehicleId,
+      }, existingDispatches);
+      if (conflict) {
+        return { error: dispatchConflictMessage(conflict.resource), status: 409 as const };
+      }
+      const nextPayload = {
+        ...parseContainerPayload(freshRow.payload),
+        assignedDriverId: driverId,
+        assignedVehicleId: vehicleId,
+        assignedVehiclePlate: vehiclePlate,
+        assignedAt: driverId ? now : null,
+        driverStatus: driverId ? "assigned" : "unassigned",
+        status: driverId ? "assigned" : "new",
+      };
       const next = tx.update(containerSystemRecordsTable).set({
         status: driverId ? "assigned" : "new",
         payload: JSON.stringify(nextPayload),
@@ -868,55 +865,65 @@ router.patch("/service-requests/:id/assignment", requireAdmin, requireSectionPer
       if (!next) throw new Error("تعذر تحديث إسناد أمر العمل");
       tx.insert(containerSystemAuditTable).values({
         recordId: id, kind: "work_order", action: "work_order_assignment",
-        beforePayload: operationalRow.payload, afterPayload: JSON.stringify(nextPayload), actorId: adminRequest.adminId,
+        beforePayload: freshRow.payload, afterPayload: JSON.stringify(nextPayload), actorId: adminRequest.adminId,
       }).run();
-      return operationalRecordAsWorkOrder(next);
+      return { order: operationalRecordAsWorkOrder(next) };
     });
-    return res.json(updated);
+    if ("error" in outcome) return res.status(outcome.status ?? 409).json({ error: outcome.error });
+    return res.json(outcome.order);
   }
 
-  const [request] = await db.select().from(serviceRequestsTable)
+  const request = await db.select().from(serviceRequestsTable)
     .where(eq(serviceRequestsTable.id, id));
-  if (!request) return res.status(404).json({ error: "الطلب غير موجود" });
-  if (isCleaningContractRequest(request)) {
-    return res.status(404).json({ error: "عقد النظافة لا يحتاج إلى إسناد أو أمر تشغيل" });
-  }
-  if (["completed", "rejected"].includes(request.driverStatus)) {
-    return res.status(409).json({ error: "لا يمكن إعادة إسناد أمر عمل مغلق" });
-  }
-  if ((driverId !== null || vehicleId !== null) && request.scheduledAt) {
-    const scheduledOrders = await db.select().from(serviceRequestsTable);
-    const conflict = scheduledOrders.find(item =>
-      item.id !== id &&
-      dispatchWindowsOverlap(item, request) &&
-      !["completed", "rejected"].includes(item.driverStatus) &&
-      ((driverId !== null && item.assignedDriverId === driverId) ||
-        (vehicleId !== null && item.assignedVehicleId === vehicleId)),
-    );
-    if (conflict) {
-      const sameDriver = driverId !== null && conflict.assignedDriverId === driverId;
-      return res.status(409).json({
-        error: sameDriver
-          ? "السائق مسند إلى أمر عمل آخر في نفس اليوم"
-          : "الشاحنة مسندة إلى أمر عمل آخر في نفس اليوم",
-      });
-    }
-  }
+  if (!request.length) return res.status(404).json({ error: "الطلب غير موجود" });
 
   const now = new Date().toISOString();
-  const [updated] = await db.update(serviceRequestsTable).set({
-    assignedDriverId: driverId,
-    assignedVehicleId: vehicleId,
-    assignedVehiclePlate: vehiclePlate,
-    driverStatus: driverId === null ? "unassigned" : "assigned",
-    driverResponseAt: null,
-    driverStartedAt: null,
-    driverCompletedAt: null,
-    driverNotes: null,
-    assignedAt: driverId === null ? null : now,
-    updatedAt: now,
-    ...(req.body?.adminNotes !== undefined ? { adminNotes: req.body.adminNotes || null } : {}),
-  }).where(eq(serviceRequestsTable.id, id)).returning();
+  const outcome = db.transaction((tx) => {
+    const freshRequest = tx.select().from(serviceRequestsTable).where(eq(serviceRequestsTable.id, id)).get();
+    if (!freshRequest) return { error: "الطلب غير موجود", status: 404 as const };
+    if (isCleaningContractRequest(freshRequest)) {
+      return { error: "عقد النظافة لا يحتاج إلى إسناد أو أمر تشغيل", status: 404 as const };
+    }
+    if (["completed", "rejected", "cancelled", "closed"].includes(freshRequest.driverStatus)) {
+      return { error: "لا يمكن إعادة إسناد أمر عمل مغلق", status: 409 as const };
+    }
+    const existingDispatches: ScheduledDispatch[] = [
+      ...tx.select().from(serviceRequestsTable).all().map(item => ({
+        ...item,
+        source: "service_request" as const,
+      })),
+      ...tx.select().from(containerSystemRecordsTable).all()
+        .filter(record => record.kind === "work_order" && record.status !== "archived")
+        .map(record => ({
+          ...operationalRecordAsWorkOrder(record),
+          source: "work_order" as const,
+        })),
+    ];
+    const conflict = findScheduledDispatchConflict({
+      ...freshRequest,
+      source: "service_request",
+      assignedDriverId: driverId,
+      assignedVehicleId: vehicleId,
+    }, existingDispatches);
+    if (conflict) return { error: dispatchConflictMessage(conflict.resource), status: 409 as const };
+    const updated = tx.update(serviceRequestsTable).set({
+      assignedDriverId: driverId,
+      assignedVehicleId: vehicleId,
+      assignedVehiclePlate: vehiclePlate,
+      driverStatus: driverId === null ? "unassigned" : "assigned",
+      driverResponseAt: null,
+      driverStartedAt: null,
+      driverCompletedAt: null,
+      driverNotes: null,
+      assignedAt: driverId === null ? null : now,
+      updatedAt: now,
+      ...(req.body?.adminNotes !== undefined ? { adminNotes: req.body.adminNotes || null } : {}),
+    }).where(eq(serviceRequestsTable.id, id)).returning().get();
+    return { updated };
+  });
+  if ("error" in outcome) return res.status(outcome.status ?? 409).json({ error: outcome.error });
+  const updated = outcome.updated;
+  if (!updated) return res.status(404).json({ error: "الطلب غير موجود" });
 
   if (driverId !== null) {
     await createNotification({

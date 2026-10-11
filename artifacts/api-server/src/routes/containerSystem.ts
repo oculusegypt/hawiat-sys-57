@@ -1,6 +1,6 @@
 import { Router, type Request, type Response, type NextFunction } from "express";
 import { and, desc, eq, like, ne, or } from "drizzle-orm";
-import { db, sqlite, containersTable, containerSystemAuditTable, containerSystemRecordsTable, serviceRequestsTable, financialTruth, financialPeriods, closeFinancialPeriod, postToFinancialCore, reverseInFinancialCore } from "@workspace/db";
+import { db, sqlite, containersTable, containerSystemAuditTable, containerSystemRecordsTable, serviceRequestsTable, financialTruth, financialPeriods, closeFinancialPeriod, postToFinancialCore, postToFinancialCoreInTransaction, reverseInFinancialCore } from "@workspace/db";
 import type { AdminRequest } from "../middleware/adminAuth";
 import { getSetting } from "./settings";
 import { refreshPrivateUploadUrl } from "../lib/privateUploadUrl";
@@ -1752,6 +1752,9 @@ router.post("/admin/container-system/financial/settle", requireContainerPermissi
   if (allocations.some(item => !Number.isInteger(item.contractId) || item.contractId <= 0 || !Number.isFinite(item.amount) || item.amount <= 0)) {
     return res.status(422).json({ error: "توزيع التحصيل غير صحيح" });
   }
+  if (allocations.some(item => item.invoiceId !== null && (!Number.isInteger(item.invoiceId) || item.invoiceId <= 0))) {
+    return res.status(422).json({ error: "معرّف الفاتورة المرتبطة غير صحيح" });
+  }
   const allocationTotal = allocations.reduce((sum, item) => sum + item.amount, 0);
   if (Math.abs(allocationTotal - amount) > 0.01) return res.status(422).json({ error: "يجب أن يساوي مجموع التوزيعات مبلغ التحصيل بالكامل" });
   if (new Set(allocations.map(item => item.contractId)).size !== allocations.length) {
@@ -1777,6 +1780,25 @@ router.post("/admin/container-system/financial/settle", requireContainerPermissi
     if (JSON.stringify(normalizedExistingAllocations) !== JSON.stringify(allocations) || Number(existingPayload.amount ?? 0) !== amount) {
       return res.status(409).json({ error: "مفتاح العملية مستخدم لحمولة مالية مختلفة" });
     }
+    try {
+      postToFinancialCore({
+        sourceKind: "payment",
+        sourceId: existing.id,
+        reference: existing.reference,
+        amount: Number(existingPayload.amount),
+        date: String(existingPayload.date ?? new Date().toISOString().slice(0, 10)),
+        operationKey: String(existingPayload.operationKey ?? operationKey),
+        createdBy: existing.createdBy,
+        paymentMethod: String(existingPayload.paymentMethod ?? ""),
+        allocations: normalizedExistingAllocations.map(item => ({
+          contractId: item.contractId,
+          invoiceId: item.invoiceId,
+          amount: item.amount,
+        })),
+      });
+    } catch {
+      return res.status(422).json({ error: "تعذر استكمال ترحيل الدفعة إلى النواة المالية؛ لم يُنشأ تحصيل مكرر" });
+    }
     const ledger = (await db.select().from(containerSystemRecordsTable)).find(row =>
       row.kind === "ledger_entry" && String(parsePayload(row.payload).sourceId ?? "") === String(existing.id),
     );
@@ -1795,6 +1817,15 @@ router.post("/admin/container-system/financial/settle", requireContainerPermissi
         if (!contract) throw new Error("أحد العقود غير موجود أو مؤرشف");
         const contractPayload = parsePayload(contract.payload);
         const contractNumber = String(contractPayload.contractNumber ?? contract.reference).trim();
+        const contractInvoices = all.filter(row => {
+          if (row.kind !== "invoice" || row.status === "archived") return false;
+          const invoicePayload = parsePayload(row.payload);
+          return Number(invoicePayload.contractRecordId ?? 0) === contract.id ||
+            String(invoicePayload.contractNumber ?? "").trim() === contractNumber;
+        });
+        if (contractInvoices.length > 0 && item.invoiceId == null) {
+          throw new Error(`حدد فاتورة مرحّلة للتحصيل في العقد ${contractNumber}`);
+        }
           const grossPaid = collectionRows.filter(row => matchContractForSettlement(row, all) === contractNumber)
           .reduce((sum, row) => {
             const payment = parsePayload(row.payload);
@@ -1826,6 +1857,13 @@ router.post("/admin/container-system/financial/settle", requireContainerPermissi
               String(invoicePayload.contractNumber ?? "").trim() !== contractNumber) {
             throw new Error("الفاتورة لا تتبع العقد المحدد");
           }
+          if (!["posted", "due", "overdue", "partially_paid"].includes(invoice.status)) {
+            throw new Error("لا يمكن التحصيل على فاتورة غير مرحّلة أو مغلقة");
+          }
+          const invoicePosting = sqlite.prepare(
+            "SELECT id FROM financial_transactions WHERE source_kind = 'invoice' AND source_id = ? AND status = 'posted' LIMIT 1",
+          ).get(invoice.id) as { id: number } | undefined;
+          if (!invoicePosting) throw new Error("الفاتورة لم تُرحّل إلى النواة المالية بعد");
           const invoiceTotal = Number(invoicePayload.total ?? invoicePayload.amount ?? 0);
           const invoicePaid = collectionRows.reduce((sum, row) => {
             const payment = parsePayload(row.payload);
@@ -1891,8 +1929,16 @@ router.post("/admin/container-system/financial/settle", requireContainerPermissi
       }).returning().get();
       for (const item of contractRows) {
         const nextPaid = item.paid + item.amount;
-        const nextContract = { ...item.contractPayload, paid: nextPaid, remaining: Math.max(item.total - nextPaid, 0), lastSettlementAt: now };
-        const nextStatus = Number.isFinite(item.total) && nextPaid >= item.total - 0.01 ? "settled" : item.contract.status;
+        const nextContract = {
+          ...item.contractPayload,
+          paid: nextPaid,
+          remaining: Math.max(item.total - nextPaid, 0),
+          settlementStatus: Math.max(item.total - nextPaid, 0) <= 0.01 ? "settled" : "open",
+          lastSettlementAt: now,
+        };
+        // Settlement is financial state; it must not overwrite delivery/return
+        // state because contract close still depends on the operational lifecycle.
+        const nextStatus = item.contract.status;
         tx.update(containerSystemRecordsTable).set({ payload: JSON.stringify(nextContract), status: nextStatus, updatedAt: now })
           .where(eq(containerSystemRecordsTable.id, item.contract.id)).run();
         if (item.invoiceId) {
@@ -1943,22 +1989,25 @@ router.post("/admin/container-system/financial/settle", requireContainerPermissi
           updatedAt: now,
         }).where(eq(containerSystemRecordsTable.id, deposit.id)).run();
       }
+      postToFinancialCoreInTransaction({
+        sourceKind: "payment",
+        sourceId: payment.id,
+        reference: payment.reference,
+        amount,
+        date: String(paymentPayload.date ?? new Date().toISOString().slice(0, 10)),
+        operationKey,
+        createdBy: adminReq.adminId,
+        paymentMethod,
+        allocations: contractRows.map(item => ({
+          contractId: item.contract.id,
+          invoiceId: item.invoiceId,
+          amount: item.amount,
+        })),
+      });
       return { payment, ledger };
     });
-     const paymentPayload = parsePayload(result.payment.payload);
-     postToFinancialCore({
-       sourceKind: "payment",
-       sourceId: result.payment.id,
-       reference: result.payment.reference,
-       amount,
-       date: String(paymentPayload.date ?? new Date().toISOString().slice(0, 10)),
-       operationKey,
-       createdBy: adminReq.adminId,
-       paymentMethod,
-       allocations: allocations.map(item => ({ contractId: item.contractId, invoiceId: item.invoiceId, amount: item.amount })),
-     });
-      // Bank reconciliation is created only when the deposit itself is posted.
-      // Linking a payment to a deposit must not create a second reconciliation.
+    // Bank reconciliation is created only when the deposit itself is posted.
+    // Linking a payment to a deposit must not create a second reconciliation.
      return res.status(201).json({ payment: formatRecord(result.payment), ledgerEntry: formatRecord(result.ledger), idempotent: false });
   } catch (error) {
     if (operationKey && error instanceof Error && error.message.includes("UNIQUE constraint failed")) {
@@ -2098,6 +2147,24 @@ router.post("/admin/container-system/contracts/:id/lifecycle", requireContainerP
         const total = Number(contractPayload.total ?? contractPayload.amount ?? 0);
         if (Math.max(total - collected + returned, 0) > 0.01) {
           throw new Error(`لا يمكن إغلاق العقد قبل اكتمال التسوية المالية؛ المتبقي ${Math.max(total - collected + returned, 0).toFixed(2)} ر.س`);
+        }
+        const linkedInvoices = allRows.filter(row => {
+          if (row.kind !== "invoice" || row.status === "archived") return false;
+          const invoicePayload = parsePayload(row.payload);
+          return Number(invoicePayload.contractRecordId ?? 0) === contractId ||
+            String(invoicePayload.contractNumber ?? "").trim() === contractNumber;
+        });
+        for (const invoice of linkedInvoices) {
+          const invoicePayload = parsePayload(invoice.payload);
+          const invoiceTotal = Number(invoicePayload.total ?? invoicePayload.amount ?? 0);
+          if (!Number.isFinite(invoiceTotal) || invoiceTotal <= 0.01) continue;
+          const invoiceRemaining = Number(invoicePayload.remaining ?? (invoiceTotal - Number(invoicePayload.paid ?? 0)));
+          const invoicePosting = sqlite.prepare(
+            "SELECT id FROM financial_transactions WHERE source_kind = 'invoice' AND source_id = ? AND status = 'posted' LIMIT 1",
+          ).get(invoice.id) as { id: number } | undefined;
+          if (invoice.status !== "paid" || !Number.isFinite(invoiceRemaining) || invoiceRemaining > 0.01 || !invoicePosting) {
+            throw new Error("لا يمكن إغلاق العقد قبل ترحيل جميع فواتيره وتسويتها بالكامل");
+          }
         }
         const now = new Date().toISOString();
         const nextContractPayload = {

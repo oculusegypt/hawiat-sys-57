@@ -1,0 +1,283 @@
+import assert from "node:assert/strict";
+import { createHmac } from "node:crypto";
+import type { AddressInfo } from "node:net";
+import { createServer } from "node:net";
+import { spawn, type ChildProcess } from "node:child_process";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import {
+  adminsTable,
+  containerSystemRecordsTable,
+  db,
+  serviceRequestsTable,
+  sqlite,
+} from "@workspace/db";
+import { postToFinancialCore } from "@workspace/db";
+import { findScheduledDispatchConflict } from "./lib/containerDispatch.js";
+import { eq } from "drizzle-orm";
+
+const testPhone = "+966500000001";
+const testLocation = "TEST ONLY — موقع تجريبي، الرياض";
+const testAddress = "TEST ONLY — العنوان مخصص للاختبار ولا يستخدم للتوجيه";
+const testSecret = process.env.SESSION_SECRET;
+if (!testSecret) throw new Error("SESSION_SECRET must be set to a test-only value");
+const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
+
+function makeToken(adminId: number) {
+  const body = Buffer.from(JSON.stringify({ adminId, ts: Date.now() })).toString("base64url");
+  const signature = createHmac("sha256", testSecret).update(body).digest("base64url");
+  return `${body}.${signature}`;
+}
+
+function insertRecord(kind: string, status: string, reference: string, payload: Record<string, unknown>) {
+  return db.insert(containerSystemRecordsTable).values({
+    kind,
+    status,
+    reference,
+    payload: JSON.stringify(payload),
+  }).returning().get();
+}
+
+async function main() {
+  const admin = db.insert(adminsTable).values({
+    username: "container-lifecycle-test-admin",
+    passwordHash: "not-used-by-this-test",
+    name: "TEST ONLY Admin",
+    role: "admin",
+  }).returning().get();
+  const driver = db.insert(adminsTable).values({
+    username: "container-lifecycle-test-driver",
+    passwordHash: "not-used-by-this-test",
+    name: "TEST ONLY Driver",
+    role: "driver",
+  }).returning().get();
+  const customer = insertRecord("customer", "active", "TEST-CUSTOMER-001", {
+    name: "عميل اختبار — لا يستخدم للتشغيل",
+    phone: testPhone,
+    address: testAddress,
+    testData: true,
+  });
+  const site = insertRecord("customer_site", "active", "TEST-SITE-001", {
+    customerRecordId: customer.id,
+    name: "موقع اختبار",
+    address: testAddress,
+    location: testLocation,
+    latitude: "24.7136",
+    longitude: "46.6753",
+    testData: true,
+  });
+  const request = db.insert(serviceRequestsTable).values({
+    clientName: "عميل اختبار — لا يستخدم للتشغيل",
+    phone: testPhone,
+    serviceType: "اختبار دورة الحاوية",
+    containerSize: "12 yd (TEST ONLY)",
+    location: testLocation,
+    scheduledAt: "2026-10-14T10:00:00.000Z",
+    duration: "1 hour",
+    appointmentType: "scheduled",
+    customerRecordId: customer.id,
+    driverStatus: "assigned",
+    assignedDriverId: driver.id,
+    adminNotes: "TEST ONLY — لا ترسل سائقاً إلى هذا الموقع",
+  }).returning().get();
+  const vehicle = insertRecord("vehicle", "available", "TEST-VEHICLE-001", {
+    vehiclePlate: "TEST-0001",
+    testData: true,
+  });
+  const dispatchConflict = findScheduledDispatchConflict({
+    id: 1,
+    source: "work_order",
+    scheduledAt: "2026-10-14T10:30:00.000Z",
+    duration: "1 hour",
+    assignedDriverId: driver.id,
+    assignedVehicleId: vehicle.id,
+    driverStatus: "assigned",
+    status: "assigned",
+  }, [{
+    ...request,
+    source: "service_request",
+    assignedVehicleId: vehicle.id,
+  }]);
+  assert.equal(dispatchConflict?.resource, "driver");
+  assert.equal(customer && site && request.phone, testPhone);
+  assert.match(String(site.payload), /TEST ONLY/);
+
+  const contractNumber = "TEST-CONTRACT-001";
+  const contract = insertRecord("contract", "returned", contractNumber, {
+    contractNumber,
+    amount: 100,
+    total: 100,
+    paid: 0,
+    remaining: 100,
+    customerRecordId: customer.id,
+    customerName: "عميل اختبار — لا يستخدم للتشغيل",
+    customerPhone: testPhone,
+    customerAddress: testAddress,
+    siteRecordId: site.id,
+    location: testLocation,
+    serviceRequestId: request.id,
+    testData: true,
+  });
+  const invoice = insertRecord("invoice", "draft", "TEST-INVOICE-001", {
+    invoiceNumber: "TEST-INVOICE-001",
+    contractRecordId: contract.id,
+    contractNumber,
+    customerRecordId: customer.id,
+    customerName: "عميل اختبار — لا يستخدم للتشغيل",
+    customerPhone: testPhone,
+    customerAddress: testAddress,
+    siteRecordId: site.id,
+    location: testLocation,
+    amount: 100,
+    total: 100,
+    paid: 0,
+    remaining: 100,
+    date: "2026-08-10",
+    invoiceStatus: "due",
+    testData: true,
+  });
+  insertRecord("work_order", "completed", "TEST-WORK-ORDER-001", {
+    contractRecordId: contract.id,
+    contractNumber,
+    assignedDriverId: driver.id,
+    assignedVehicleId: vehicle.id,
+    scheduledAt: "2026-10-14T10:00:00.000Z",
+    driverStatus: "completed",
+    status: "completed",
+    customerPhone: testPhone,
+    location: testLocation,
+    testData: true,
+  });
+
+  postToFinancialCore({
+    sourceKind: "invoice",
+    sourceId: invoice.id,
+    reference: invoice.reference,
+    amount: 100,
+    date: "2026-08-10",
+    createdBy: admin.id,
+  });
+  db.update(containerSystemRecordsTable)
+    .set({ status: "posted" })
+    .where(eq(containerSystemRecordsTable.id, invoice.id))
+    .run();
+
+  const portProbe = createServer();
+  await new Promise<void>(resolve => portProbe.listen(0, "127.0.0.1", resolve));
+  const address = portProbe.address() as AddressInfo;
+  const port = address.port;
+  await new Promise<void>((resolve, reject) => portProbe.close(error => error ? reject(error) : resolve()));
+  const apiProcess: ChildProcess = spawn(
+    process.execPath,
+    ["--enable-source-maps", join(projectRoot, "artifacts/api-server/dist/index.mjs")],
+    {
+      cwd: projectRoot,
+      env: {
+        ...process.env,
+        PORT: String(port),
+        NODE_ENV: "test",
+        DB_PATH: process.env.DB_PATH!,
+        SESSION_SECRET: testSecret,
+      },
+      stdio: ["ignore", "pipe", "pipe"],
+    },
+  );
+  let startupOutput = "";
+  apiProcess.stdout?.on("data", chunk => { startupOutput += String(chunk); });
+  apiProcess.stderr?.on("data", chunk => { startupOutput += String(chunk); });
+  let ready = false;
+  for (let attempt = 0; attempt < 80; attempt += 1) {
+    if (apiProcess.exitCode !== null) throw new Error(`Test API exited before becoming ready:\n${startupOutput}`);
+    try {
+      await fetch(`http://127.0.0.1:${port}/api/health`);
+      ready = true;
+      break;
+    } catch {
+      await new Promise(resolve => setTimeout(resolve, 125));
+    }
+  }
+  assert.ok(ready, `Test API did not become ready:\n${startupOutput}`);
+  const authorization = `Bearer ${makeToken(admin.id)}`;
+  const settle = async (operationKey: string, invoiceId: number | null, amount = 50) => fetch(
+    `http://127.0.0.1:${port}/api/admin/container-system/financial/settle`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization },
+      body: JSON.stringify({
+        contractId: contract.id,
+        amount,
+        paymentMethod: "نقدي",
+        date: "2026-08-11",
+        operationKey,
+        allocations: [{ contractId: contract.id, invoiceId, amount }],
+      }),
+    },
+  );
+
+  try {
+    const period = sqlite.prepare("UPDATE financial_periods SET status = 'closed' WHERE period_key = '2026-08'");
+    period.run();
+    const closedPeriod = await settle("test-lifecycle-closed-001", invoice.id);
+    assert.equal(closedPeriod.status, 422, "closed financial periods must reject a settlement");
+    assert.equal(
+      (sqlite.prepare("SELECT COUNT(*) AS count FROM container_system_records WHERE kind = 'payment'").get() as { count: number }).count,
+      0,
+      "a rejected financial posting must not leave a payment record",
+    );
+
+    sqlite.prepare("UPDATE financial_periods SET status = 'open' WHERE period_key = '2026-08'").run();
+    const partialResponse = await settle("test-lifecycle-payment-001", invoice.id);
+    assert.equal(partialResponse.status, 201);
+    const partialBody = await partialResponse.json() as { payment: { id: number }; idempotent: boolean };
+    assert.equal(partialBody.idempotent, false);
+    assert.equal(
+      (sqlite.prepare("SELECT COUNT(*) AS count FROM financial_transactions WHERE source_kind = 'payment' AND source_id = ?").get(partialBody.payment.id) as { count: number }).count,
+      1,
+    );
+    const partialInvoice = db.select().from(containerSystemRecordsTable).where(eq(containerSystemRecordsTable.id, invoice.id)).get();
+    assert.equal(partialInvoice?.status, "partially_paid");
+
+    sqlite.prepare("UPDATE financial_periods SET status = 'closed' WHERE period_key = '2026-08'").run();
+    const replayResponse = await settle("test-lifecycle-payment-001", invoice.id);
+    assert.equal(replayResponse.status, 200, "an exact retry remains idempotent even after its period closes");
+    assert.equal((await replayResponse.json() as { idempotent: boolean }).idempotent, true);
+
+    sqlite.prepare("UPDATE financial_periods SET status = 'open' WHERE period_key = '2026-08'").run();
+    const finalResponse = await settle("test-lifecycle-payment-002", invoice.id);
+    assert.equal(finalResponse.status, 201);
+    const settledInvoice = db.select().from(containerSystemRecordsTable).where(eq(containerSystemRecordsTable.id, invoice.id)).get();
+    assert.equal(settledInvoice?.status, "paid");
+
+    const closeResponse = await fetch(
+      `http://127.0.0.1:${port}/api/admin/container-system/contracts/${contract.id}/lifecycle`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization },
+        body: JSON.stringify({ action: "close" }),
+      },
+    );
+    assert.equal(closeResponse.status, 200, "a returned contract can close after all linked invoices are paid");
+    const closedContract = db.select().from(containerSystemRecordsTable)
+      .where(eq(containerSystemRecordsTable.id, contract.id)).get();
+    assert.equal(closedContract?.status, "closed");
+    console.log("container lifecycle integration assertions passed with isolated TEST ONLY contact and site data");
+  } finally {
+    apiProcess.kill("SIGTERM");
+    await new Promise<void>(resolve => {
+      if (apiProcess.exitCode !== null) return resolve();
+      apiProcess.once("exit", () => resolve());
+      setTimeout(() => {
+        if (apiProcess.exitCode === null) apiProcess.kill("SIGKILL");
+        resolve();
+      }, 10_000);
+    });
+  }
+}
+
+main().then(
+  () => process.exit(0),
+  error => {
+    console.error(error);
+    process.exit(1);
+  },
+);

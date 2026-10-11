@@ -21,6 +21,7 @@
     "seed:posts": "tsx ./src/seed-posts.ts",
     "seed:posts2": "tsx ./src/seed-posts-2.ts",
     "test:financial-core": "rm -f /tmp/cleanflow-financial-core-test.db && DB_PATH=/tmp/cleanflow-financial-core-test.db pnpm run push && DB_PATH=/tmp/cleanflow-financial-core-test.db tsx ./src/financial-core.test.ts",
+    "test:container-lifecycle": "rm -f /tmp/cleanflow-container-lifecycle-test.db && DB_PATH=/tmp/cleanflow-container-lifecycle-test.db pnpm run push && pnpm --filter @workspace/api-server run build && DB_PATH=/tmp/cleanflow-container-lifecycle-test.db SESSION_SECRET=cleanflow-container-lifecycle-test-secret tsx ../../artifacts/api-server/src/container-lifecycle.integration.test.ts",
     "test:financial-certification": "rm -f /tmp/cleanflow-financial-certification.db && DB_PATH=/tmp/cleanflow-financial-certification.db pnpm run push && DB_PATH=/tmp/cleanflow-financial-certification.db tsx ./src/financial-certification.test.ts",
     "test:financial-cross-report": "rm -f /tmp/cleanflow-financial-cross-report.db && DB_PATH=/tmp/cleanflow-financial-cross-report.db pnpm run push && DB_PATH=/tmp/cleanflow-financial-cross-report.db tsx ./src/financial-cross-report.test.ts"
   },

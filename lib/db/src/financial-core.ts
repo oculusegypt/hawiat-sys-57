@@ -79,7 +79,7 @@ function assertOpenPeriod(date: string) {
   }
 }
 
-export function postToFinancialCore(source: FinancialSource) {
+function insertToFinancialCore(source: FinancialSource) {
   if (!Number.isFinite(source.amount) || source.amount <= 0) throw new Error("لا يمكن ترحيل قيمة مالية غير موجبة");
   // Receipts linked to a payment are presentation documents. Keeping them out
   // of the ledger is the accounting boundary that prevents double counting.
@@ -88,32 +88,38 @@ export function postToFinancialCore(source: FinancialSource) {
   }
   const now = new Date().toISOString();
   const date = source.date || now.slice(0, 10);
+  const existing = sqlite.prepare("SELECT id FROM financial_transactions WHERE source_kind = ? AND source_id = ?").get(source.sourceKind, source.sourceId) as { id: number } | undefined;
+  if (existing) return { id: existing.id, idempotent: true };
   assertOpenPeriod(date);
-  const result = sqlite.transaction(() => {
-    const existing = sqlite.prepare("SELECT id FROM financial_transactions WHERE source_kind = ? AND source_id = ?").get(source.sourceKind, source.sourceId) as { id: number } | undefined;
-    if (existing) return { id: existing.id, idempotent: true };
-    const tx = sqlite.prepare(`
-      INSERT INTO financial_transactions
-        (transaction_number, transaction_type, source_kind, source_id, reference, transaction_date, amount, currency, status, operation_key, created_by, posted_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'posted', ?, ?, ?)
-    `).run(`FT-${source.sourceId}`, source.sourceKind, source.sourceKind, source.sourceId, source.reference || "", date, source.amount, source.currency || "SAR", source.operationKey || null, source.createdBy || null, now);
-    const transactionId = Number(tx.lastInsertRowid);
-    const [debitAccount, creditAccount] = accountFor(source.sourceKind, source.paymentMethod);
-    const journal = sqlite.prepare(`
-      INSERT INTO financial_journal_entries (transaction_id, entry_number, total_debit, total_credit, status)
-      VALUES (?, ?, ?, ?, 'posted')
-    `).run(transactionId, `FJ-${transactionId}`, source.amount, source.amount);
-    const journalId = Number(journal.lastInsertRowid);
-    const line = sqlite.prepare("INSERT INTO financial_journal_lines (journal_entry_id, account_code, debit, credit, description) VALUES (?, ?, ?, ?, ?)");
-    line.run(journalId, debitAccount, source.amount, 0, `مدين — ${source.sourceKind}`);
-    line.run(journalId, creditAccount, 0, source.amount, `دائن — ${source.sourceKind}`);
-    if (source.allocations) {
-      const allocation = sqlite.prepare("INSERT INTO financial_allocations (transaction_id, contract_id, invoice_id, amount) VALUES (?, ?, ?, ?)");
-      for (const item of source.allocations) allocation.run(transactionId, item.contractId || null, item.invoiceId || null, item.amount);
-    }
-    return { id: transactionId, journalId, idempotent: false };
-  })();
-  return result;
+  const tx = sqlite.prepare(`
+    INSERT INTO financial_transactions
+      (transaction_number, transaction_type, source_kind, source_id, reference, transaction_date, amount, currency, status, operation_key, created_by, posted_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'posted', ?, ?, ?)
+  `).run(`FT-${source.sourceId}`, source.sourceKind, source.sourceKind, source.sourceId, source.reference || "", date, source.amount, source.currency || "SAR", source.operationKey || null, source.createdBy || null, now);
+  const transactionId = Number(tx.lastInsertRowid);
+  const [debitAccount, creditAccount] = accountFor(source.sourceKind, source.paymentMethod);
+  const journal = sqlite.prepare(`
+    INSERT INTO financial_journal_entries (transaction_id, entry_number, total_debit, total_credit, status)
+    VALUES (?, ?, ?, ?, 'posted')
+  `).run(transactionId, `FJ-${transactionId}`, source.amount, source.amount);
+  const journalId = Number(journal.lastInsertRowid);
+  const line = sqlite.prepare("INSERT INTO financial_journal_lines (journal_entry_id, account_code, debit, credit, description) VALUES (?, ?, ?, ?, ?)");
+  line.run(journalId, debitAccount, source.amount, 0, `مدين — ${source.sourceKind}`);
+  line.run(journalId, creditAccount, 0, source.amount, `دائن — ${source.sourceKind}`);
+  if (source.allocations) {
+    const allocation = sqlite.prepare("INSERT INTO financial_allocations (transaction_id, contract_id, invoice_id, amount) VALUES (?, ?, ?, ?)");
+    for (const item of source.allocations) allocation.run(transactionId, item.contractId || null, item.invoiceId || null, item.amount);
+  }
+  return { id: transactionId, journalId, idempotent: false };
+}
+
+export function postToFinancialCore(source: FinancialSource) {
+  return sqlite.transaction(() => insertToFinancialCore(source))();
+}
+
+/** Posts into the caller's active SQLite transaction; that transaction owns rollback. */
+export function postToFinancialCoreInTransaction(source: FinancialSource) {
+  return insertToFinancialCore(source);
 }
 
 export function reverseInFinancialCore(source: FinancialSource, reason: string, actorId?: number | null) {

@@ -583,11 +583,13 @@ export function ContractSettlementWorkspace({ records, initialCustomerId = null,
   const selected = ledgers.find(row => row.contract.id === selectedId) ?? ledgers[0]
   const deposits = records.filter(record => (record.kind === "deposit" || record.kind === "bank_deposit") && record.status === "posted")
   const selectedRows = ledgers.filter(row => selectedIds.includes(row.contract.id))
-  const invoicesFor = (contractId: number, contractNumber: string) => records.filter(record => {
-     if (record.kind !== "invoice" || record.status !== "posted") return false
+  const invoiceRecordsFor = (contractId: number, contractNumber: string) => records.filter(record => {
+    if (record.kind !== "invoice" || record.status === "archived") return false
     const payload = record.payload as Record<string, unknown>
     return Number(payload.contractRecordId ?? 0) === contractId || String(payload.contractNumber ?? "").trim() === contractNumber
   })
+  const invoicesFor = (contractId: number, contractNumber: string) => invoiceRecordsFor(contractId, contractNumber)
+    .filter(record => ["posted", "due", "overdue", "partially_paid"].includes(record.status))
   useEffect(() => {
     if (selected) {
       setSelectedId(selected.contract.id)
@@ -607,6 +609,18 @@ export function ContractSettlementWorkspace({ records, initialCustomerId = null,
       amount: Number(allocationAmounts[row.contract.id] ?? 0),
       invoiceId: allocationInvoices[row.contract.id] ? Number(allocationInvoices[row.contract.id]) : null,
     }))
+    const missingInvoiceSelection = selectedRows.some(row => {
+      const payload = row.contract.payload as Record<string, unknown>
+      const contractNumber = String(payload.contractNumber ?? row.contract.reference)
+      const eligibleInvoices = invoicesFor(row.contract.id, contractNumber)
+      const allInvoices = invoiceRecordsFor(row.contract.id, contractNumber)
+      const selectedInvoiceId = Number(allocationInvoices[row.contract.id] ?? 0)
+      return allInvoices.length > 0 && !eligibleInvoices.some(invoice => invoice.id === selectedInvoiceId)
+    })
+    if (missingInvoiceSelection) {
+      toast({ title: "اختر فاتورة مرحّلة ومفتوحة لكل عقد قبل تسجيل التحصيل", variant: "destructive" })
+      return
+    }
     if (!Number.isFinite(value) || value <= 0 || allocations.some(item => !Number.isFinite(item.amount) || item.amount <= 0)) {
       toast({ title: "وزّع مبلغاً موجباً على كل عقد محدد", variant: "destructive" })
       return
@@ -648,7 +662,7 @@ export function ContractSettlementWorkspace({ records, initialCustomerId = null,
         </tbody></table>
       </CardContent></Card>
       <Card className="h-fit"><CardHeader className="border-b"><CardTitle className="text-base">تسجيل تحصيل</CardTitle><p className="text-xs text-slate-500">يُحدّث العقد وكشف المديونية والقيد في عملية واحدة.</p></CardHeader><CardContent className="space-y-3 p-4">
-         <div className="space-y-2"><p className="text-xs font-bold text-slate-600">توزيع التحصيل على العقود</p>{selectedRows.map(row => { const p = row.contract.payload as Record<string, unknown>; const number = String(p.contractNumber ?? row.contract.reference); const invoices = invoicesFor(row.contract.id, number); return <div key={row.contract.id} className="rounded-xl border border-cyan-100 bg-cyan-50/40 p-3"><div className="flex items-center justify-between gap-2 text-xs"><b>{number}</b><span className="text-amber-700">المتبقي {row.remaining.toLocaleString("ar-SA")} ر.س</span></div><Input type="number" min="0.01" step="0.01" value={allocationAmounts[row.contract.id] ?? ""} onChange={event => setAllocationAmounts(current => ({ ...current, [row.contract.id]: event.target.value }))} className="mt-2 bg-white" placeholder="مبلغ هذا العقد" />{invoices.length > 0 && <select value={allocationInvoices[row.contract.id] ?? ""} onChange={event => setAllocationInvoices(current => ({ ...current, [row.contract.id]: event.target.value }))} className="mt-2 h-9 w-full rounded-md border bg-white px-2 text-xs"><option value="">بدون فاتورة محددة</option>{invoices.map(invoice => { const ip = invoice.payload as Record<string, unknown>; return <option key={invoice.id} value={invoice.id}>{String(ip.invoiceNumber ?? invoice.reference)} · {Number(ip.total ?? ip.amount ?? 0).toLocaleString("ar-SA")} ر.س</option> })}</select>}</div> })}</div>
+          <div className="space-y-2"><p className="text-xs font-bold text-slate-600">توزيع التحصيل على العقود</p>{selectedRows.map(row => { const p = row.contract.payload as Record<string, unknown>; const number = String(p.contractNumber ?? row.contract.reference); const allInvoices = invoiceRecordsFor(row.contract.id, number); const invoices = invoicesFor(row.contract.id, number); return <div key={row.contract.id} className="rounded-xl border border-cyan-100 bg-cyan-50/40 p-3"><div className="flex items-center justify-between gap-2 text-xs"><b>{number}</b><span className="text-amber-700">المتبقي {row.remaining.toLocaleString("ar-SA")} ر.س</span></div><Input type="number" min="0.01" step="0.01" value={allocationAmounts[row.contract.id] ?? ""} onChange={event => setAllocationAmounts(current => ({ ...current, [row.contract.id]: event.target.value }))} className="mt-2 bg-white" placeholder="مبلغ هذا العقد" />{allInvoices.length > 0 && <><select value={allocationInvoices[row.contract.id] ?? ""} onChange={event => setAllocationInvoices(current => ({ ...current, [row.contract.id]: event.target.value }))} disabled={invoices.length === 0} className="mt-2 h-9 w-full rounded-md border bg-white px-2 text-xs disabled:cursor-not-allowed disabled:bg-slate-100"><option value="">{invoices.length > 0 ? "اختر فاتورة مرحّلة ومفتوحة" : "لا توجد فاتورة مرحّلة قابلة للتحصيل"}</option>{invoices.map(invoice => { const ip = invoice.payload as Record<string, unknown>; return <option key={invoice.id} value={invoice.id}>{String(ip.invoiceNumber ?? invoice.reference)} · {Number(ip.total ?? ip.amount ?? 0).toLocaleString("ar-SA")} ر.س</option> })}</select>{invoices.length === 0 && <p className="text-[11px] text-amber-800">رحّل الفاتورة أولاً من سجل الفواتير قبل تسجيل التحصيل.</p>}</>}</div> })}</div>
          <div className="rounded-xl bg-slate-50 p-3 text-xs"><span className="text-slate-500">إجمالي التوزيع:</span> <b className="text-cyan-800">{totalAllocated.toLocaleString("ar-SA")} ر.س</b></div>
          <label className="block text-xs font-bold text-slate-600">مبلغ التحصيل<Input type="number" min="0.01" step="0.01" value={amount} readOnly className="mt-1 bg-slate-50" /></label>
         <label className="block text-xs font-bold text-slate-600">طريقة الدفع<select value={paymentMethod} onChange={event => setPaymentMethod(event.target.value)} className="mt-1 h-10 w-full rounded-md border bg-white px-3 text-sm"><option>نقدي</option><option>تحويل بنكي</option><option>شبكة</option><option>شيك</option></select></label>
