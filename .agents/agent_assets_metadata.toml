@@ -47,14 +47,14 @@ content_type = "text/html"
 id = "_fHrj2SY5FYX9lyFf_NXU"
 uri = "file://docs/container-lifecycle-audit-2026-10-11.html"
 type = "html"
-title = "تقرير تدقيق دورة الحاويات — 11 أكتوبر 2026"
-description = "تقرير شامل بالأرقام الفعلية المسجلة، وتحليل مراحل الطلبات ومخزون الاختبار والضوابط البرمجية والمخاطر والتوصيات. مصدره قاعدة المشروع المحلية، وليس قاعدة Hostinger الحية."
+title = "تقرير تدقيق دورة الحاويات — النسخة المحدّثة"
+description = "تقرير دورة العرض والتحقق من الطلب والعقد والتخصيص والحركات والفاتورة والتحصيل، مع توضيح حدود الإثبات والأثر المالي المحاكى."
 logical_id = "95087904-3d6c-4f79-b068-1e3c75b22f2b"
-content_hash = "sha256:8ac29bfd8b81140fc4a34de5c64f770cc98b63753aabe6aa20f914e8ce2290a8"
-size = 23767
-mtime_ms = 1791748007962
-storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:79c28253-442f-4679-ba83-2fa9cfc3b300/95087904-3d6c-4f79-b068-1e3c75b22f2b/ab172a50-3072-43a3-8add-37e41a7ff3fe"
-storage_version_token = "1791748055363703"
+content_hash = "sha256:17ea59428b7a2c8bf48f2dcfba4f03416bd0a575647a1533de9b9575b2c5f1ad"
+size = 30408
+mtime_ms = 1791751191974
+storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:a7e29445-1f73-4f7e-bcf7-c137dbcc2d1d/95087904-3d6c-4f79-b068-1e3c75b22f2b/d9d430de-e89b-4ed5-b57a-47d03660e7a9"
+storage_version_token = "1791751223913840"
 content_type = "text/html"
 
 [[outputs]]
