@@ -1,24 +1,7 @@
-/**
- * The public origin is injected into static HTML from site_public_url and is
- * updated when settings load. Never use the browser origin for SEO: previews
- * and staging hosts must not become canonical production URLs.
- */
+/** The canonical origin is fixed for this installation and never follows the browser or settings. */
 export const PUBLIC_SITE_URL = "https://sabaik.net"
 
-function validPublicOrigin(value: string | null | undefined): string {
-  const raw = (value || "").trim()
-  if (!raw) return ""
-  try {
-    const parsed = new URL(raw)
-    if (!["http:", "https:"].includes(parsed.protocol)) return ""
-    if (/localhost|127\.0\.0\.1|0\.0\.0\.0|replit\.(dev|app)$/i.test(parsed.hostname)) return ""
-    return parsed.origin
-  } catch {
-    return ""
-  }
-}
-
-export function setSitePublicUrl(value: string | null | undefined): void {
+export function setSitePublicUrl(_value: string | null | undefined): void {
   if (typeof document === "undefined") return
   let meta = document.querySelector("meta[name='site-public-url']") as HTMLMetaElement | null
   if (!meta) {
@@ -26,14 +9,11 @@ export function setSitePublicUrl(value: string | null | undefined): void {
     meta.name = "site-public-url"
     document.head.appendChild(meta)
   }
-  meta.content = validPublicOrigin(value) || PUBLIC_SITE_URL
+  meta.content = PUBLIC_SITE_URL
 }
 
 export function getSiteUrl(): string {
-  if (typeof document === "undefined") return ""
-  return validPublicOrigin(
-    document.querySelector("meta[name='site-public-url']")?.getAttribute("content"),
-  ) || PUBLIC_SITE_URL
+  return PUBLIC_SITE_URL
 }
 
 export function siteUrl(path = "/"): string {

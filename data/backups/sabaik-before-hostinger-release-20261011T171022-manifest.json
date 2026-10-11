@@ -1,0 +1,134 @@
+{
+  "createdAt": "2026-10-11T17:10:23.636Z",
+  "source": "data/sabaik.db",
+  "backup": "sabaik-before-hostinger-release-20261011T171022.db",
+  "sha256": "45936b56ff7b4170855222756156ae5eb70e3a8f49dedb4408808e180e680ef4",
+  "journalMode": "delete",
+  "integrity": "ok",
+  "tables": {
+    "active_visitors": {
+      "count": 10,
+      "sha256": "501d26a99b2266c54aa84d637eb71a6d6711fb23c760e5483d440081ae81a4ea"
+    },
+    "admins": {
+      "count": 12,
+      "sha256": "d011d17edab82c22f840ff6186e5f9d8e421216af919d5adccdab783d535b0da"
+    },
+    "ads": {
+      "count": 1,
+      "sha256": "4607059679866b682c8c022709e1f66fa6de3ad8e272e7c27515e91380d1a139"
+    },
+    "bank_reconciliations": {
+      "count": 0,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "company_values": {
+      "count": 9,
+      "sha256": "e5e144c50671825aa7663087218684e4b00d9329c8194b7385e41a7b1e1c2372"
+    },
+    "container_system_audit": {
+      "count": 0,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "container_system_records": {
+      "count": 107,
+      "sha256": "929f837299aaa5e6be06799dde33f0cc52e014101903c0005d2d012721557d60"
+    },
+    "containers": {
+      "count": 0,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "conversations": {
+      "count": 0,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "financial_accounts": {
+      "count": 15,
+      "sha256": "3823c5a1c0ed55e6c3bf3bc21613c8acc6cc4cd8079ae5a14a74ee5ca930df26"
+    },
+    "financial_allocations": {
+      "count": 0,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "financial_journal_entries": {
+      "count": 0,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "financial_journal_lines": {
+      "count": 0,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "financial_periods": {
+      "count": 2,
+      "sha256": "262b4d0f2adf67cbc1c674d982ceb987ccc985cb99efcbd9c43011cf7ee968c5"
+    },
+    "financial_transactions": {
+      "count": 0,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "hero_slides": {
+      "count": 4,
+      "sha256": "4a5a5a02711a0ec1ce2a38444adc2dc44d097990e121a508975a976670110338"
+    },
+    "messages": {
+      "count": 0,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "notifications": {
+      "count": 7,
+      "sha256": "e3968a6e21c0bbffdfb6a68db7476dcecbf168df49717391e56679bc60616c82"
+    },
+    "packages": {
+      "count": 5,
+      "sha256": "e4ef9bd632b06a87d17bb26960600c823878b8cd12a2550ccf37122e6a5a6e9e"
+    },
+    "page_views": {
+      "count": 6477,
+      "sha256": "5cbde4f36edd2a10af40987109898360de5dc84bfc6019185bfe040c3ecd5320"
+    },
+    "partners": {
+      "count": 6,
+      "sha256": "a0371581b73b5a71fc6fb02ba49d143f33a22edb2a815aa5b4bae9626b20187a"
+    },
+    "posts": {
+      "count": 71,
+      "sha256": "1c876a0c58887404766eb52aac57e0f2a29629120fb9da8db0e519dbf3e6f7e4"
+    },
+    "push_subscriptions": {
+      "count": 3,
+      "sha256": "bfcad3073cd691d8d632b6da1ca0f16786184df01f80570d43eb5833ea75a5c4"
+    },
+    "reviews": {
+      "count": 15,
+      "sha256": "1df7d9c1e0dc9385ccd4d26ef63ab46f6ed47455a9f913e2c296b2efe0420cf4"
+    },
+    "seo_pages": {
+      "count": 38,
+      "sha256": "bbff8a03cdafe0f18f30ef64219960aac0cab4ad09ef64e776963608ab5a819a"
+    },
+    "service_requests": {
+      "count": 10,
+      "sha256": "3c22d13992a8ec99343a11d3bc9612a140e1b94e8622ae974883266d4983b2ff"
+    },
+    "services": {
+      "count": 6,
+      "sha256": "cd4a760d13e121eed95a0b12ff548c4d2a89d1b1b6df334f2095943745d6af03"
+    },
+    "site_settings": {
+      "count": 68,
+      "sha256": "8f294878d638247788c6e2bb17dec4d29ea4a14fb58a4ba58d6544d21c1450d1"
+    },
+    "structured_content": {
+      "count": 0,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "testimonials": {
+      "count": 9,
+      "sha256": "423ebbf75c0fd84744fbd9911d277f244c44cf340021f221e552d8b8664f9eb5"
+    },
+    "whatsapp_messages": {
+      "count": 0,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    }
+  }
+}

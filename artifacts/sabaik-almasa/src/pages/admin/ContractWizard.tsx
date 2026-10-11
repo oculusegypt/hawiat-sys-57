@@ -187,12 +187,12 @@ function requestContainerTypeScore(request: { containerSize?: string | null; ser
   const typeNumbers = typeValues.flatMap(value => value.match(/\d+(?:\.\d+)?/g) ?? [])
   const numberMatch = requestedNumbers.some(value => typeNumbers.includes(value))
   const requestText = normalizedContainerValue(`${request.containerSize ?? ""} ${request.serviceType ?? ""}`)
-  const requestCategory = /نفايات|مكبس|waste/.test(requestText)
-    ? "waste"
-    : /أنقاض|هدم|مخلفات بناء|debris/.test(requestText)
-      ? "debris"
-      : /عقد|نظافة|تنظيف|contract/.test(requestText)
-        ? "contract"
+  const requestCategory = /عقد|نظافة|تنظيف|contract/.test(requestText)
+    ? "contract"
+    : /نفايات|مكبس|waste/.test(requestText)
+      ? "waste"
+      : /أنقاض|هدم|مخلفات بناء|debris/.test(requestText)
+        ? "debris"
         : ""
   const categoryMatch = requestCategory && contractCategoryKey(type.category) === requestCategory
   if (exactMatch) return categoryMatch ? 130 : 110

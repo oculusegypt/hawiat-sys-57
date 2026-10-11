@@ -41,27 +41,201 @@ const ARCHIVE_FILENAME = "hawiat-sys-hostinger.zip";
 const PRESERVE_SOURCE_DATA = process.env.HOSTINGER_PRESERVE_SOURCE === "1";
 const ARCHIVE_ONLY_SEO_TITLE_OVERRIDES = [
   {
+    postId: 4,
+    expectedSeoSlug: "أفضل-حلول-تأجير-حاويات-نقل-أنقاض-في-الرياض-لمشاريعك-الإنشائية",
+    htmlPath: "blog/أفضل-حلول-تأجير-حاويات-نقل-أنقاض-في-الرياض-لمشاريعك-4/index.html",
+    title: "أفضل حلول تأجير حاويات الأنقاض بالرياض | دليل عملي",
+  },
+  {
+    postId: 5,
+    expectedSeoSlug: "دليل-أحجام-الحاويات-حاوية-6-ياردة-حتى-20-ياردة-أيها-يناسب-مشروعك؟",
+    htmlPath: "blog/دليل-أحجام-الحاويات-حاوية-6-ياردة-حتى-20-ياردة-أيها-5/index.html",
+    title: "دليل أحجام الحاويات | 6 و12 و20 ياردة",
+  },
+  {
+    postId: 8,
+    expectedSeoSlug: "كيفية-التخلص-الصحيح-من-مخلفات-البناء-والهدم-في-الرياض",
+    htmlPath: "blog/كيفية-التخلص-الصحيح-من-مخلفات-البناء-والهدم-في-الرياض-8/index.html",
+    title: "التخلص من مخلفات البناء والهدم بالرياض",
+  },
+  {
+    postId: 13,
+    expectedSeoSlug: "حاويات-المصانع-والمستودعات-في-الرياض-إدارة-احترافية-للنفايات-الصناعية",
+    htmlPath: "blog/حاويات-المصانع-والمستودعات-في-الرياض-إدارة-احترافية-13/index.html",
+    title: "حاويات المصانع والمستودعات بالرياض | إدارة المخلفات",
+  },
+  {
+    postId: 14,
+    expectedSeoSlug: "شركة-متخصصة-في-نقل-مخلفات-البناء-ورفع-الأنقاض-بالرياض",
+    htmlPath: "blog/شركة-متخصصة-في-نقل-مخلفات-البناء-ورفع-الأنقاض-14/index.html",
+    title: "شركة نقل مخلفات البناء ورفع الأنقاض بالرياض",
+  },
+  {
+    postId: 18,
+    expectedSeoSlug: "حاويات-حي-الروضة-وقرطبة-والمونسية-إيجار-حاويات-موثوق-في-الرياض",
+    htmlPath: "blog/حاويات-حي-الروضة-وقرطبة-والمونسية-إيجار-حاويات-18/index.html",
+    title: "حاويات الروضة وقرطبة والمونسية | الرياض",
+  },
+  {
+    postId: 20,
+    expectedSeoSlug: "حاويات-حي-الملقا-والصحافة-والقيروان-وحطين-إيجار-حاويات-شمال-الرياض",
+    htmlPath: "blog/حاويات-حي-الملقا-والصحافة-والقيروان-وحطين-إيجار-20/index.html",
+    title: "حاويات الملقا والصحافة والقيروان وحطين | الرياض",
+  },
+  {
+    postId: 22,
+    expectedSeoSlug: "حاويات-حي-الفيحاء-والجزيرة-والربوة-والريان",
+    htmlPath: "blog/حاويات-حي-الفيحاء-والجزيرة-والربوة-والريان-22/index.html",
+    title: "حاويات الفيحاء والجزيرة والربوة والريان | الرياض",
+  },
+  {
+    postId: 23,
+    expectedSeoSlug: "حاويات-حي-التعاون-والملك-فهد-والعليا-و-الورود-تأجير-حاويات-وسط-الرياض",
+    htmlPath: "blog/حاويات-حي-التعاون-والملك-فهد-والعليا-و-الورود-تأجير-23/index.html",
+    title: "حاويات التعاون والملك فهد والعليا والورود | الرياض",
+  },
+  {
+    postId: 30,
+    expectedSeoSlug: "خدمات-توصيل-واستلام-وسحب-وتبديل-الحاويات-في-الرياض",
+    htmlPath: "blog/خدمات-توصيل-واستلام-وسحب-وتبديل-الحاويات-في-الرياض-30/index.html",
+    title: "توصيل وسحب وتبديل الحاويات في الرياض",
+  },
+  {
+    postId: 31,
+    expectedSeoSlug: "حاويات-للمطورين-والورش-والمؤسسات-في-الرياض-خدمات-متخصصة",
+    htmlPath: "blog/حاويات-للمطورين-والورش-والمؤسسات-في-الرياض-خدمات-31/index.html",
+    title: "حاويات للمطورين والورش والمؤسسات في الرياض",
+  },
+  {
+    postId: 35,
+    expectedSeoSlug: "إيجار-حاويات-شرق-الرياض-تغطية-شاملة-لجميع-أحياء-الشرق",
+    htmlPath: "blog/إيجار-حاويات-شرق-الرياض-تغطية-شاملة-لجميع-أحياء-35/index.html",
+    title: "إيجار حاويات شرق الرياض | الأحياء والتغطية",
+  },
+  {
+    postId: 36,
+    expectedSeoSlug: "إيجار-حاويات-جنوب-الرياض-تغطية-أحياء-الجنوب",
+    htmlPath: "blog/إيجار-حاويات-جنوب-الرياض-تغطية-أحياء-الجنوب-36/index.html",
+    title: "إيجار حاويات جنوب الرياض | الأحياء والتغطية",
+  },
+  {
     postId: 60,
     expectedSeoSlug: "أفضل-شركة-تأجير-حاويات-الرياض-معايير-الاختيار-2026",
     htmlPath: "blog/أفضل-شركة-تأجير-حاويات-الرياض-معايير-الاختيار-2026-60/index.html",
-    title: "أفضل شركة تأجير حاويات بالرياض | مقارنة عملية 2026",
-  },
-  {
-    postId: 74,
-    expectedSeoSlug: "farq-bayn-haouiya-12-wa-20-yarda",
-    htmlPath: "blog/الفرق-بين-حاوية-12-ياردة-و20-ياردة-أيهما-تحتاج-74/index.html",
-    title: "الفرق بين حاوية 12 و20 ياردة | أيهما أنسب لك؟",
+    title: "أفضل شركة تأجير حاويات بالرياض | مقارنة 2026",
   },
   {
     postId: 61,
     expectedSeoSlug: "حاوية-20-ياردة-الرياض-السعر-المواصفات",
     htmlPath: "blog/حاوية-20-ياردة-الرياض-السعر-المواصفات-61/index.html",
-    title: "حاوية 20 ياردة الرياض — السعر والمواصفات 2026",
+    title: "حاوية 20 ياردة بالرياض | السعر والمواصفات",
+  },
+  {
+    postId: 74,
+    expectedSeoSlug: "farq-bayn-haouiya-12-wa-20-yarda",
+    htmlPath: "blog/الفرق-بين-حاوية-12-ياردة-و20-ياردة-أيهما-تحتاج-74/index.html",
+    title: "الفرق بين حاوية 12 و20 ياردة | أيهما أنسب؟",
+  },
+  {
+    postId: 75,
+    expectedSeoSlug: "naql-alankad-wamkhlfat-albinaa-alryad",
+    htmlPath: "blog/نقل-الأنقاض-ومخلفات-البناء-في-الرياض-دليل-شامل-2025-75/index.html",
+    title: "نقل الأنقاض ومخلفات البناء بالرياض | دليل 2025",
+  },
+  {
+    postId: 76,
+    expectedSeoSlug: "haoiyat-nifayat-lil-mataeim-alryad",
+    htmlPath: "blog/حاويات-نفايات-للمطاعم-والمراكز-التجارية-في-الرياض-76/index.html",
+    title: "حاويات نفايات للمطاعم بالرياض | عقود شهرية",
+  },
+  {
+    postId: 159,
+    expectedSeoSlug: "كيف-تحسب-عدد-الحاويات-لمشروع-الترميم",
+    htmlPath: "blog/كيف-تحسب-عدد-الحاويات-لمشروع-الترميم-159/index.html",
+    title: "كيف تحسب عدد الحاويات لمشروع الترميم؟",
+  },
+];
+
+const ARCHIVE_ONLY_SEO_PAGE_OVERRIDES = [
+  {
+    pageId: 8,
+    expectedSeoSlug: "نقل-الأنقاض-ومخلفات-البناء-بالرياض",
+    htmlPath: "page/نقل-الأنقاض-ومخلفات-البناء-بالرياض-8/index.html",
+    title: "نقل الأنقاض ومخلفات البناء بالرياض | حاويات وسحب",
+    description: "نقل الأنقاض ومخلفات البناء في الرياض باستخدام حاويات مناسبة، مع تنسيق مواعيد التوصيل والسحب من موقع العمل وفق احتياجات المشروع.",
+  },
+  {
+    pageId: 9,
+    expectedSeoSlug: "تأجير-حاويات-للمنازل-والترميم-بالرياض",
+    htmlPath: "page/تأجير-حاويات-للمنازل-والترميم-بالرياض-9/index.html",
+    title: "تأجير حاويات للمنازل والترميم بالرياض",
+    description: "نوفر حاويات مناسبة لترميم المنازل في الرياض، لجمع مخلفات البلاط والجبس والهدم الخفيف، مع تنظيم التوصيل والسحب وفق احتياج المشروع.",
+  },
+  {
+    pageId: 11,
+    expectedSeoSlug: "حاويات-للمصانع-والمستودعات-بالرياض",
+    htmlPath: "page/حاويات-للمصانع-والمستودعات-بالرياض-11/index.html",
+    title: "حاويات للمصانع والمستودعات بالرياض | خدمة دورية",
+    description: "خدمات حاويات للمصانع والمستودعات في الرياض تشمل اختيار المقاس المناسب وجدولة التوصيل والسحب وتنظيم جمع المخلفات وفق طبيعة التشغيل.",
+  },
+  {
+    pageId: 12,
+    expectedSeoSlug: "حاوية-12-ياردة-بالرياض",
+    htmlPath: "page/حاوية-12-ياردة-بالرياض-12/index.html",
+    title: "حاوية 12 ياردة بالرياض | تأجير حاويات الترميم",
+    description: "تعرّف على استخدامات حاوية 12 ياردة بالرياض لمشاريع الترميم والأنقاض، واختر الخدمة المناسبة مع تنظيم التوصيل والسحب حسب موقع العمل.",
+  },
+  {
+    pageId: 13,
+    expectedSeoSlug: "حاوية-20-ياردة-بالرياض",
+    htmlPath: "page/حاوية-20-ياردة-بالرياض-13/index.html",
+    title: "حاوية 20 ياردة بالرياض | حاويات المشاريع والأنقاض",
+    description: "حاوية 20 ياردة بالرياض مناسبة لمخلفات البناء والهدم والمشاريع الكبيرة؛ اطلب التوصيل والسحب بما يتوافق مع مراحل تنفيذ مشروعك.",
+  },
+  {
+    pageId: 14,
+    expectedSeoSlug: "شركة-تأجير-حاويات-بالرياض",
+    htmlPath: "page/شركة-تأجير-حاويات-بالرياض-14/index.html",
+    title: "شركة تأجير حاويات بالرياض | تأجير الحاويات",
+    description: "تعرّف على خدمات شركة تأجير حاويات بالرياض للمخلفات والأنقاض، مع تنسيق التوصيل والسحب واختيار المقاس الملائم قبل بدء العمل.",
+  },
+  {
+    pageId: 15,
+    expectedSeoSlug: "رفع-ونقل-المخلفات-بالرياض",
+    htmlPath: "page/رفع-ونقل-المخلفات-بالرياض-15/index.html",
+    title: "رفع ونقل المخلفات بالرياض | حاويات وسحب من الموقع",
+    description: "اطلب رفع ونقل المخلفات بالرياض بعد البناء أو الترميم، مع اختيار الحاوية الملائمة وتنظيم موعد السحب من موقعك حسب حجم العمل.",
+  },
+  {
+    pageId: 88,
+    expectedSeoSlug: "حاوية-نفايات-للمطاعم-والكافيهات-بالرياض",
+    htmlPath: "page/حاوية-نفايات-للمطاعم-والكافيهات-بالرياض-88/index.html",
+    title: "حاوية نفايات للمطاعم والكافيهات بالرياض",
+  },
+  {
+    pageId: 89,
+    expectedSeoSlug: "عدد-حاويات-مخلفات-البناء-للمشروع",
+    htmlPath: "page/عدد-حاويات-مخلفات-البناء-للمشروع-89/index.html",
+    title: "حساب عدد حاويات مخلفات البناء للمشروع",
+  },
+];
+
+const ARCHIVE_ONLY_STATIC_DESCRIPTION_OVERRIDES = [
+  {
+    htmlPath: "why-us/commitment/index.html",
+    description: "تعرف على التزامنا بخدمة منظمة لتأجير الحاويات ونقل المخلفات في الرياض، من وضوح المواعيد إلى اختيار الحل المناسب لكل موقع ومشروع.",
+  },
+  {
+    htmlPath: "why-us/leadership/index.html",
+    description: "تعرّف على رؤية قيادتنا لتقديم خدمات موثوقة لتأجير الحاويات ونقل مخلفات البناء في الرياض، مع التركيز على تنظيم العمل وجودة التنفيذ.",
   },
 ];
 
 function applyArchiveOnlySeoTitleOverridesToDatabase(db) {
-  const updateTitle = db.prepare("UPDATE posts SET seo_title = ? WHERE id = ?");
+  const updatePostTitle = db.prepare("UPDATE posts SET seo_title = ? WHERE id = ?");
+  const updateSeoPage = db.prepare(
+    "UPDATE seo_pages SET seo_title = ?, seo_description = COALESCE(?, seo_description) WHERE id = ?",
+  );
   const applyOverrides = db.transaction(() => {
     for (const override of ARCHIVE_ONLY_SEO_TITLE_OVERRIDES) {
       if (override.title.length > 65) {
@@ -71,11 +245,26 @@ function applyArchiveOnlySeoTitleOverridesToDatabase(db) {
       if (!post || post.seo_slug !== override.expectedSeoSlug) {
         throw new Error(`تعذر مطابقة سجل المقال ${override.postId} بأمان داخل قاعدة الأرشيف`);
       }
-      updateTitle.run(override.title, override.postId);
+      updatePostTitle.run(override.title, override.postId);
+    }
+    for (const override of ARCHIVE_ONLY_SEO_PAGE_OVERRIDES) {
+      if (override.title.length > 65) {
+        throw new Error(`عنوان صفحة الأرشيف يتجاوز الحد المسموح: ${override.pageId}`);
+      }
+      if (override.description && (override.description.length < 120 || override.description.length > 160)) {
+        throw new Error(`وصف صفحة الأرشيف خارج الحد المسموح: ${override.pageId}`);
+      }
+      const page = db.prepare("SELECT seo_slug FROM seo_pages WHERE id = ?").get(override.pageId);
+      if (!page || page.seo_slug !== override.expectedSeoSlug) {
+        throw new Error(`تعذر مطابقة سجل صفحة SEO ${override.pageId} بأمان داخل قاعدة الأرشيف`);
+      }
+      updateSeoPage.run(override.title, override.description ?? null, override.pageId);
     }
   });
   applyOverrides();
-  console.log(`  ✅ تم اختصار ${ARCHIVE_ONLY_SEO_TITLE_OVERRIDES.length} عناوين داخل قاعدة الأرشيف فقط`);
+  console.log(
+    `  ✅ تم ضبط ${ARCHIVE_ONLY_SEO_TITLE_OVERRIDES.length} عنوان مقال و${ARCHIVE_ONLY_SEO_PAGE_OVERRIDES.length} صفحة داخل قاعدة الأرشيف فقط`,
+  );
 }
 
 function applyArchiveOnlySeoTitleOverridesToHtml(buildRoot) {
@@ -86,11 +275,23 @@ function applyArchiveOnlySeoTitleOverridesToHtml(buildRoot) {
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#39;");
 
-  for (const override of ARCHIVE_ONLY_SEO_TITLE_OVERRIDES) {
-    const htmlPath = join(buildRoot, override.htmlPath);
-    if (!existsSync(htmlPath)) {
-      throw new Error(`صفحة المقال المطلوبة لتعديل SEO غير موجودة: ${override.htmlPath}`);
+  const updateMetaContent = (html, key, value, htmlPath) => {
+    let updates = 0;
+    html = html.replace(/<meta\b[^>]*>/gi, (tag) => {
+      const metaKey = tag.match(/\b(?:property|name)=["']([^"']+)["']/i)?.[1]?.toLowerCase();
+      if (metaKey !== key.toLowerCase() || !/\bcontent=(["'])[\s\S]*?\1/i.test(tag)) return tag;
+      updates += 1;
+      return tag.replace(/\bcontent=(["'])[\s\S]*?\1/i, `content="${escapeHtml(value)}"`);
+    });
+    if (updates !== 1) {
+      throw new Error(`تعذر تحديث meta ${key} في الصفحة الثابتة: ${htmlPath}`);
     }
+    return html;
+  };
+
+  const updatePage = (override) => {
+    const htmlPath = join(buildRoot, override.htmlPath);
+    if (!existsSync(htmlPath)) throw new Error(`صفحة HTML المطلوبة لتعديل SEO غير موجودة: ${override.htmlPath}`);
     let html = readFileSync(htmlPath, "utf8");
     let titleTagUpdates = 0;
     html = html.replace(/(<title\b[^>]*>)[\s\S]*?(<\/title>)/i, (_match, openTag, closeTag) => {
@@ -111,9 +312,29 @@ function applyArchiveOnlySeoTitleOverridesToHtml(buildRoot) {
     if (socialTitleUpdates !== 2) {
       throw new Error(`تعذر تحديث عناوين المشاركة الاجتماعية: ${override.htmlPath}`);
     }
+    if (override.description) {
+      for (const key of ["description", "og:description", "twitter:description"]) {
+        html = updateMetaContent(html, key, override.description, override.htmlPath);
+      }
+    }
+    writeFileSync(htmlPath, html, "utf8");
+  };
+
+  for (const override of ARCHIVE_ONLY_SEO_TITLE_OVERRIDES) updatePage(override);
+  for (const override of ARCHIVE_ONLY_SEO_PAGE_OVERRIDES) updatePage(override);
+
+  for (const override of ARCHIVE_ONLY_STATIC_DESCRIPTION_OVERRIDES) {
+    const htmlPath = join(buildRoot, override.htmlPath);
+    if (!existsSync(htmlPath)) throw new Error(`صفحة HTML المطلوبة لتعديل الوصف غير موجودة: ${override.htmlPath}`);
+    let html = readFileSync(htmlPath, "utf8");
+    for (const key of ["description", "og:description", "twitter:description"]) {
+      html = updateMetaContent(html, key, override.description, override.htmlPath);
+    }
     writeFileSync(htmlPath, html, "utf8");
   }
-  console.log(`  ✅ تم تحديث عناوين الصفحات وOG/Twitter في HTML المصدّر فقط`);
+  console.log(
+    `  ✅ تم تحديث ${ARCHIVE_ONLY_SEO_TITLE_OVERRIDES.length + ARCHIVE_ONLY_SEO_PAGE_OVERRIDES.length} عنواناً و${ARCHIVE_ONLY_SEO_PAGE_OVERRIDES.filter((item) => item.description).length + ARCHIVE_ONLY_STATIC_DESCRIPTION_OVERRIDES.length} وصفاً داخل مخرجات الأرشيف فقط`,
+  );
 }
 
 function quoteIdentifier(value) {
