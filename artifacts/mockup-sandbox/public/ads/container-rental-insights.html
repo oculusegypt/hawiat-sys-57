@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light" />
+    <title>CleanFlow Platform — رؤى العمليات</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        color-scheme: light;
+        font-family: "IBM Plex Sans Arabic", sans-serif;
+        font-synthesis: none;
+        text-rendering: optimizeLegibility;
+      }
+
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 100vw;
+        height: 100vh;
+        margin: 0;
+        padding: 0;
+        overflow: hidden;
+      }
+
+      body {
+        background: #f0eadc;
+      }
+
+      .ad {
+        width: 100vw;
+        height: 100vh;
+        padding: 7vh 8vw;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        overflow: hidden;
+        background: #f0eadc;
+        color: #153c3c;
+      }
+
+      .logo {
+        display: flex;
+        align-items: center;
+        align-self: flex-start;
+        gap: 1.4vw;
+        direction: ltr;
+        flex: 0 0 auto;
+      }
+
+      .logo-mark {
+        width: 6.2vw;
+        height: 6.2vw;
+        display: grid;
+        place-items: center;
+        border-radius: 1.55vw;
+        background: #e46942;
+      }
+
+      .logo-mark svg {
+        width: 3.55vw;
+        height: 3.55vw;
+        fill: none;
+        stroke: #faf7ef;
+        stroke-width: 2.3;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+
+      .brand-name {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        color: #153c3c;
+        line-height: 1;
+      }
+
+      .brand-name strong {
+        font-family: "IBM Plex Sans Arabic", sans-serif;
+        font-size: 2.55vw;
+        font-weight: 700;
+        letter-spacing: -0.04em;
+      }
+
+      .brand-name small {
+        margin-top: 0.55vh;
+        font-family: "IBM Plex Sans Arabic", sans-serif;
+        font-size: 1.38vw;
+        font-weight: 500;
+        letter-spacing: 0.08em;
+      }
+
+      .middle {
+        display: flex;
+        flex: 1 1 auto;
+        flex-direction: column;
+        justify-content: center;
+        align-items: flex-start;
+        gap: 3.1vh;
+        direction: ltr;
+      }
+
+      .headline {
+        width: 100%;
+        color: #153c3c;
+        font-family: "IBM Plex Sans Arabic", sans-serif;
+        font-size: 8.2vw;
+        font-weight: 700;
+        line-height: 1.36;
+        letter-spacing: -0.045em;
+        text-align: left;
+        direction: rtl;
+      }
+
+      .benefit {
+        width: 100%;
+        color: #153c3c;
+        font-family: "IBM Plex Sans Arabic", sans-serif;
+        font-size: 3.2vw;
+        font-weight: 500;
+        line-height: 1.65;
+        text-align: left;
+        direction: rtl;
+      }
+
+      .cta {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        align-self: flex-start;
+        margin-top: 1.2vh;
+        padding: 1.8vh 4.6vw;
+        border-radius: 1.2vw;
+        background: #e46942;
+        color: #faf7ef;
+        font-family: "IBM Plex Sans Arabic", sans-serif;
+        font-size: 2.9vw;
+        font-weight: 700;
+        line-height: 1.35;
+        white-space: nowrap;
+        direction: rtl;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="ad" aria-label="إعلان CleanFlow Platform">
+      <div class="logo" aria-label="CleanFlow Platform">
+        <span class="logo-mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24">
+            <rect x="3" y="3" width="8" height="8" rx="2"></rect>
+            <path d="M7 11v4a2 2 0 0 0 2 2h4"></path>
+            <rect x="13" y="13" width="8" height="8" rx="2"></rect>
+            <path d="M13 7h2a2 2 0 0 1 2 2v4"></path>
+          </svg>
+        </span>
+        <span class="brand-name">
+          <strong>CleanFlow</strong>
+          <small>Platform</small>
+        </span>
+      </div>
+      <section class="middle">
+        <div class="headline">قراراتك تبدأ من أرقام واضحة</div>
+        <div class="benefit">تقارير، تراخيص سلامة، ومساعد ذكي</div>
+        <div class="cta">استكشف المنصة</div>
+      </section>
+    </main>
+  </body>
+</html>

@@ -112,3 +112,59 @@ mtime_ms = 1791761198025
 storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:c72c350c-8f04-42ac-bdaf-f02d6ecface3/d9908b31-af99-426f-9fe0-45e89c24f5e6/48a67376-68dd-4bfd-96a4-0e6674a8ee0d"
 storage_version_token = "1791761251822484"
 content_type = "text/html"
+
+[[outputs]]
+id = "9hNo5HBVf3O6CAb1zZG38"
+uri = "file://generated-artifacts/ads/cleanflow-container-rental-requests.jpg"
+type = "image"
+title = "النهائي 1 — طلبات الحاويات"
+description = "CleanFlow Platform، إعلان عربي 1080×1350 عن خريطة الطلب والتنبيهات وتتبع العميل."
+logical_id = "0335c3d7-fb87-4ed3-bbe3-b84201f74d27"
+content_hash = "sha256:52826c37939f07cbbdc91ecb33b5fc97ca98a2e2d4dbe5f9d3fc33d6c95146cd"
+size = 45020
+mtime_ms = 1791764637278
+storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:c72c350c-8f04-42ac-bdaf-f02d6ecface3/0335c3d7-fb87-4ed3-bbe3-b84201f74d27/15be285a-6aaa-46db-9895-e1b54dde2d5b"
+storage_version_token = "1791764674526884"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "8ZPVovGaZmh_g032MrnNT"
+uri = "file://generated-artifacts/ads/cleanflow-container-rental-fleet.jpg"
+type = "image"
+title = "النهائي 2 — الأسطول والفرق"
+description = "CleanFlow Platform، إعلان عربي 1080×1350 عن جدولة الفرق وأوامر العمل ومتابعة التنفيذ."
+logical_id = "975bed67-0a40-4f0a-a9ca-51802aeee939"
+content_hash = "sha256:426255eab638f0567bb5f72749100dfadf8730da4112035e59ca9a5a38907c79"
+size = 45114
+mtime_ms = 1791764639622
+storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:c72c350c-8f04-42ac-bdaf-f02d6ecface3/975bed67-0a40-4f0a-a9ca-51802aeee939/b694665b-347c-4002-98d0-91080e9dc310"
+storage_version_token = "1791764675062314"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "IAmCX5L-JnXPYGZ4hf_QJ"
+uri = "file://generated-artifacts/ads/cleanflow-container-rental-contracts.jpg"
+type = "image"
+title = "النهائي 3 — العقود والتسعير"
+description = "CleanFlow Platform، إعلان عربي 1080×1350 عن العقود والفواتير وأسعار الباقات."
+logical_id = "c685390a-5d7b-445b-8b08-33cfde669c2b"
+content_hash = "sha256:547880dad5a7bac2994ad9ef9843a39ed80a0c154d93338086015ee2c0af6421"
+size = 42739
+mtime_ms = 1791764641778
+storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:c72c350c-8f04-42ac-bdaf-f02d6ecface3/c685390a-5d7b-445b-8b08-33cfde669c2b/a70844d2-ced0-4a20-9166-4bcb6b4ba3fd"
+storage_version_token = "1791764675540507"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "S10wMcrsHX6RdNq91CKXp"
+uri = "file://generated-artifacts/ads/cleanflow-container-rental-insights.jpg"
+type = "image"
+title = "النهائي 4 — التقارير والسلامة"
+description = "CleanFlow Platform، إعلان عربي 1080×1350 عن التقارير وتراخيص السلامة والمساعد الذكي."
+logical_id = "68c6ea5c-612c-49df-a74c-4d013fa2fd0c"
+content_hash = "sha256:a0f84e9be8eed80b8de10b529638f2a4e63f46bc83a7bf5c1d3a9b8addae7b91"
+size = 42447
+mtime_ms = 1791764644130
+storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:c72c350c-8f04-42ac-bdaf-f02d6ecface3/68c6ea5c-612c-49df-a74c-4d013fa2fd0c/0f019788-60d1-474c-b05b-a71cf6449dc4"
+storage_version_token = "1791764676037145"
+content_type = "image/jpeg"
