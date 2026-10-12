@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useLayoutEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { Route, Switch, Router as WouterRouter, useLocation } from 'wouter';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from '@/components/ui/toaster';
@@ -57,21 +57,6 @@ function DeferredServiceRequestModal() {
 }
 
 function SettingsBootstrap() {
-  const [location] = useLocation()
-  const { isLoaded } = useSiteSettings()
-  const isHomeRoute = location === "/"
-
-  // The prerendered snapshot belongs to the homepage only. The server can use
-  // the same SPA fallback for /admin and other client routes, so leaving this
-  // handoff active there briefly shows homepage data and images before React
-  // replaces it with the actual route.
-  useLayoutEffect(() => {
-    if (!isHomeRoute || isLoaded) {
-      document.documentElement.classList.remove("seo-static-pending")
-      document.getElementById("seo-static-page-content")?.remove()
-    }
-  }, [isHomeRoute, isLoaded])
-
   return (
     <>
       <AnonymousAnalyticsTracker />
