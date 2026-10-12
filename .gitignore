@@ -48,4 +48,5 @@ Thumbs.db
 .cache/
 .local/
 /generated-artifacts/
+/artifacts/mockup-sandbox/public/ads/cleanflow-carousel/media/
 /hawiat-sys-hostinger.zip

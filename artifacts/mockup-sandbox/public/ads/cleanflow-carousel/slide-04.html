@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CleanFlow Platform — أدوات الإدارة</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <style>
+      * { box-sizing: border-box; }
+      html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background: #102e37; }
+      body { font-family: "IBM Plex Sans Arabic", sans-serif; -webkit-font-smoothing: antialiased; }
+      .stage { width: 100vw; height: 100dvh; display: grid; place-items: center; overflow: hidden; }
+      .poster {
+        --teal: #153c3c; --coral: #e46942; --ivory: #faf7ef;
+        position: relative; isolation: isolate; overflow: hidden;
+        width: min(100vw, 80dvh); height: min(100dvh, 125vw);
+        aspect-ratio: 4 / 5; container-type: inline-size;
+        color: var(--ivory); background: #102e37;
+      }
+      .photo { position: absolute; inset: 0; z-index: -3; width: 100%; height: 100%; object-fit: cover; object-position: center; }
+      .shade { position: absolute; inset: 0; z-index: -2; background:
+        linear-gradient(90deg, rgba(5, 23, 47, .24) 0%, rgba(5, 23, 47, .09) 48%, rgba(7, 31, 40, .04) 100%),
+        linear-gradient(180deg, rgba(7, 27, 43, .20) 0%, transparent 24%, transparent 60%, rgba(7, 31, 40, .46) 100%); }
+      .side-shade { position: absolute; z-index: -1; inset: 0 auto 0 0; width: 61%; background: linear-gradient(90deg, rgba(7, 27, 49, .38), rgba(7, 27, 49, 0)); pointer-events: none; }
+      .brand { position: absolute; top: 5.1%; left: 6%; display: flex; align-items: center; gap: 1.15cqw; direction: ltr; }
+      .brand-mark { display: grid; place-items: center; width: 5.3cqw; height: 5.3cqw; border-radius: 1.25cqw; background: var(--coral); color: var(--ivory); transform: rotate(-7deg); box-shadow: 0 1cqw 2.2cqw rgba(0,0,0,.22); }
+      .brand-mark svg { width: 64%; height: 64%; }
+      .wordmark { display: flex; flex-direction: column; line-height: 1; text-align: left; }
+      .wordmark strong { color: #fffaf3; font: 700 1.86cqw/1 "IBM Plex Sans Arabic", sans-serif; letter-spacing: -.035em; }
+      .wordmark small { margin-top: .45cqw; color: #f4aa8e; font: 600 1.02cqw/1 "IBM Plex Sans Arabic", sans-serif; letter-spacing: .14em; text-transform: uppercase; }
+      .counter { position: absolute; top: 5.1%; right: 6%; direction: ltr; padding: .7cqw 1.5cqw .62cqw; border: 1px solid rgba(250,247,239,.58); border-radius: 999px; color: #fffaf3; font: 600 1.5cqw/1 "IBM Plex Sans Arabic", sans-serif; letter-spacing: .04em; background: rgba(9,34,48,.24); backdrop-filter: blur(10px); }
+      .counter b { color: #f49a78; font-weight: 700; }
+      .hero-copy { position: absolute; top: 19.6%; left: 5.9%; width: 58%; text-align: right; }
+      .eyebrow { display: inline-flex; align-items: center; gap: .9cqw; margin-bottom: 1.5cqw; color: #f1ba9f; font-size: 1.38cqw; font-weight: 600; letter-spacing: .06em; }
+      .eyebrow::before { content: ""; width: 3.3cqw; height: 1px; background: var(--coral); }
+      h1 { margin: 0; color: #fffaf3; font-size: 6.65cqw; font-weight: 700; line-height: 1.2; letter-spacing: -.045em; text-wrap: balance; text-shadow: 0 1cqw 2.4cqw rgba(0,0,0,.2); }
+      h1 span { color: #f08762; }
+      .feature-panel { position: absolute; left: 5.6%; bottom: 9.3%; width: 52.8%; padding: 1.1cqw 2.1cqw; border: 1px solid rgba(250,247,239,.7); border-radius: 2.1cqw; color: #153c3c; background: rgba(250,247,239,.96); box-shadow: 0 2.4cqw 6cqw rgba(3,18,32,.3); }
+      .feature-row { display: flex; align-items: center; gap: 1.6cqw; min-height: 7.8cqw; border-bottom: 1px solid rgba(21,60,60,.12); }
+      .feature-row:last-child { border-bottom: 0; }
+      .feature-icon { flex: 0 0 auto; display: grid; place-items: center; width: 4.55cqw; height: 4.55cqw; border-radius: 1.15cqw; color: var(--coral); background: rgba(228,105,66,.105); }
+      .feature-icon svg { width: 2.55cqw; height: 2.55cqw; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+      .feature-label { font-size: 1.92cqw; font-weight: 600; line-height: 1.35; }
+      .device-screen { position: absolute; left: 62.4%; top: 41.0%; width: 15.3%; height: 10.3%; padding: .55cqw; overflow: hidden; border: .24cqw solid rgba(212,231,224,.8); border-radius: .65cqw; background: #eff3e9; box-shadow: 0 .8cqw 2cqw rgba(0,0,0,.38); transform: rotate(-1deg); }
+      .screen-top { height: 1.05cqw; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #d5dfd6; }
+      .screen-logo { width: 2.45cqw; height: .45cqw; border-radius: 2px; background: #1c5550; }
+      .screen-dot { width: .52cqw; height: .52cqw; border-radius: 50%; background: var(--coral); }
+      .screen-layout { display: grid; grid-template-columns: 1fr 1.2fr; gap: .48cqw; height: calc(100% - 1.05cqw); padding-top: .55cqw; }
+      .screen-nav { display: flex; flex-direction: column; gap: .48cqw; padding: .35cqw; border-radius: .25cqw; background: #dfe8de; }
+      .screen-nav i { height: .35cqw; border-radius: 2px; background: #88a39a; }
+      .screen-main { display: flex; flex-direction: column; gap: .48cqw; }
+      .screen-line { width: 66%; height: .42cqw; border-radius: 3px; background: #9cb1a7; }
+      .screen-cards { display: flex; gap: .35cqw; }
+      .screen-cards i { flex: 1; height: 1.5cqw; border-radius: .2cqw; background: #dce7dc; }
+      .screen-chart { position: relative; flex: 1; min-height: 1.8cqw; overflow: hidden; border-radius: .2cqw; background: #e1e9df; }
+      .screen-chart::after { content: ""; position: absolute; inset: 36% 10% 15%; border-top: .2cqw solid #e46942; transform: skewY(-14deg); }
+      .screen-note { position: absolute; left: 5.8%; bottom: 5.4%; color: rgba(250,247,239,.82); font-size: 1.14cqw; font-weight: 500; }
+      .footer { position: absolute; right: 5.8%; bottom: 4.6%; display: flex; align-items: center; gap: 1.1cqw; color: rgba(250,247,239,.86); direction: ltr; }
+      .footer-mark { width: 2.65cqw; height: 2.65cqw; display: grid; place-items: center; border-radius: .72cqw; color: #fffaf3; background: var(--coral); }
+      .footer-mark svg { width: 68%; height: 68%; }
+      .footer-name { font: 700 1.2cqw/1 "IBM Plex Sans Arabic", sans-serif; }
+      .footer-name small { display: block; margin-top: .35cqw; color: #e8b49e; font-size: .78cqw; font-weight: 500; letter-spacing: .12em; }
+      .progress { position: absolute; bottom: 1.9%; left: 5.8%; display: flex; gap: .48cqw; }
+      .progress i { display: block; width: 2.6cqw; height: .3cqw; border-radius: 9px; background: rgba(250,247,239,.42); }
+      .progress i:nth-child(4) { background: var(--coral); }
+      @media (max-aspect-ratio: 4/5) { .poster { width: 100vw; height: 125vw; } }
+      @media (min-aspect-ratio: 4/5) { .poster { width: 80dvh; height: 100dvh; } }
+    </style>
+  </head>
+  <body>
+    <main class="stage">
+      <article class="poster" aria-label="CleanFlow Platform — أدوات الإدارة">
+        <img class="photo" src="./media/slide-04-platform.jpg" alt="مدير عمليات سعودي يحمل جهازاً لوحياً بجوار حاوية" />
+        <div class="shade"></div>
+        <div class="side-shade"></div>
+        <div class="brand" aria-label="CleanFlow Platform">
+          <span class="brand-mark" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="3" width="6" height="6" rx="2"></rect><rect x="15" y="15" width="6" height="6" rx="2"></rect><path d="M9 6h4a4 4 0 0 1 4 4v5M15 18h-4a4 4 0 0 1-4-4V9"></path>
+            </svg>
+          </span>
+          <span class="wordmark"><strong>CleanFlow</strong><small>Platform</small></span>
+        </div>
+        <div class="counter"><b>4</b> / 5</div>
+        <header class="hero-copy" dir="rtl">
+          <div class="eyebrow">إدارة تشغيلية أوضح</div>
+          <h1>كل أدوات الإدارة<br /><span>في مكان واحد.</span></h1>
+        </header>
+        <div class="device-screen" aria-hidden="true">
+          <div class="screen-top"><span class="screen-logo"></span><span class="screen-dot"></span></div>
+          <div class="screen-layout">
+            <div class="screen-nav"><i></i><i></i><i></i><i></i></div>
+            <div class="screen-main"><span class="screen-line"></span><div class="screen-cards"><i></i><i></i><i></i></div><div class="screen-chart"></div></div>
+          </div>
+        </div>
+        <section class="feature-panel" aria-label="ميزات المنصة" dir="rtl">
+          <div class="feature-row">
+            <span class="feature-icon"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h8"/></svg></span>
+            <span class="feature-label">عقود وفواتير</span>
+          </div>
+          <div class="feature-row">
+            <span class="feature-icon"><svg viewBox="0 0 24 24"><path d="m20.6 13.1-7.7 7.7a2 2 0 0 1-2.8 0L3.2 14a2 2 0 0 1 0-2.8l7.7-7.7a2 2 0 0 1 1.4-.6h6.8a2 2 0 0 1 2 2v6.8a2 2 0 0 1-.5 1.4Z"/><circle cx="16.5" cy="7.5" r="1.2"/></svg></span>
+            <span class="feature-label">كتالوج وتسعير</span>
+          </div>
+          <div class="feature-row">
+            <span class="feature-icon"><svg viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M18 17V9M13 17V5M8 17v-3"/></svg></span>
+            <span class="feature-label">تقارير أداء</span>
+          </div>
+          <div class="feature-row">
+            <span class="feature-icon"><svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-11V5l-8-3-8 3v6c0 7 8 11 8 11Z"/><path d="m9 12 2 2 4-4"/></svg></span>
+            <span class="feature-label">تراخيص وسلامة</span>
+          </div>
+          <div class="feature-row">
+            <span class="feature-icon"><svg viewBox="0 0 24 24"><path d="M12 8V4H8"/><path d="M4.93 10A8 8 0 1 1 4 13.5"/><path d="M4 4v6h6M9 14h.01M12 14h.01M15 14h.01M9 17h6"/></svg></span>
+            <span class="feature-label">مساعد ذكي ودعم مباشر</span>
+          </div>
+        </section>
+        <div class="screen-note">تصوّر توضيحي للمنصة</div>
+        <div class="footer">
+          <span class="footer-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="6" height="6" rx="2"/><rect x="15" y="15" width="6" height="6" rx="2"/><path d="M9 6h4a4 4 0 0 1 4 4v5M15 18h-4a4 4 0 0 1-4-4V9"/></svg></span>
+          <span class="footer-name">CleanFlow<small>PLATFORM</small></span>
+        </div>
+        <div class="progress" aria-label="الشريحة الرابعة من خمس"><i></i><i></i><i></i><i></i><i></i></div>
+      </article>
+    </main>
+  </body>
+</html>

@@ -1,0 +1,273 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CleanFlow Platform — 02</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      color-scheme: dark;
+      --teal: #153c3c;
+      --coral: #e46942;
+      --ivory: #faf7ef;
+    }
+    * { box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; }
+    body {
+      display: grid;
+      place-items: center;
+      background: #102c30;
+      font-family: "IBM Plex Sans Arabic", sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+    .poster {
+      container-type: inline-size;
+      position: relative;
+      width: min(100vw, 80vh);
+      height: min(125vw, 100vh);
+      aspect-ratio: 4 / 5;
+      overflow: hidden;
+      isolation: isolate;
+      color: var(--ivory);
+      background: var(--teal);
+    }
+    .photo {
+      position: absolute;
+      z-index: -3;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      object-position: 40% center;
+    }
+    .grade {
+      position: absolute;
+      z-index: -2;
+      inset: 0;
+      background:
+        linear-gradient(180deg, rgba(6, 24, 34, .50) 0%, rgba(9, 27, 35, .12) 29%, rgba(7, 28, 34, .04) 49%, rgba(7, 25, 30, .50) 67%, rgba(6, 24, 29, .74) 100%),
+        linear-gradient(90deg, rgba(6, 22, 31, .28), transparent 70%);
+    }
+    .grain {
+      position: absolute;
+      z-index: 4;
+      inset: 0;
+      pointer-events: none;
+      opacity: .08;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 160 160' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.86' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.34'/%3E%3C/svg%3E");
+      mix-blend-mode: soft-light;
+    }
+    .masthead {
+      position: absolute;
+      top: 5.4%;
+      left: 6.5%;
+      right: 6.5%;
+      display: flex;
+      direction: ltr;
+      align-items: flex-start;
+      justify-content: space-between;
+    }
+    .brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 1.4cqw;
+      direction: ltr;
+    }
+    .brand-mark {
+      display: grid;
+      width: 6.1cqw;
+      height: 6.1cqw;
+      min-width: 28px;
+      min-height: 28px;
+      place-items: center;
+      color: var(--ivory);
+      background: var(--coral);
+      border-radius: 1.55cqw;
+      transform: rotate(-6deg);
+      box-shadow: 0 9px 24px rgba(13, 22, 23, .24);
+    }
+    .brand-mark svg { width: 66%; height: 66%; }
+    .wordmark { display: flex; flex-direction: column; line-height: 1; text-align: left; }
+    .wordmark strong {
+      color: var(--ivory);
+      font-family: "IBM Plex Sans Arabic", sans-serif;
+      font-size: 2.45cqw;
+      font-weight: 700;
+      letter-spacing: -.055em;
+    }
+    .wordmark small {
+      margin-top: .55cqw;
+      color: #f0a184;
+      font-family: "IBM Plex Sans Arabic", sans-serif;
+      font-size: 1.55cqw;
+      font-weight: 600;
+      letter-spacing: .17em;
+      text-transform: uppercase;
+    }
+    .slide-count {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: .95cqw;
+      color: var(--ivory);
+      font-family: "IBM Plex Sans Arabic", sans-serif;
+      font-size: 2.15cqw;
+      font-weight: 600;
+      letter-spacing: .09em;
+      line-height: 1;
+      direction: ltr;
+    }
+    .count-rule { display: block; width: 5.1cqw; height: 2px; background: var(--coral); }
+    .hero-copy {
+      position: absolute;
+      top: 18.8%;
+      right: 7%;
+      width: 74%;
+      text-align: right;
+      direction: rtl;
+      text-shadow: 0 3px 20px rgba(4, 18, 23, .34);
+    }
+    .hero-copy::before {
+      content: "";
+      display: block;
+      width: 7.2cqw;
+      height: .72cqw;
+      margin: 0 0 2.1cqw auto;
+      border-radius: 9px;
+      background: var(--coral);
+    }
+    h1 {
+      margin: 0;
+      color: var(--ivory);
+      font-size: 7.35cqw;
+      font-weight: 700;
+      letter-spacing: -.045em;
+      line-height: 1.24;
+    }
+    .feature-panel {
+      position: absolute;
+      right: 5.7%;
+      bottom: 5.6%;
+      left: 5.7%;
+      padding: 3.1cqw;
+      border: 1px solid rgba(250, 247, 239, .22);
+      border-radius: 3.1cqw;
+      background: rgba(15, 47, 49, .94);
+      box-shadow: 0 24px 64px rgba(3, 15, 19, .3), inset 0 1px rgba(255,255,255,.08);
+      backdrop-filter: blur(10px);
+    }
+    .features {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1.45cqw;
+    }
+    .feature {
+      min-height: 12.7cqw;
+      display: flex;
+      align-items: center;
+      gap: 2.15cqw;
+      padding: 2.15cqw 2.35cqw;
+      border: 1px solid rgba(250, 247, 239, .15);
+      border-radius: 2.05cqw;
+      background: rgba(250, 247, 239, .055);
+      direction: rtl;
+    }
+    .feature-icon {
+      width: 6.25cqw;
+      height: 6.25cqw;
+      min-width: 6.25cqw;
+      display: grid;
+      place-items: center;
+      color: var(--coral);
+      border: 1px solid rgba(228, 105, 66, .55);
+      border-radius: 1.8cqw;
+      background: rgba(228, 105, 66, .09);
+    }
+    .feature-icon svg { width: 55%; height: 55%; }
+    .feature strong {
+      color: var(--ivory);
+      font-size: 2.75cqw;
+      font-weight: 600;
+      letter-spacing: -.025em;
+      line-height: 1.35;
+      white-space: nowrap;
+    }
+    .panel-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-top: 2.8cqw;
+      padding-top: 2.2cqw;
+      border-top: 1px solid rgba(250, 247, 239, .18);
+    }
+    .carousel-track { display: flex; align-items: center; gap: 1.05cqw; direction: ltr; }
+    .carousel-track i { display: block; width: 4.5cqw; height: .55cqw; border-radius: 8px; background: rgba(250, 247, 239, .24); }
+    .carousel-track i.active { background: var(--coral); }
+    .footer-count {
+      color: rgba(250, 247, 239, .82);
+      font-family: "IBM Plex Sans Arabic", sans-serif;
+      font-size: 1.8cqw;
+      font-weight: 600;
+      letter-spacing: .1em;
+      direction: ltr;
+    }
+    @media (max-aspect-ratio: 4/5) {
+      .poster { width: 100vw; height: 125vw; }
+    }
+    @media (min-aspect-ratio: 4/5) {
+      .poster { width: 80vh; height: 100vh; }
+    }
+  </style>
+</head>
+<body>
+  <main class="poster" aria-label="CleanFlow Platform — الشريحة الثانية">
+    <img class="photo" src="./media/slide-02-operations.jpg" alt="">
+    <div class="grade"></div>
+    <header class="masthead">
+      <div class="brand" aria-label="CleanFlow Platform">
+        <span class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="3" width="6" height="6" rx="1.3"></rect>
+            <rect x="15" y="15" width="6" height="6" rx="1.3"></rect>
+            <path d="M9 6h3a3 3 0 0 1 3 3v6"></path>
+            <path d="M15 18h-3a3 3 0 0 1-3-3V9"></path>
+          </svg>
+        </span>
+        <span class="wordmark"><strong>CleanFlow</strong><small>Platform</small></span>
+      </div>
+      <div class="slide-count"><span>2/5</span><i class="count-rule"></i></div>
+    </header>
+    <section class="hero-copy">
+      <h1>من الطلب<br>إلى التنفيذ</h1>
+    </section>
+    <section class="feature-panel" aria-label="مزايا إدارة الطلبات">
+      <div class="features">
+        <div class="feature">
+          <span class="feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 5-8 12-8 12S4 15 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="2.5"/><path d="M16.5 5.5 19 3"/></svg></span>
+          <strong>خريطة تفاعلية</strong>
+        </div>
+        <div class="feature">
+          <span class="feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"/><path d="M10 21h4"/><path d="M19 3v3M22 4.5h-6"/></svg></span>
+          <strong>تنبيهات فورية</strong>
+        </div>
+        <div class="feature">
+          <span class="feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg></span>
+          <strong>تتبع العميل</strong>
+        </div>
+        <div class="feature">
+          <span class="feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18M8 14h3M8 17h6"/></svg></span>
+          <strong>مواعيد مجدولة</strong>
+        </div>
+      </div>
+      <div class="panel-footer">
+        <div class="carousel-track" aria-hidden="true"><i></i><i class="active"></i><i></i><i></i><i></i></div>
+        <span class="footer-count">02 / 05</span>
+      </div>
+    </section>
+    <div class="grain"></div>
+  </main>
+</body>
+</html>

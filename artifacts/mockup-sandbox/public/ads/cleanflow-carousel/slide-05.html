@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#071a31" />
+    <title>CleanFlow Platform — ابدأ التحول الرقمي الآن</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <style>
+      :root {
+        color-scheme: dark;
+        font-family: "IBM Plex Sans Arabic", sans-serif;
+        font-synthesis: none;
+        text-rendering: optimizeLegibility;
+        -webkit-font-smoothing: antialiased;
+        --ivory: #faf7ef;
+        --coral: #e46942;
+        --teal: #153c3c;
+      }
+
+      * { box-sizing: border-box; }
+      html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; }
+      body {
+        display: grid;
+        place-items: center;
+        background: #071a31;
+      }
+      .poster {
+        position: relative;
+        isolation: isolate;
+        width: min(100vw, 80dvh);
+        height: min(100dvh, 125vw);
+        aspect-ratio: 4 / 5;
+        overflow: hidden;
+        background: #071a31;
+        container-type: size;
+      }
+      .photo, .grade { position: absolute; inset: 0; width: 100%; height: 100%; }
+      .photo {
+        z-index: -2;
+        object-fit: cover;
+        object-position: center;
+      }
+      .grade {
+        z-index: -1;
+        background:
+          linear-gradient(180deg, rgba(4, 17, 36, .48) 0%, rgba(5, 22, 42, .08) 39%, rgba(3, 17, 31, .04) 68%, rgba(3, 15, 28, .53) 100%),
+          linear-gradient(90deg, rgba(4, 18, 35, .20), transparent 73%);
+      }
+      .brand {
+        position: absolute;
+        top: 5.1%;
+        left: 7.2%;
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        direction: ltr;
+        color: var(--ivory);
+      }
+      .brand-mark {
+        display: grid;
+        width: 61px;
+        height: 61px;
+        place-items: center;
+        border-radius: 17px;
+        background: var(--coral);
+        box-shadow: 0 12px 30px rgba(3, 14, 27, .25);
+        transform: rotate(-5deg);
+      }
+      .brand-mark svg { width: 34px; height: 34px; transform: rotate(5deg); }
+      .brand-name { display: flex; flex-direction: column; line-height: 1; text-align: left; }
+      .brand-name strong {
+        font-family: "IBM Plex Sans Arabic", sans-serif;
+        font-size: 25px;
+        font-weight: 700;
+        letter-spacing: -.055em;
+      }
+      .brand-name small {
+        margin-top: 6px;
+        color: #f0a184;
+        font-size: 12px;
+        font-weight: 600;
+        letter-spacing: .19em;
+        text-transform: uppercase;
+      }
+      .counter {
+        position: absolute;
+        top: 5.35%;
+        right: 7.2%;
+        display: flex;
+        min-width: 74px;
+        height: 42px;
+        align-items: center;
+        justify-content: center;
+        border: 1px solid rgba(250, 247, 239, .42);
+        border-radius: 999px;
+        background: rgba(7, 26, 49, .18);
+        color: var(--ivory);
+        direction: ltr;
+        font-family: "IBM Plex Sans Arabic", sans-serif;
+        font-size: 17px;
+        font-weight: 600;
+        letter-spacing: .035em;
+        backdrop-filter: blur(8px);
+      }
+      .copy {
+        position: absolute;
+        top: 25.2%;
+        right: 7.2%;
+        width: 85.6%;
+        text-align: right;
+      }
+      h1 {
+        display: flex;
+        flex-direction: column;
+        gap: .01em;
+        margin: 0;
+        color: var(--ivory);
+        font-size: clamp(42px, 8.15cqw, 88px);
+        font-weight: 700;
+        line-height: 1.36;
+        letter-spacing: -.035em;
+        text-shadow: 0 4px 20px rgba(2, 13, 27, .22);
+      }
+      h1 .accent { color: var(--coral); }
+      .support {
+        max-width: 93%;
+        margin: 35px 0 0 auto;
+        color: rgba(250, 247, 239, .93);
+        font-size: clamp(22px, 4.15cqw, 45px);
+        font-weight: 500;
+        line-height: 1.62;
+        text-shadow: 0 3px 16px rgba(2, 13, 27, .38);
+      }
+      .cta {
+        position: absolute;
+        bottom: 9.1%;
+        left: 7.2%;
+        display: inline-flex;
+        min-height: 94px;
+        align-items: center;
+        gap: 22px;
+        padding: 0 35px 0 30px;
+        border: 1px solid rgba(255, 225, 208, .28);
+        border-radius: 18px;
+        background: var(--coral);
+        box-shadow: 0 15px 36px rgba(3, 14, 27, .32);
+        color: #fffaf3;
+        direction: rtl;
+        font-size: clamp(23px, 3.6cqw, 38px);
+        font-weight: 700;
+        white-space: nowrap;
+      }
+      .cta svg { width: 27px; height: 27px; flex: none; }
+      .edge-line {
+        position: absolute;
+        bottom: 7.15%;
+        left: 7.2%;
+        width: 135px;
+        height: 2px;
+        background: rgba(228, 105, 66, .9);
+        transform-origin: left center;
+        transform: rotate(-2deg);
+      }
+
+      @media (max-width: 560px) {
+        .brand { gap: 9px; }
+        .brand-mark { width: 43px; height: 43px; border-radius: 12px; }
+        .brand-mark svg { width: 26px; height: 26px; }
+        .brand-name strong { font-size: 18px; }
+        .brand-name small { margin-top: 4px; font-size: 9px; }
+        .counter { min-width: 59px; height: 34px; font-size: 14px; }
+        .copy { top: 24%; }
+        h1 { font-size: clamp(38px, 8.2cqw, 58px); }
+        .support { margin-top: 19px; font-size: clamp(20px, 4.2cqw, 27px); }
+        .cta { min-height: 67px; gap: 12px; padding-inline: 20px; border-radius: 13px; font-size: clamp(20px, 3.8cqw, 27px); }
+        .cta svg { width: 21px; height: 21px; }
+        .edge-line { width: 88px; }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="poster" aria-label="إعلان CleanFlow Platform">
+      <img class="photo" src="media/slide-05-cta.jpg" alt="" />
+      <div class="grade" aria-hidden="true"></div>
+
+      <div class="brand" aria-label="CleanFlow Platform">
+        <span class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="7" cy="8" r="3" stroke="#fffaf3" stroke-width="2.2"/>
+            <circle cx="25" cy="8" r="3" stroke="#fffaf3" stroke-width="2.2"/>
+            <circle cx="7" cy="24" r="3" stroke="#fffaf3" stroke-width="2.2"/>
+            <circle cx="25" cy="24" r="3" stroke="#fffaf3" stroke-width="2.2"/>
+            <path d="M10 8h5a4 4 0 0 1 4 4v4a4 4 0 0 0 4 4h2M10 24h5a4 4 0 0 0 4-4v-4a4 4 0 0 1 4-4h2" stroke="#fffaf3" stroke-width="2.2" stroke-linecap="round"/>
+          </svg>
+        </span>
+        <span class="brand-name"><strong>CleanFlow</strong><small>Platform</small></span>
+      </div>
+
+      <div class="counter" aria-label="الشريحة الخامسة من خمس">5/5</div>
+
+      <section class="copy" dir="rtl">
+        <h1><span>ابدأ التحول الرقمي</span><span class="accent">الآن.</span></h1>
+        <p class="support">أدر الحاويات والطلبات والعملاء من منصة واحدة.</p>
+      </section>
+
+      <div class="edge-line" aria-hidden="true"></div>
+      <div class="cta" dir="rtl">
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+          <path d="M19 12H5m0 0 6.5-6.5M5 12l6.5 6.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span>احجز عرضًا تجريبيًا</span>
+      </div>
+    </main>
+  </body>
+</html>
