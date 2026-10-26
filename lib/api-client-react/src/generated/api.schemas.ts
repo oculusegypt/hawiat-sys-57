@@ -19,6 +19,26 @@ export interface ContainerSystemRecord {
   updatedAt: string;
 }
 
+export interface AddWorkOrderContainerInput {
+  /** @minimum 1 */
+  containerRecordId: number;
+}
+
+export type AddWorkOrderContainerResultAddedContainer = {
+  id: number;
+  code: string;
+};
+
+export interface AddWorkOrderContainerResult {
+  id: number;
+  containerRecordIds?: number[];
+  contractRecordIds?: number[];
+  containerCodes?: string[];
+  /** @minimum 1 */
+  containerCount: number;
+  addedContainer: AddWorkOrderContainerResultAddedContainer;
+}
+
 export type FinancialTruthTotalsBalances = {
   accountsReceivable: number;
   accountsPayable: number;

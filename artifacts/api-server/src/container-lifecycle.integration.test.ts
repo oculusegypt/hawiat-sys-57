@@ -21,8 +21,7 @@ const testLocation = "TEST ONLY — موقع تجريبي، الرياض";
 const testAddress = "TEST ONLY — العنوان مخصص للاختبار ولا يستخدم للتوجيه";
 const testSecret: string = process.env.SESSION_SECRET ?? "";
 if (!testSecret) throw new Error("SESSION_SECRET must be set to a test-only value");
-const testAdminPassword = process.env.ADMIN_PASSWORD ?? "";
-if (!testAdminPassword) throw new Error("ADMIN_PASSWORD must be available for isolated admin-login testing");
+const testAdminPassword = "cleanflow-container-lifecycle-test-password";
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 
 function insertRecord(kind: string, status: string, reference: string, payload: Record<string, unknown>) {
@@ -43,7 +42,7 @@ async function main() {
   }).returning().get();
   const driver = db.insert(adminsTable).values({
     username: "container-lifecycle-test-driver",
-    passwordHash: "not-used-by-this-test",
+    passwordHash: hashPassword(testAdminPassword),
     name: "TEST ONLY Driver",
     role: "driver",
   }).returning().get();
@@ -161,6 +160,47 @@ async function main() {
     testData: true,
   });
 
+  const multiReturnLocation = "TEST ONLY — 24.7136,46.6753";
+  const returnContainers = ["TEST-RETURN-CONTAINER-001", "TEST-RETURN-CONTAINER-002", "TEST-FAR-CONTAINER-003"].map(
+    (code, index) => {
+      const location = index === 2 ? "TEST ONLY — 25.5000,48.0000" : multiReturnLocation;
+      const asset = insertRecord("container_asset", "rented", code, {
+        assetCode: code,
+        status: "rented",
+        location,
+        testData: true,
+      });
+      const returnContract = insertRecord("contract", "delivered", `TEST-RETURN-CONTRACT-00${index + 1}`, {
+        contractNumber: `TEST-RETURN-CONTRACT-00${index + 1}`,
+        containerRecordId: asset.id,
+        containerCode: code,
+        customerRecordId: customer.id,
+        customerName: "TEST ONLY — عميل لا يستخدم للتشغيل",
+        location,
+        preservedTestField: `preserve-${index + 1}`,
+        testData: true,
+      });
+      return { asset, contract: returnContract };
+    },
+  );
+  const multiReturnTask = insertRecord("work_order", "assigned", "TEST-MULTI-RETURN-WORK-ORDER", {
+    serviceType: "سحب واسترجاع حاوية",
+    operationType: "PICKUP_CONTAINER",
+    movementType: "سحب",
+    contractRecordId: returnContainers[0].contract.id,
+    containerRecordId: returnContainers[0].asset.id,
+    contractRecordIds: [returnContainers[0].contract.id],
+    containerRecordIds: [returnContainers[0].asset.id],
+    containerCodes: ["TEST-RETURN-CONTAINER-001"],
+    assignedDriverId: driver.id,
+    assignedAt: new Date().toISOString(),
+    driverStatus: "assigned",
+    status: "assigned",
+    location: multiReturnLocation,
+    scheduledAt: "2026-10-26T10:00:00.000Z",
+    testData: true,
+  });
+
   const portProbe = createServer();
   await new Promise<void>(resolve => portProbe.listen(0, "127.0.0.1", resolve));
   const address = portProbe.address() as AddressInfo;
@@ -226,6 +266,129 @@ async function main() {
     const loginBody = await loginResponse.json() as { token?: string };
     assert.ok(loginBody.token, "admin login must return an authenticated session token");
     authorization = `Bearer ${loginBody.token}`;
+
+    const addedContainerResponse = await fetch(
+      `http://127.0.0.1:${port}/api/admin/work-orders/${multiReturnTask.id}/containers`,
+      {
+        method: "PATCH",
+        headers: { "content-type": "application/json", authorization },
+        body: JSON.stringify({ containerRecordId: returnContainers[1].asset.id }),
+      },
+    );
+    assert.equal(addedContainerResponse.status, 200, await addedContainerResponse.clone().text());
+    const addedContainer = await addedContainerResponse.json() as {
+      containerRecordIds: number[];
+      contractRecordIds: number[];
+      containerCount: number;
+    };
+    assert.deepEqual(addedContainer.containerRecordIds, [
+      returnContainers[0].asset.id,
+      returnContainers[1].asset.id,
+    ]);
+    assert.deepEqual(addedContainer.contractRecordIds, [
+      returnContainers[0].contract.id,
+      returnContainers[1].contract.id,
+    ]);
+    assert.equal(addedContainer.containerCount, 2);
+
+    const distantContainerResponse = await fetch(
+      `http://127.0.0.1:${port}/api/admin/work-orders/${multiReturnTask.id}/containers`,
+      {
+        method: "PATCH",
+        headers: { "content-type": "application/json", authorization },
+        body: JSON.stringify({ containerRecordId: returnContainers[2].asset.id }),
+      },
+    );
+    assert.equal(distantContainerResponse.status, 409, "a distant contract must not be added to a nearby return route");
+
+    const driverLoginResponse = await fetch(`http://127.0.0.1:${port}/api/auth/login`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        username: "container-lifecycle-test-driver",
+        password: testAdminPassword,
+      }),
+    });
+    assert.equal(driverLoginResponse.status, 200, "the test driver must authenticate");
+    const driverLoginBody = await driverLoginResponse.json() as { token?: string };
+    assert.ok(driverLoginBody.token);
+    const driverAuthorization = `Bearer ${driverLoginBody.token}`;
+    const updateReturnTask = (status: string, evidence = false) => fetch(
+      `http://127.0.0.1:${port}/api/driver/work-orders/${multiReturnTask.id}`,
+      {
+        method: "PATCH",
+        headers: { "content-type": "application/json", authorization: driverAuthorization },
+        body: JSON.stringify({
+          status,
+          ...(evidence ? {
+            receiverName: "TEST ONLY — مستلم الإرجاع",
+            proofPhotoUrl: "/uploads/TEST-ONLY-return-proof.webp",
+            signatureData: "TEST ONLY — signature proof",
+            locationLat: "24.7136",
+            locationLng: "46.6753",
+          } : {}),
+        }),
+      },
+    );
+    for (const status of ["accepted", "started", "en_route", "arrived"]) {
+      const response = await updateReturnTask(status);
+      assert.equal(response.status, 200, await response.clone().text());
+    }
+
+    db.update(containerSystemRecordsTable)
+      .set({ status: "available", payload: JSON.stringify({
+        assetCode: "TEST-RETURN-CONTAINER-002",
+        status: "available",
+        location: multiReturnLocation,
+        testData: true,
+      }) })
+      .where(eq(containerSystemRecordsTable.id, returnContainers[1].asset.id))
+      .run();
+    const blockedMultiReturn = await updateReturnTask("completed", true);
+    assert.equal(blockedMultiReturn.status, 422, "one ineligible container must block the whole multi-return");
+    const unchangedPrimaryContract = db.select().from(containerSystemRecordsTable)
+      .where(eq(containerSystemRecordsTable.id, returnContainers[0].contract.id)).get();
+    const unchangedPrimaryAsset = db.select().from(containerSystemRecordsTable)
+      .where(eq(containerSystemRecordsTable.id, returnContainers[0].asset.id)).get();
+    assert.equal(unchangedPrimaryContract?.status, "delivered", "a rejected multi-return must not partially return earlier contracts");
+    assert.equal(unchangedPrimaryAsset?.status, "rented", "a rejected multi-return must not partially release earlier containers");
+
+    db.update(containerSystemRecordsTable)
+      .set({ status: "rented", payload: JSON.stringify({
+        assetCode: "TEST-RETURN-CONTAINER-002",
+        status: "rented",
+        location: multiReturnLocation,
+        testData: true,
+      }) })
+      .where(eq(containerSystemRecordsTable.id, returnContainers[1].asset.id))
+      .run();
+    const completedMultiReturn = await updateReturnTask("completed", true);
+    assert.equal(completedMultiReturn.status, 200, await completedMultiReturn.clone().text());
+    for (const item of returnContainers.slice(0, 2)) {
+      const returnedContract = db.select().from(containerSystemRecordsTable)
+        .where(eq(containerSystemRecordsTable.id, item.contract.id)).get();
+      const availableAsset = db.select().from(containerSystemRecordsTable)
+        .where(eq(containerSystemRecordsTable.id, item.asset.id)).get();
+      assert.equal(returnedContract?.status, "returned");
+      assert.equal(availableAsset?.status, "available");
+      const contractPayload = JSON.parse(String(returnedContract?.payload)) as Record<string, unknown>;
+      assert.equal(contractPayload.preservedTestField, `preserve-${item.contract.id === returnContainers[0].contract.id ? 1 : 2}`);
+      assert.equal(contractPayload.lastWorkOrderId, multiReturnTask.id);
+      assert.ok(contractPayload.returnAt);
+    }
+    const multiReturnMovements = db.select().from(containerSystemRecordsTable).all()
+      .filter(record => record.kind === "container_movement" &&
+        Number((JSON.parse(record.payload) as Record<string, unknown>).workOrderId) === multiReturnTask.id);
+    assert.equal(multiReturnMovements.length, 2, "each contract must receive its own return movement");
+    for (const movement of multiReturnMovements) {
+      const movementPayload = JSON.parse(movement.payload) as Record<string, unknown>;
+      assert.equal(movementPayload.proofPhotoUrl, "/uploads/TEST-ONLY-return-proof.webp");
+      assert.equal(movementPayload.signatureData, "TEST ONLY — signature proof");
+      assert.equal(movementPayload.receiverName, "TEST ONLY — مستلم الإرجاع");
+      assert.equal(movementPayload.driverId, driver.id);
+      assert.equal(movementPayload.locationLat, "24.7136");
+      assert.equal(movementPayload.locationLng, "46.6753");
+    }
 
     const intakeResponse = await fetch(`http://127.0.0.1:${port}/api/service-requests`, {
       method: "POST",
@@ -450,7 +613,7 @@ async function main() {
     const releasedContainer = db.select().from(containerSystemRecordsTable)
       .where(eq(containerSystemRecordsTable.id, container.id)).get();
     assert.equal(releasedContainer?.status, "available");
-    console.log("container lifecycle integration assertions passed using isolated TEST ONLY data and admin-secret login");
+    console.log("container lifecycle integration assertions passed using isolated TEST ONLY data and synthetic admin login");
   } finally {
     apiProcess.kill("SIGTERM");
     await new Promise<void>(resolve => {

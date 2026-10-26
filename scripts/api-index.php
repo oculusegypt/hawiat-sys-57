@@ -969,6 +969,62 @@ try {
         return $admin;
     }
 
+    function hsOperationalWorkOrderPayload(array $record, ?string $assignedDriverName = null): array {
+        $payload = json_decode((string)($record['payload'] ?? '{}'), true);
+        if (!is_array($payload)) $payload = [];
+        $containerIds = is_array($payload['containerRecordIds'] ?? null)
+            ? array_values(array_unique(array_filter(array_map('intval', $payload['containerRecordIds']), static fn($id) => $id > 0)))
+            : ((int)($payload['containerRecordId'] ?? 0) > 0 ? [(int)$payload['containerRecordId']] : []);
+        $contractIds = is_array($payload['contractRecordIds'] ?? null)
+            ? array_values(array_unique(array_filter(array_map('intval', $payload['contractRecordIds']), static fn($id) => $id > 0)))
+            : ((int)($payload['contractRecordId'] ?? 0) > 0 ? [(int)$payload['contractRecordId']] : []);
+        $containerCodes = is_array($payload['containerCodes'] ?? null)
+            ? array_values(array_filter(array_map('strval', $payload['containerCodes'])))
+            : array_values(array_filter([(string)($payload['containerCode'] ?? '')]));
+        return array_merge($payload, [
+            'id' => (int)$record['id'],
+            'clientName' => (string)($payload['customerName'] ?? $payload['clientName'] ?? ''),
+            'phone' => (string)($payload['phone'] ?? ''),
+            'email' => (string)($payload['email'] ?? ''),
+            'serviceType' => (string)($payload['serviceType'] ?? $payload['operationType'] ?? 'عملية تشغيلية'),
+            'containerSize' => $containerCodes ? implode('، ', $containerCodes) : (string)($payload['containerSize'] ?? ''),
+            'containerCount' => count($containerIds) ?: (int)($payload['containerCount'] ?? 1),
+            'location' => (string)($payload['location'] ?? 'يحدد لاحقاً'),
+            'appointmentType' => 'scheduled',
+            'scheduledAt' => $payload['scheduledAt'] ?? null,
+            'status' => (string)($payload['status'] ?? $record['status'] ?? 'new'),
+            'customerRecordId' => (int)($payload['customerRecordId'] ?? 0) ?: null,
+            'containerRecordId' => (int)($payload['containerRecordId'] ?? 0) ?: null,
+            'contractRecordId' => (int)($payload['contractRecordId'] ?? 0) ?: null,
+            'containerRecordIds' => $containerIds,
+            'contractRecordIds' => $contractIds,
+            'containerCodes' => $containerCodes,
+            'assignedDriverId' => (int)($payload['assignedDriverId'] ?? 0) ?: null,
+            'assignedDriverName' => $assignedDriverName,
+            'assignedVehicleId' => (int)($payload['assignedVehicleId'] ?? 0) ?: null,
+            'assignedVehiclePlate' => $payload['assignedVehiclePlate'] ?? null,
+            'operationKey' => $payload['operationKey'] ?? null,
+            'movementKey' => $payload['movementKey'] ?? null,
+            'movementType' => $payload['movementType'] ?? null,
+            'operationType' => $payload['operationType'] ?? null,
+            'appointmentRecordId' => (int)($payload['appointmentRecordId'] ?? 0) ?: null,
+            'legacyRequestId' => (int)($payload['legacyRequestId'] ?? 0) ?: null,
+            'driverStatus' => (string)($payload['driverStatus'] ?? 'unassigned'),
+            'driverNotes' => $payload['driverNotes'] ?? null,
+            'driverResponseAt' => $payload['driverResponseAt'] ?? null,
+            'driverStartedAt' => $payload['driverStartedAt'] ?? null,
+            'driverCompletedAt' => $payload['driverCompletedAt'] ?? null,
+            'driverLocationLat' => $payload['driverLocationLat'] ?? null,
+            'driverLocationLng' => $payload['driverLocationLng'] ?? null,
+            'driverProofPhotoUrl' => $payload['driverProofPhotoUrl'] ?? null,
+            'driverSignatureData' => $payload['driverSignatureData'] ?? null,
+            'driverReceiverName' => $payload['driverReceiverName'] ?? null,
+            'assignedAt' => $payload['assignedAt'] ?? null,
+            'createdAt' => $record['created_at'] ?? date('c'),
+            'updatedAt' => $record['updated_at'] ?? date('c'),
+        ]);
+    }
+
     /**
      * Public chat can read or write only the conversation linked to the
      * visitor session that the site recorded. Inbox operations always use the
@@ -6545,26 +6601,107 @@ try {
             $signature = array_key_exists('signatureData', $input) ? trim((string)($input['signatureData'] ?? '')) : trim((string)($payload['driverSignatureData'] ?? ''));
             $proof = array_key_exists('proofPhotoUrl', $input) ? trim((string)($input['proofPhotoUrl'] ?? '')) : trim((string)($payload['driverProofPhotoUrl'] ?? ''));
             $contractId = (int)($payload['contractRecordId'] ?? 0);
-            if ($nextStatus === 'completed' && $contractId > 0 && (!$receiver || !$signature || !$proof)) {
+            $initialContainerIds = is_array($payload['containerRecordIds'] ?? null)
+                ? array_map('intval', $payload['containerRecordIds'])
+                : ((int)($payload['containerRecordId'] ?? 0) > 0 ? [(int)$payload['containerRecordId']] : []);
+            $initialContractIds = is_array($payload['contractRecordIds'] ?? null)
+                ? array_map('intval', $payload['contractRecordIds'])
+                : ($contractId > 0 ? [$contractId] : []);
+            $hasContainerWork = $contractId > 0 || count($initialContainerIds) > 0 || count($initialContractIds) > 0;
+            if ($nextStatus === 'completed' && $hasContainerWork && (!$receiver || !$signature || !$proof)) {
                 http_response_code(422);
                 echo json_encode(['error' => 'يلزم تسجيل اسم المستلم وتوقيع العميل وصورة إثبات قبل إكمال حركة الحاوية'], JSON_UNESCAPED_UNICODE);
                 exit;
             }
-            $now = date('c');
-            $nextPayload = array_merge($payload, [
-                'driverStatus' => $nextStatus,
-                'status' => $nextStatus === 'completed' ? 'completed' : ($payload['status'] ?? 'new'),
-                'driverReceiverName' => $receiver ?: null,
-                'driverSignatureData' => $signature ?: null,
-                'driverProofPhotoUrl' => $proof ?: null,
-                'driverResponseAt' => $payload['driverResponseAt'] ?? (($nextStatus === 'accepted' || $nextStatus === 'rejected') ? $now : null),
-                'driverStartedAt' => $nextStatus === 'started' ? $now : ($payload['driverStartedAt'] ?? null),
-                'driverCompletedAt' => $nextStatus === 'completed' ? $now : ($payload['driverCompletedAt'] ?? null),
-                'driverNotes' => array_key_exists('notes', $input) ? trim((string)($input['notes'] ?? '')) ?: null : ($payload['driverNotes'] ?? null),
-            ]);
-            if ($requestKey !== '') $nextPayload['lastOperationKey'] = $requestKey;
             $pdo->beginTransaction();
             try {
+                $freshStmt = $pdo->prepare("SELECT * FROM container_system_records WHERE id = :id AND kind = 'work_order' AND status <> 'archived' LIMIT 1");
+                $freshStmt->execute([':id' => $id]);
+                $freshOperational = $freshStmt->fetch(PDO::FETCH_ASSOC);
+                $freshPayload = $freshOperational ? (json_decode((string)$freshOperational['payload'], true) ?: []) : [];
+                if (!$freshOperational || (int)($freshPayload['assignedDriverId'] ?? 0) !== $driverId ||
+                    (string)($freshPayload['driverStatus'] ?? 'unassigned') !== $currentStatus) {
+                    throw new RuntimeException('تغيرت حالة المهمة؛ حدّث القائمة قبل إعادة المحاولة', 409);
+                }
+
+                $freshContractId = (int)($freshPayload['contractRecordId'] ?? 0);
+                $containerIds = is_array($freshPayload['containerRecordIds'] ?? null)
+                    ? array_map('intval', $freshPayload['containerRecordIds'])
+                    : ((int)($freshPayload['containerRecordId'] ?? 0) > 0 ? [(int)$freshPayload['containerRecordId']] : []);
+                $contractIds = is_array($freshPayload['contractRecordIds'] ?? null)
+                    ? array_map('intval', $freshPayload['contractRecordIds'])
+                    : ($freshContractId > 0 ? [$freshContractId] : []);
+                $hasFreshContainerWork = $freshContractId > 0 || count($containerIds) > 0 || count($contractIds) > 0;
+                $isReturn = (bool)preg_match('/استرجاع|سحب|رفع|return|withdraw/i',
+                    (string)($freshPayload['serviceType'] ?? '') . ' ' . (string)($freshPayload['notes'] ?? ''));
+                $isEmptying = (bool)preg_match('/تفريغ|empty|unload/i',
+                    (string)($freshPayload['serviceType'] ?? '') . ' ' . (string)($freshPayload['notes'] ?? ''));
+                $completionItems = [];
+
+                if ($nextStatus === 'completed' && $hasFreshContainerWork) {
+                    if (!$receiver || !$signature || !$proof) {
+                        throw new RuntimeException('يلزم تسجيل اسم المستلم وتوقيع العميل وصورة إثبات قبل إكمال حركة الحاوية', 422);
+                    }
+                    if (!$containerIds || count($containerIds) !== count($contractIds) ||
+                        count(array_unique($containerIds)) !== count($containerIds) ||
+                        count(array_unique($contractIds)) !== count($contractIds) ||
+                        min($containerIds) <= 0 || min($contractIds) <= 0) {
+                        throw new RuntimeException('تعذر التحقق من ارتباط كل حاوية بعقدها في المهمة', 422);
+                    }
+                    if ($freshContractId > 0 && $freshContractId !== $contractIds[0]) {
+                        throw new RuntimeException('العقد الأساسي لا يطابق الحاوية الأولى في المهمة', 422);
+                    }
+
+                    foreach ($containerIds as $index => $containerRecordId) {
+                        $contractRecordId = $contractIds[$index];
+                        $contractStmt = $pdo->prepare("SELECT * FROM container_system_records WHERE id = :id AND kind = 'contract' AND status <> 'archived' LIMIT 1");
+                        $contractStmt->execute([':id' => $contractRecordId]);
+                        $completionContract = $contractStmt->fetch(PDO::FETCH_ASSOC);
+                        $completionPayload = $completionContract ? (json_decode((string)$completionContract['payload'], true) ?: []) : [];
+                        $assetStmt = $pdo->prepare("SELECT * FROM container_system_records WHERE id = :id AND kind IN ('container', 'container_asset') AND status <> 'archived' LIMIT 1");
+                        $assetStmt->execute([':id' => $containerRecordId]);
+                        $completionAsset = $assetStmt->fetch(PDO::FETCH_ASSOC);
+                        $assetPayload = $completionAsset ? (json_decode((string)$completionAsset['payload'], true) ?: []) : [];
+                        $containerCode = trim((string)($assetPayload['assetCode'] ?? $assetPayload['code'] ?? $completionAsset['reference'] ?? ''));
+                        $contractCode = trim((string)($completionPayload['containerCode'] ?? $completionPayload['assetCode'] ?? ''));
+                        if (!$completionContract || !$completionAsset || !$containerCode || $contractCode !== $containerCode) {
+                            throw new RuntimeException('أحد العقود أو أصول الحاويات غير موجود أو لا يطابق الارتباط المسجل', 422);
+                        }
+                        if ($isReturn || $isEmptying) {
+                            $assetState = strtolower(trim((string)($assetPayload['status'] ?? $completionAsset['status'])));
+                            if ((string)$completionContract['status'] !== 'delivered' ||
+                                !in_array($assetState, ['rented', 'with_customer', 'awaiting_return'], true)) {
+                                throw new RuntimeException('إحدى الحاويات لم تسلّم فعلياً أو لم تعد لدى العميل؛ لم تُسجل حركة جزئية', 422);
+                            }
+                        } elseif (!in_array((string)$completionContract['status'], ['active', 'approved', 'issued', 'scheduled'], true)) {
+                            throw new RuntimeException('إحدى الحاويات غير مؤهلة للتسليم؛ لم تُسجل حركة جزئية', 422);
+                        }
+                        $completionItems[] = [
+                            'contract' => $completionContract,
+                            'contractPayload' => $completionPayload,
+                            'asset' => $completionAsset,
+                            'assetPayload' => $assetPayload,
+                            'containerCode' => $containerCode,
+                        ];
+                    }
+                }
+
+                $now = date('c');
+                $nextPayload = array_merge($freshPayload, [
+                    'driverStatus' => $nextStatus,
+                    'status' => $nextStatus === 'completed' ? 'completed' : ($freshPayload['status'] ?? 'new'),
+                    'driverReceiverName' => $receiver ?: null,
+                    'driverSignatureData' => $signature ?: null,
+                    'driverProofPhotoUrl' => $proof ?: null,
+                    'driverLocationLat' => array_key_exists('locationLat', $input) ? trim((string)$input['locationLat']) ?: null : ($freshPayload['driverLocationLat'] ?? null),
+                    'driverLocationLng' => array_key_exists('locationLng', $input) ? trim((string)$input['locationLng']) ?: null : ($freshPayload['driverLocationLng'] ?? null),
+                    'driverResponseAt' => $freshPayload['driverResponseAt'] ?? (($nextStatus === 'accepted' || $nextStatus === 'rejected') ? $now : null),
+                    'driverStartedAt' => $nextStatus === 'started' ? $now : ($freshPayload['driverStartedAt'] ?? null),
+                    'driverCompletedAt' => $nextStatus === 'completed' ? $now : ($freshPayload['driverCompletedAt'] ?? null),
+                    'driverNotes' => array_key_exists('notes', $input) ? trim((string)($input['notes'] ?? '')) ?: null : ($freshPayload['driverNotes'] ?? null),
+                ]);
+                if ($requestKey !== '') $nextPayload['lastOperationKey'] = $requestKey;
+
                 $update = $pdo->prepare("UPDATE container_system_records SET status = :status, payload = :payload, updated_at = :updated_at WHERE id = :id");
                 $update->execute([
                     ':status' => $nextPayload['status'],
@@ -6572,64 +6709,79 @@ try {
                     ':updated_at' => $now,
                     ':id' => $id,
                 ]);
-                if ($nextStatus === 'completed' && $contractId > 0) {
-                    $contractStmt = $pdo->prepare("SELECT * FROM container_system_records WHERE id = :id AND kind = 'contract' AND status <> 'archived' LIMIT 1");
-                    $contractStmt->execute([':id' => $contractId]);
-                    $completionContract = $contractStmt->fetch(PDO::FETCH_ASSOC);
-                    $completionPayload = $completionContract ? (json_decode((string)$completionContract['payload'], true) ?: []) : [];
-                    $containerCode = trim((string)($completionPayload['containerCode'] ?? $completionPayload['assetCode'] ?? ''));
-                    $assetStmt = $pdo->prepare("SELECT * FROM container_system_records WHERE kind IN ('container', 'container_asset') AND status <> 'archived' AND (json_extract(payload, '$.assetCode') = :code OR json_extract(payload, '$.containerCode') = :code OR reference = :reference) LIMIT 1");
-                    $assetStmt->execute([':code' => $containerCode, ':reference' => $containerCode]);
-                    $completionAsset = $assetStmt->fetch(PDO::FETCH_ASSOC);
-                    if (!$completionContract || !$completionAsset) throw new RuntimeException('العقد أو أصل الحاوية المرتبط بأمر العمل غير موجود');
-                    $isReturn = preg_match('/استرجاع|سحب|رفع|return|withdraw/i', (string)($payload['serviceType'] ?? '') . ' ' . (string)($payload['notes'] ?? ''));
-                    $isEmptying = preg_match('/تفريغ|empty|unload/i', (string)($payload['serviceType'] ?? '') . ' ' . (string)($payload['notes'] ?? ''));
-                    $assetPayload = json_decode((string)$completionAsset['payload'], true) ?: [];
-                    if ($isEmptying) {
-                        $assetPayload['lastEmptyingAt'] = $now;
-                        $assetPayload['lastWorkOrderId'] = $id;
-                        $pdo->prepare("UPDATE container_system_records SET payload = :payload, updated_at = :updated_at WHERE id = :id")->execute([
-                            ':payload' => json_encode($assetPayload, JSON_UNESCAPED_UNICODE), ':updated_at' => $now, ':id' => (int)$completionAsset['id'],
-                        ]);
-                    } else {
-                        $completionPayload[$isReturn ? 'returnAt' : 'deliverAt'] = $now;
-                        $completionPayload['lastWorkOrderId'] = $id;
-                        $assetPayload['location'] = $payload['location'] ?? ($assetPayload['location'] ?? '');
-                        $assetPayload['lastMovementAt'] = $now;
+                if ($nextStatus === 'completed' && $hasFreshContainerWork) {
+                    $movementType = (string)($freshPayload['movementType'] ?? ($isReturn ? 'استرجاع' : ($isEmptying ? 'تفريغ' : 'تسليم')));
+                    $operationKey = trim((string)($freshPayload['operationKey'] ?? '')) ?: 'service-request-' . $id;
+                    $movementKey = trim((string)($freshPayload['movementKey'] ?? '')) ?: $operationKey;
+                    foreach ($completionItems as $index => $item) {
+                        $contractPayload = $item['contractPayload'];
+                        $assetPayload = $item['assetPayload'];
+                        if (!$isEmptying) {
+                            $contractPayload[$isReturn ? 'returnAt' : 'deliverAt'] = $now;
+                            $contractPayload['lastWorkOrderId'] = $id;
+                            $pdo->prepare("UPDATE container_system_records SET status = :status, payload = :payload, updated_at = :updated_at WHERE id = :id")->execute([
+                                ':status' => $isReturn ? 'returned' : 'delivered',
+                                ':payload' => json_encode($contractPayload, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE),
+                                ':updated_at' => $now, ':id' => (int)$item['contract']['id'],
+                            ]);
+                            $assetPayload['status'] = $isReturn ? 'available' : 'rented';
+                            $assetPayload['location'] = $freshPayload['location'] ?? ($assetPayload['location'] ?? '');
+                            $assetPayload['lastMovementAt'] = $now;
+                        } else {
+                            $assetPayload['lastEmptyingAt'] = $now;
+                        }
                         $assetPayload['lastWorkOrderId'] = $id;
                         $pdo->prepare("UPDATE container_system_records SET status = :status, payload = :payload, updated_at = :updated_at WHERE id = :id")->execute([
-                            ':status' => $isReturn ? 'returned' : 'delivered',
-                            ':payload' => json_encode($completionPayload, JSON_UNESCAPED_UNICODE),
-                            ':updated_at' => $now, ':id' => (int)$completionContract['id'],
+                            ':status' => $isEmptying ? (string)$item['asset']['status'] : ($isReturn ? 'available' : 'rented'),
+                            ':payload' => json_encode($assetPayload, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE),
+                            ':updated_at' => $now, ':id' => (int)$item['asset']['id'],
                         ]);
-                        $pdo->prepare("UPDATE container_system_records SET status = :status, payload = :payload, updated_at = :updated_at WHERE id = :id")->execute([
-                            ':status' => $isReturn ? 'available' : 'rented',
-                            ':payload' => json_encode($assetPayload, JSON_UNESCAPED_UNICODE),
-                            ':updated_at' => $now, ':id' => (int)$completionAsset['id'],
+                        $movementPayload = [
+                            'operationKey' => $operationKey . ':' . (int)$item['asset']['id'],
+                            'movementKey' => $movementKey . ':' . (int)$item['asset']['id'],
+                            'contractNumber' => $item['contractPayload']['contractNumber'] ?? $item['contract']['reference'],
+                            'contractRecordId' => (int)$item['contract']['id'],
+                            'customerRecordId' => $freshPayload['customerRecordId'] ?? $item['contractPayload']['customerRecordId'] ?? null,
+                            'containerRecordId' => (int)$item['asset']['id'],
+                            'containerCode' => $item['containerCode'],
+                            'movementType' => $movementType,
+                            'movementDate' => $now,
+                            'location' => $freshPayload['location'] ?? '',
+                            'appointmentRecordId' => $index === 0 ? ($freshPayload['appointmentRecordId'] ?? null) : null,
+                            'workOrderId' => $id,
+                            'source' => 'driver_work_order',
+                            'operationalOnly' => (bool)$isEmptying,
+                            'driverId' => (int)($freshPayload['assignedDriverId'] ?? $driverId),
+                            'proofPhotoUrl' => $nextPayload['driverProofPhotoUrl'],
+                            'receiverName' => $nextPayload['driverReceiverName'],
+                            'signatureData' => $nextPayload['driverSignatureData'],
+                            'locationLat' => $nextPayload['driverLocationLat'],
+                            'locationLng' => $nextPayload['driverLocationLng'],
+                        ];
+                        $movement = $pdo->prepare("INSERT INTO container_system_records (kind,status,reference,payload,created_by,created_at,updated_at) VALUES ('container_movement','posted',:reference,:payload,:created_by,:created_at,:updated_at)");
+                        $movement->execute([
+                            ':reference' => 'MOV-WO-' . $id . '-' . (int)$item['asset']['id'],
+                            ':payload' => json_encode($movementPayload, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE),
+                            ':created_by' => $driverId, ':created_at' => $now, ':updated_at' => $now,
                         ]);
+                        hsAudit($pdo, (int)$item['asset']['id'], (string)$item['asset']['kind'], 'work_order_sync',
+                            (string)$item['asset']['payload'], json_encode($assetPayload, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE), $driverId);
+                        if (!$isEmptying) {
+                            hsAudit($pdo, (int)$item['contract']['id'], 'contract', 'work_order_sync',
+                                (string)$item['contract']['payload'], json_encode($contractPayload, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE), $driverId);
+                        }
                     }
-                    $movementPayload = [
-                        'contractNumber' => $completionPayload['contractNumber'] ?? ($completionContract['reference'] ?? ''),
-                        'containerCode' => $containerCode,
-                        'movementType' => $isReturn ? 'استرجاع' : ($isEmptying ? 'تفريغ' : 'تسليم'),
-                        'movementDate' => $now, 'location' => $payload['location'] ?? '',
-                        'workOrderId' => $id, 'source' => 'driver_work_order', 'operationalOnly' => (bool)$isEmptying,
-                    ];
-                    $movement = $pdo->prepare("INSERT INTO container_system_records (kind,status,reference,payload,created_by,created_at,updated_at) VALUES ('container_movement','posted',:reference,:payload,:created_by,:created_at,:updated_at)");
-                    $movement->execute([
-                        ':reference' => 'MOV-' . $id, ':payload' => json_encode($movementPayload, JSON_UNESCAPED_UNICODE),
-                        ':created_by' => $driverId, ':created_at' => $now, ':updated_at' => $now,
-                    ]);
-                    hsAudit($pdo, (int)$completionAsset['id'], (string)$completionAsset['kind'], 'work_order_sync', (string)$completionAsset['payload'], json_encode($assetPayload, JSON_UNESCAPED_UNICODE), $driverId);
-                    if (!$isEmptying) hsAudit($pdo, (int)$completionContract['id'], 'contract', 'work_order_sync', (string)$completionContract['payload'], json_encode($completionPayload, JSON_UNESCAPED_UNICODE), $driverId);
-                    hsAudit($pdo, $id, 'work_order', 'driver_status_transition', (string)$operational['payload'], json_encode($nextPayload, JSON_UNESCAPED_UNICODE), $driverId);
                 }
-                if ($nextStatus !== 'completed' || $contractId === 0) {
-                    hsAudit($pdo, $id, 'work_order', 'driver_status_transition', (string)$operational['payload'], json_encode($nextPayload, JSON_UNESCAPED_UNICODE), $driverId);
-                }
+                hsAudit($pdo, $id, 'work_order', 'driver_status_transition', (string)$freshOperational['payload'],
+                    json_encode($nextPayload, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE), $driverId);
                 $pdo->commit();
             } catch (Throwable $error) {
                 if ($pdo->inTransaction()) $pdo->rollBack();
+                if (in_array((int)$error->getCode(), [409, 422], true)) {
+                    http_response_code((int)$error->getCode());
+                    echo json_encode(['error' => $error->getMessage()], JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+                    exit;
+                }
                 throw $error;
             }
             echo json_encode(array_merge($nextPayload, ['id' => $id]), JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
@@ -6830,7 +6982,184 @@ try {
         exit;
     }
 
+    if (preg_match('#^/admin/work-orders/(\d+)/containers$#', (string)$path, $m) && $method === 'PATCH') {
+        $admin = requireAdminAccess($pdo, 'work_orders', false, true);
+        $taskId = (int)$m[1];
+        $containerId = (int)($input['containerRecordId'] ?? 0);
+        if ($taskId <= 0 || $containerId <= 0) {
+            http_response_code(400);
+            echo json_encode(['error' => 'رقم المهمة والحاوية مطلوبان'], JSON_UNESCAPED_UNICODE);
+            exit;
+        }
+
+        try {
+            $pdo->beginTransaction();
+            $taskStmt = $pdo->prepare("SELECT * FROM container_system_records WHERE id = :id AND kind = 'work_order' AND status <> 'archived' LIMIT 1");
+            $taskStmt->execute([':id' => $taskId]);
+            $task = $taskStmt->fetch(PDO::FETCH_ASSOC);
+            if (!$task) throw new RuntimeException('مهمة السائق غير موجودة', 404);
+            $taskPayload = json_decode((string)$task['payload'], true) ?: [];
+            if (!preg_match('/تفريغ|empty|unload|استرجاع|سحب|pickup|return/i',
+                (string)($taskPayload['serviceType'] ?? '') . ' ' . (string)($taskPayload['operationType'] ?? ''))) {
+                throw new RuntimeException('يمكن إضافة حاويات إلى مهام التفريغ أو الاسترجاع فقط', 409);
+            }
+            $taskStatus = strtolower(trim((string)($taskPayload['driverStatus'] ?? $task['status'])));
+            if (in_array($taskStatus, ['completed', 'cancelled', 'rejected', 'closed'], true)) {
+                throw new RuntimeException('لا يمكن تعديل مهمة مكتملة أو مغلقة', 409);
+            }
+
+            $readIds = static function ($list, $fallback): array {
+                return is_array($list) ? array_map('intval', $list) : ((int)$fallback > 0 ? [(int)$fallback] : []);
+            };
+            $currentContainerIds = $readIds($taskPayload['containerRecordIds'] ?? null, $taskPayload['containerRecordId'] ?? 0);
+            $contractIds = $readIds($taskPayload['contractRecordIds'] ?? null, $taskPayload['contractRecordId'] ?? 0);
+            if (!$currentContainerIds || count($currentContainerIds) !== count($contractIds) ||
+                count(array_unique($currentContainerIds)) !== count($currentContainerIds) ||
+                count(array_unique($contractIds)) !== count($contractIds) ||
+                min($currentContainerIds) <= 0 || min($contractIds) <= 0) {
+                throw new RuntimeException('تعذر التحقق من ارتباط كل حاوية بعقدها في المهمة الحالية', 409);
+            }
+            if (in_array($containerId, $currentContainerIds, true)) {
+                throw new RuntimeException('الحاوية مرتبطة بهذه المهمة بالفعل', 409);
+            }
+
+            $assetStmt = $pdo->prepare("SELECT * FROM container_system_records WHERE id = :id AND kind IN ('container', 'container_asset') AND status <> 'archived' LIMIT 1");
+            $assetStmt->execute([':id' => $containerId]);
+            $asset = $assetStmt->fetch(PDO::FETCH_ASSOC);
+            if (!$asset) throw new RuntimeException('أصل الحاوية غير موجود', 404);
+            $assetPayload = json_decode((string)$asset['payload'], true) ?: [];
+            $code = trim((string)($assetPayload['assetCode'] ?? $assetPayload['code'] ?? $asset['reference'] ?? ''));
+            $assetStatus = strtolower(trim((string)($assetPayload['status'] ?? $asset['status'])));
+            if (!in_array($assetStatus, ['rented', 'with_customer', 'awaiting_return'], true)) {
+                throw new RuntimeException('الحاوية ليست لدى العميل أو لم تسلّم فعلياً', 409);
+            }
+
+            $contract = null;
+            $contractPayload = [];
+            $contractRows = $pdo->query("SELECT * FROM container_system_records WHERE kind = 'contract' AND status = 'delivered' ORDER BY id")->fetchAll(PDO::FETCH_ASSOC);
+            foreach ($contractRows as $candidateContract) {
+                $candidatePayload = json_decode((string)$candidateContract['payload'], true) ?: [];
+                if ((int)($candidatePayload['containerRecordId'] ?? 0) === $containerId) {
+                    $contract = $candidateContract;
+                    $contractPayload = $candidatePayload;
+                    break;
+                }
+            }
+            $contractCode = trim((string)($contractPayload['containerCode'] ?? $contractPayload['assetCode'] ?? ''));
+            if (!$contract || !$code || $contractCode !== $code) {
+                throw new RuntimeException('لا يوجد عقد مسلّم يطابق أصل الحاوية', 409);
+            }
+
+            $pointFromPayload = static function (array $value): ?array {
+                $coordinates = (string)($value['locationCoordinates'] ?? $value['coordinates'] ?? $value['location'] ?? '');
+                $match = preg_match('/(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)/u', $coordinates, $parts) === 1;
+                $latValue = $value['latitude'] ?? $value['lat'] ?? ($match ? $parts[1] : null);
+                $lngValue = $value['longitude'] ?? $value['lng'] ?? ($match ? $parts[2] : null);
+                if (!is_numeric($latValue) || !is_numeric($lngValue)) return null;
+                $lat = (float)$latValue;
+                $lng = (float)$lngValue;
+                return $lat >= -90 && $lat <= 90 && $lng >= -180 && $lng <= 180 ? [$lat, $lng] : null;
+            };
+            $nearby = false;
+            $taskPoint = $pointFromPayload($taskPayload);
+            $contractLocation = trim((string)($contractPayload['location'] ?? $contractPayload['serviceAddress'] ?? ''));
+            $locationPayload = array_merge($contractPayload, ['location' => $contractLocation]);
+            $contractPoint = $pointFromPayload($locationPayload);
+            if ($taskPoint && $contractPoint) {
+                $toRadians = static fn(float $degrees): float => $degrees * M_PI / 180;
+                $latDelta = $toRadians($contractPoint[0] - $taskPoint[0]);
+                $lngDelta = $toRadians($contractPoint[1] - $taskPoint[1]);
+                $haversine = sin($latDelta / 2) ** 2 +
+                    cos($toRadians($taskPoint[0])) * cos($toRadians($contractPoint[0])) * sin($lngDelta / 2) ** 2;
+                $nearby = 6371 * 2 * atan2(sqrt($haversine), sqrt(1 - $haversine)) <= 5;
+            } else {
+                foreach (['neighborhood', 'district', 'area', 'city', 'region'] as $key) {
+                    $left = strtolower(trim((string)($taskPayload[$key] ?? '')));
+                    $right = strtolower(trim((string)($contractPayload[$key] ?? '')));
+                    if ($left !== '' && $left === $right) {
+                        $nearby = true;
+                        break;
+                    }
+                }
+                if (!$nearby) {
+                    $normalizeLocation = static function ($text): string {
+                        $text = strtolower((string)$text);
+                        $text = preg_replace('/[،,؛;|\/\\\\-]+/u', ' ', $text) ?? $text;
+                        return trim(preg_replace('/\s+/u', ' ', $text) ?? $text);
+                    };
+                    $leftText = $normalizeLocation($taskPayload['location'] ?? $taskPayload['address'] ?? '');
+                    $rightText = $normalizeLocation($contractLocation);
+                    if (strlen($leftText) >= 6 && strlen($rightText) >= 6 &&
+                        (str_contains($leftText, $rightText) || str_contains($rightText, $leftText))) {
+                        $nearby = true;
+                    } else {
+                        $ignored = ['المملكة', 'العربية', 'السعودية', 'الرياض', 'حي', 'شارع', 'طريق', 'منطقة', 'مدينة'];
+                        $leftWords = array_unique(array_filter(preg_split('/\s+/u', $leftText) ?: [],
+                            static fn($word) => strlen((string)$word) >= 3 && !in_array((string)$word, $ignored, true)));
+                        $rightWords = array_unique(array_filter(preg_split('/\s+/u', $rightText) ?: [],
+                            static fn($word) => strlen((string)$word) >= 3 && !in_array((string)$word, $ignored, true)));
+                        $nearby = count(array_intersect($leftWords, $rightWords)) >= 2;
+                    }
+                }
+            }
+            if (!$nearby) throw new RuntimeException('موقع الحاوية لا يطابق الحيز الجغرافي للمهمة؛ تحقق من الحي أو الإحداثيات قبل ضمها', 409);
+
+            $workOrders = $pdo->query("SELECT id, status, payload FROM container_system_records WHERE kind = 'work_order' AND status <> 'archived'")->fetchAll(PDO::FETCH_ASSOC);
+            foreach ($workOrders as $otherOrder) {
+                if ((int)$otherOrder['id'] === $taskId) continue;
+                $otherPayload = json_decode((string)$otherOrder['payload'], true) ?: [];
+                $otherIds = $readIds($otherPayload['containerRecordIds'] ?? null, $otherPayload['containerRecordId'] ?? 0);
+                $otherStatus = strtolower(trim((string)($otherPayload['driverStatus'] ?? $otherOrder['status'])));
+                if (in_array($containerId, $otherIds, true) &&
+                    !in_array($otherStatus, ['completed', 'cancelled', 'rejected', 'closed'], true)) {
+                    throw new RuntimeException('للحاوية مهمة سائق أخرى مفتوحة؛ أكمل المهمة الحالية أو ألغِها أولاً', 409);
+                }
+            }
+            $requestStmt = $pdo->prepare("SELECT status, driver_status FROM service_requests WHERE container_record_id = :container_id");
+            $requestStmt->execute([':container_id' => $containerId]);
+            foreach ($requestStmt->fetchAll(PDO::FETCH_ASSOC) as $request) {
+                $requestStatus = strtolower(trim((string)($request['driver_status'] ?: $request['status'])));
+                if (!in_array($requestStatus, ['completed', 'cancelled', 'rejected', 'closed'], true)) {
+                    throw new RuntimeException('للحاوية طلب سائق آخر مفتوح؛ أكمل المهمة الحالية أو ألغِها أولاً', 409);
+                }
+            }
+
+            $codes = is_array($taskPayload['containerCodes'] ?? null)
+                ? array_values(array_filter(array_map('strval', $taskPayload['containerCodes'])))
+                : array_values(array_filter([(string)($taskPayload['containerCode'] ?? '')]));
+            $nextContainerIds = [...$currentContainerIds, $containerId];
+            $nextContractIds = [...$contractIds, (int)$contract['id']];
+            $nextCodes = [...$codes, $code];
+            $nextPayload = array_merge($taskPayload, [
+                'containerRecordIds' => $nextContainerIds,
+                'contractRecordIds' => $nextContractIds,
+                'containerCodes' => $nextCodes,
+                'containerCount' => count($nextContainerIds),
+                'containerSize' => implode('، ', $nextCodes),
+                'nearbyContainerAddedAt' => date('c'),
+            ]);
+            $now = date('c');
+            $update = $pdo->prepare("UPDATE container_system_records SET payload = :payload, updated_at = :updated_at WHERE id = :id");
+            $update->execute([
+                ':payload' => json_encode($nextPayload, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE),
+                ':updated_at' => $now, ':id' => $taskId,
+            ]);
+            hsAudit($pdo, $taskId, 'work_order', 'work_order_add_container',
+                (string)$task['payload'], json_encode($nextPayload, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE), (int)$admin['id']);
+            $pdo->commit();
+            echo json_encode(array_merge($nextPayload, ['id' => $taskId]), JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+        } catch (Throwable $error) {
+            if ($pdo->inTransaction()) $pdo->rollBack();
+            $status = in_array((int)$error->getCode(), [404, 409], true) ? (int)$error->getCode() : 500;
+            http_response_code($status);
+            echo json_encode(['error' => $status === 500 ? 'تعذر إضافة الحاوية إلى المهمة' : $error->getMessage()],
+                JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+        }
+        exit;
+    }
+
     if ($path === '/admin/work-orders' && $method === 'GET') {
+        requireAdminAccess($pdo, 'work_orders', false, false, true);
         try {
              $stmt = $pdo->query("SELECT r.*, a.name as assigned_driver_name FROM service_requests r LEFT JOIN admins a ON r.assigned_driver_id = a.id WHERE COALESCE(r.status, '') NOT IN ('cancelled', 'completed') ORDER BY r.assigned_at DESC, r.created_at DESC");
             $rows = $stmt->fetchAll();
@@ -6864,6 +7193,17 @@ try {
                     'updatedAt' => $r['updated_at'] ?? date('c')
                 ];
             }, $rows);
+            $operationalStmt = $pdo->query("SELECT r.*, a.name AS assigned_driver_name
+                FROM container_system_records r
+                LEFT JOIN admins a ON a.id = CAST(json_extract(r.payload, '$.assignedDriverId') AS INTEGER)
+                WHERE r.kind = 'work_order' AND r.status <> 'archived'
+                ORDER BY r.created_at DESC");
+            foreach ($operationalStmt->fetchAll(PDO::FETCH_ASSOC) as $operationalRow) {
+                $formatted[] = hsOperationalWorkOrderPayload($operationalRow, $operationalRow['assigned_driver_name'] ?? null);
+            }
+            usort($formatted, static function (array $left, array $right): int {
+                return strcmp((string)($right['assignedAt'] ?? $right['createdAt'] ?? ''), (string)($left['assignedAt'] ?? $left['createdAt'] ?? ''));
+            });
             echo json_encode($formatted, JSON_UNESCAPED_UNICODE);
         } catch (\Exception $e) {
             echo json_encode([], JSON_UNESCAPED_UNICODE);
@@ -7288,6 +7628,19 @@ PROMPT;
                     'createdAt' => $r['created_at'] ?? date('c')
                 ];
             }, $rows);
+            $operationalStmt = $pdo->prepare("SELECT r.*, a.name AS assigned_driver_name
+                FROM container_system_records r
+                LEFT JOIN admins a ON a.id = CAST(json_extract(r.payload, '$.assignedDriverId') AS INTEGER)
+                WHERE r.kind = 'work_order' AND r.status <> 'archived'
+                  AND CAST(json_extract(r.payload, '$.assignedDriverId') AS INTEGER) = :driver_id
+                ORDER BY r.created_at DESC");
+            $operationalStmt->execute([':driver_id' => $driverId]);
+            foreach ($operationalStmt->fetchAll(PDO::FETCH_ASSOC) as $operationalRow) {
+                $formatted[] = hsOperationalWorkOrderPayload($operationalRow, $operationalRow['assigned_driver_name'] ?? null);
+            }
+            usort($formatted, static function (array $left, array $right): int {
+                return strcmp((string)($right['assignedAt'] ?? $right['createdAt'] ?? ''), (string)($left['assignedAt'] ?? $left['createdAt'] ?? ''));
+            });
             echo json_encode($formatted, JSON_UNESCAPED_UNICODE);
         } catch (\Exception $e) {
             echo json_encode([], JSON_UNESCAPED_UNICODE);

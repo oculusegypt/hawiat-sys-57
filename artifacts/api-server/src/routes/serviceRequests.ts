@@ -190,21 +190,34 @@ function isCleaningContractRequest(request: Pick<typeof serviceRequestsTable.$in
   return /(?:عقد|عقود)\s*(?:ال)?(?:نظافة|تنظيف)/u.test(String(request.serviceType ?? "").trim());
 }
 
-async function prepareContainerCompletion(request: typeof serviceRequestsTable.$inferSelect) {
+function prepareContainerCompletion(
+  request: typeof serviceRequestsTable.$inferSelect,
+  reader: Pick<typeof db, "select"> = db,
+) {
   if (!isContainerWork(request)) return null;
-  const assets = await db.select().from(containerSystemRecordsTable);
+  const assets = reader.select().from(containerSystemRecordsTable).all();
   const requestFields = request as typeof request & {
     appointmentRecordId?: number | null;
     containerRecordIds?: number[];
     contractRecordIds?: number[];
   };
-  const containerIds = [...new Set([
-    Number(request.containerRecordId ?? 0),
-    ...(Array.isArray(requestFields.containerRecordIds) ? requestFields.containerRecordIds.map(Number) : []),
-  ].filter(id => Number.isInteger(id) && id > 0))];
+  const rawContainerIds = (Array.isArray(requestFields.containerRecordIds)
+    ? requestFields.containerRecordIds.map(Number)
+    : [Number(request.containerRecordId ?? 0)])
+    .filter(id => Number.isInteger(id) && id > 0);
+  const containerIds = [...new Set(rawContainerIds)];
   const contractIds = Array.isArray(requestFields.contractRecordIds)
     ? requestFields.contractRecordIds.map(Number)
     : [];
+  if (containerIds.length !== rawContainerIds.length) {
+    throw new Error("تحتوي المهمة على حاوية مكررة");
+  }
+  if (contractIds.length && contractIds.length !== containerIds.length) {
+    throw new Error("عدد العقود لا يطابق عدد الحاويات في المهمة");
+  }
+  if (contractIds.some(id => !Number.isInteger(id) || id <= 0)) {
+    throw new Error("رقم أحد العقود المرتبطة بالمهمة غير صالح");
+  }
   const items: Array<{
     contract: typeof containerSystemRecordsTable.$inferSelect;
     contractPayload: Record<string, unknown>;
@@ -660,8 +673,8 @@ router.patch("/admin/work-orders/:id/containers", requireAdmin, requireSectionPe
     return res.status(404).json({ error: "مهمة السائق غير موجودة" });
   }
   const taskPayload = parseContainerPayload(task.payload);
-  if (!/تفريغ|empty|unload/i.test(`${taskPayload.serviceType ?? ""} ${taskPayload.operationType ?? ""}`)) {
-    return res.status(409).json({ error: "يمكن إضافة حاويات إلى مهام التفريغ فقط" });
+  if (!/تفريغ|empty|unload|استرجاع|سحب|pickup|return/i.test(`${taskPayload.serviceType ?? ""} ${taskPayload.operationType ?? ""}`)) {
+    return res.status(409).json({ error: "يمكن إضافة حاويات إلى مهام التفريغ أو الاسترجاع فقط" });
   }
   const taskStatus = String(taskPayload.driverStatus ?? task.status).toLowerCase();
   if (["completed", "cancelled", "rejected", "closed"].includes(taskStatus)) {
@@ -716,6 +729,9 @@ router.patch("/admin/work-orders/:id/containers", requireAdmin, requireSectionPe
   const contractIds = Array.isArray(taskPayload.contractRecordIds)
     ? taskPayload.contractRecordIds.map(Number).filter(id => Number.isInteger(id) && id > 0)
     : [Number(taskPayload.contractRecordId ?? 0)].filter(id => id > 0);
+  if (contractIds.length !== currentContainerIds.length) {
+    return res.status(409).json({ error: "تعذر التحقق من ارتباط كل حاوية بعقدها في المهمة الحالية" });
+  }
   const codes = Array.isArray(taskPayload.containerCodes)
     ? taskPayload.containerCodes.map(String).filter(Boolean)
     : [String(taskPayload.containerCode ?? "")].filter(Boolean);
@@ -1283,39 +1299,71 @@ router.patch("/driver/work-orders/:id", requireAdmin, requireDriver, async (req,
         return res.status(422).json({ error: "يلزم تسجيل اسم المستلم وتوقيع العميل وصورة إثبات قبل إكمال حركة الحاوية" });
       }
     }
-    const now = new Date().toISOString();
-    const currentPayload = parseContainerPayload(operationalRow.payload);
-    const nextPayload = {
-      ...currentPayload,
-      driverStatus: nextStatus,
-      status: nextStatus === "completed" ? "completed" : currentPayload.status,
-      driverResponseAt: currentPayload.driverResponseAt ?? (nextStatus === "accepted" || nextStatus === "rejected" ? now : null),
-      driverStartedAt: nextStatus === "started" ? now : currentPayload.driverStartedAt,
-      driverCompletedAt: nextStatus === "completed" ? now : currentPayload.driverCompletedAt,
-      ...(notes !== undefined ? { driverNotes: notes || null } : {}),
-      ...(locationLat !== undefined ? { driverLocationLat: locationLat || null } : {}),
-      ...(locationLng !== undefined ? { driverLocationLng: locationLng || null } : {}),
-      ...(proofPhotoUrl !== undefined ? { driverProofPhotoUrl: proofPhotoUrl || null } : {}),
-      ...(signatureData !== undefined ? { driverSignatureData: signatureData || null } : {}),
-      ...(receiverName !== undefined ? { driverReceiverName: receiverName || null } : {}),
-      ...(operationKey ? { lastOperationKey: operationKey } : {}),
-    };
-    const updated = db.transaction((tx) => {
-      const next = tx.update(containerSystemRecordsTable).set({
-        status: nextPayload.status === "completed" ? "completed" : operationalRow.status,
-        payload: JSON.stringify(nextPayload),
-        updatedAt: now,
-      }).where(eq(containerSystemRecordsTable.id, id)).returning().get();
-      if (!next) throw new Error("تعذر تحديث أمر العمل");
-      if (nextStatus === "completed" && preparedContainerCompletion) {
-        syncContainerCompletion(tx, operationalRecordAsWorkOrder(next), preparedContainerCompletion, adminRequest.adminId);
-      }
-      tx.insert(containerSystemAuditTable).values({
-        recordId: id, kind: "work_order", action: "driver_status_transition",
-        beforePayload: operationalRow.payload, afterPayload: JSON.stringify(nextPayload), actorId: adminRequest.adminId,
-      }).run();
-      return operationalRecordAsWorkOrder(next);
-    });
+    let updated: ReturnType<typeof operationalRecordAsWorkOrder>;
+    try {
+      updated = db.transaction((tx) => {
+        const freshRow = tx.select().from(containerSystemRecordsTable)
+          .where(eq(containerSystemRecordsTable.id, id)).get();
+        if (!freshRow || freshRow.kind !== "work_order") {
+          throw new Error("مهمة السائق غير موجودة");
+        }
+        const freshCurrent = operationalRecordAsWorkOrder(freshRow);
+        if (freshCurrent.assignedDriverId !== adminRequest.adminId) {
+          throw new Error("لم تعد المهمة مسندة إلى هذا السائق");
+        }
+        if (freshCurrent.driverStatus === nextStatus) return freshCurrent;
+        if (["completed", "rejected"].includes(freshCurrent.driverStatus) ||
+            !transitions[freshCurrent.driverStatus]?.includes(nextStatus)) {
+          throw new Error("تغيرت حالة المهمة؛ حدّث القائمة قبل إعادة المحاولة");
+        }
+
+        let transactionCompletion = null;
+        if (nextStatus === "completed") {
+          transactionCompletion = prepareContainerCompletion(freshCurrent, tx);
+          if (transactionCompletion && (!receiverName || !signatureData || !proofPhotoUrl)) {
+            throw new Error("يلزم تسجيل اسم المستلم وتوقيع العميل وصورة إثبات قبل إكمال حركة الحاوية");
+          }
+        }
+
+        const now = new Date().toISOString();
+        const currentPayload = parseContainerPayload(freshRow.payload);
+        const nextPayload = {
+          ...currentPayload,
+          driverStatus: nextStatus,
+          status: nextStatus === "completed" ? "completed" : currentPayload.status,
+          driverResponseAt: currentPayload.driverResponseAt ?? (nextStatus === "accepted" || nextStatus === "rejected" ? now : null),
+          driverStartedAt: nextStatus === "started" ? now : currentPayload.driverStartedAt,
+          driverCompletedAt: nextStatus === "completed" ? now : currentPayload.driverCompletedAt,
+          ...(notes !== undefined ? { driverNotes: notes || null } : {}),
+          ...(locationLat !== undefined ? { driverLocationLat: locationLat || null } : {}),
+          ...(locationLng !== undefined ? { driverLocationLng: locationLng || null } : {}),
+          ...(proofPhotoUrl !== undefined ? { driverProofPhotoUrl: proofPhotoUrl || null } : {}),
+          ...(signatureData !== undefined ? { driverSignatureData: signatureData || null } : {}),
+          ...(receiverName !== undefined ? { driverReceiverName: receiverName || null } : {}),
+          ...(operationKey ? { lastOperationKey: operationKey } : {}),
+        };
+        const next = tx.update(containerSystemRecordsTable).set({
+          status: nextPayload.status === "completed" ? "completed" : freshRow.status,
+          payload: JSON.stringify(nextPayload),
+          updatedAt: now,
+        }).where(eq(containerSystemRecordsTable.id, id)).returning().get();
+        if (!next) throw new Error("تعذر تحديث أمر العمل");
+        if (nextStatus === "completed" && transactionCompletion) {
+          syncContainerCompletion(tx, operationalRecordAsWorkOrder(next), transactionCompletion, adminRequest.adminId);
+        }
+        tx.insert(containerSystemAuditTable).values({
+          recordId: id, kind: "work_order", action: "driver_status_transition",
+          beforePayload: freshRow.payload, afterPayload: JSON.stringify(nextPayload), actorId: adminRequest.adminId,
+        }).run();
+        return operationalRecordAsWorkOrder(next);
+      });
+    } catch {
+      return res.status(nextStatus === "completed" ? 422 : 409).json({
+        error: nextStatus === "completed"
+          ? "تعذر التحقق من كل عقد وحاوية في المهمة؛ لم تُسجل حركة جزئية"
+          : "تعذر تحديث المهمة؛ حدّث القائمة ثم أعد المحاولة",
+      });
+    }
     return res.json(updated);
   }
 

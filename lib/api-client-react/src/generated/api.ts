@@ -20,6 +20,8 @@ import type {
 } from '@tanstack/react-query';
 
 import type {
+  AddWorkOrderContainerInput,
+  AddWorkOrderContainerResult,
   AdminUser,
   AiMessageInput,
   AuthResult,
@@ -2631,6 +2633,78 @@ export function useGetAdminWorkOrders<TData = Awaited<ReturnType<typeof getAdmin
 
 
 
+
+export const getAddContainerToWorkOrderUrl = (id: number,) => {
+
+
+
+
+  return `/api/admin/work-orders/${id}/containers`
+}
+
+/**
+ * @summary Add a nearby eligible container to an active emptying or return work order
+ */
+export const addContainerToWorkOrder = async (id: number,
+    addWorkOrderContainerInput: AddWorkOrderContainerInput, options?: RequestInit): Promise<AddWorkOrderContainerResult> => {
+
+  return customFetch<AddWorkOrderContainerResult>(getAddContainerToWorkOrderUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(addWorkOrderContainerInput)
+  }
+);}
+
+
+
+
+
+export const getAddContainerToWorkOrderMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof addContainerToWorkOrder>>, TError,{id: number;data: BodyType<AddWorkOrderContainerInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof addContainerToWorkOrder>>, TError,{id: number;data: BodyType<AddWorkOrderContainerInput>}, TContext> => {
+
+const mutationKey = ['addContainerToWorkOrder'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof addContainerToWorkOrder>>, {id: number;data: BodyType<AddWorkOrderContainerInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  addContainerToWorkOrder(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type AddContainerToWorkOrderMutationResult = NonNullable<Awaited<ReturnType<typeof addContainerToWorkOrder>>>
+    export type AddContainerToWorkOrderMutationBody = BodyType<AddWorkOrderContainerInput>
+    export type AddContainerToWorkOrderMutationError = ErrorType<void>
+
+    /**
+ * @summary Add a nearby eligible container to an active emptying or return work order
+ */
+export const useAddContainerToWorkOrder = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof addContainerToWorkOrder>>, TError,{id: number;data: BodyType<AddWorkOrderContainerInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof addContainerToWorkOrder>>,
+        TError,
+        {id: number;data: BodyType<AddWorkOrderContainerInput>},
+        TContext
+      > => {
+      return useMutation(getAddContainerToWorkOrderMutationOptions(options));
+    }
 
 export const getGetAdminStatsUrl = () => {
 

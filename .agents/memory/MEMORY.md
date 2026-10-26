@@ -18,6 +18,7 @@
 - [SQLite WAL recovery](sqlite-wal-recovery.md) — preserve the corrupt main DB and WAL files, recover into a separate file, validate business counts, then switch safely.
 - [Replit preview manifest Shield](replit-preview-manifest-shield.md) — preview may rewrite a valid same-origin manifest request through Replit Shield and show a 401/CORS console warning.
 - [Atomic financial settlement](atomic-financial-settlement.md) — keep postings atomic, and never mark a bank deposit reconciled without statement evidence.
+- [Multi-container return evidence](multi-container-return-evidence.md) — validate every contract/asset pair atomically and keep driver proof on each movement.
 - [Shared dispatch resources](shared-dispatch-resources.md) — service requests and work orders share drivers and vehicles, so assignments must check both schedules.
 - [Production-like demo identity safety](demo-identity-safety.md) — unverified phones must not link or overwrite existing profiles; isolate tests and merge only after explicit review.
 - [Production-like database testing](production-like-db-testing.md) — run synthetic lifecycle and financial tests against an isolated SQLite copy, never the production-like source.

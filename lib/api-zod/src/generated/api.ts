@@ -1092,6 +1092,39 @@ export const GetAdminWorkOrdersResponse = zod.array(GetAdminWorkOrdersResponseIt
 
 
 /**
+ * @summary Add a nearby eligible container to an active emptying or return work order
+ */
+
+
+
+export const AddContainerToWorkOrderParams = zod.object({
+  "id": zod.coerce.number().min(1)
+})
+
+
+
+
+export const AddContainerToWorkOrderBody = zod.object({
+  "containerRecordId": zod.number().min(1)
+})
+
+
+
+
+export const AddContainerToWorkOrderResponse = zod.object({
+  "id": zod.number(),
+  "containerRecordIds": zod.array(zod.number()).optional(),
+  "contractRecordIds": zod.array(zod.number()).optional(),
+  "containerCodes": zod.array(zod.string()).optional(),
+  "containerCount": zod.number().min(1),
+  "addedContainer": zod.object({
+  "id": zod.number(),
+  "code": zod.string()
+})
+})
+
+
+/**
  * @summary Dashboard summary statistics
  */
 

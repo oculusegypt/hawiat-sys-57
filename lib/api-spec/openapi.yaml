@@ -633,6 +633,38 @@ paths:
                 items:
                   $ref: "#/components/schemas/ServiceRequest"
 
+  /admin/work-orders/{id}/containers:
+    patch:
+      operationId: addContainerToWorkOrder
+      tags: [admin]
+      summary: Add a nearby eligible container to an active emptying or return work order
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer, minimum: 1 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AddWorkOrderContainerInput"
+      responses:
+        "200":
+          description: Container added to the work order
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AddWorkOrderContainerResult"
+        "400":
+          description: Invalid work order or container identifier
+        "404":
+          description: Work order or container not found
+        "409":
+          description: Container is not eligible or conflicts with another active task
+
   # ── Dashboard Stats ───────────────────────────────────────────────────────
   /admin/stats:
     get:
@@ -1333,6 +1365,34 @@ components:
         createdBy: { type: ["integer", "null"] }
         createdAt: { type: string }
         updatedAt: { type: string }
+
+    AddWorkOrderContainerInput:
+      type: object
+      required: [containerRecordId]
+      properties:
+        containerRecordId: { type: integer, minimum: 1 }
+
+    AddWorkOrderContainerResult:
+      type: object
+      required: [id, addedContainer, containerCount]
+      properties:
+        id: { type: integer }
+        containerRecordIds:
+          type: array
+          items: { type: integer }
+        contractRecordIds:
+          type: array
+          items: { type: integer }
+        containerCodes:
+          type: array
+          items: { type: string }
+        containerCount: { type: integer, minimum: 1 }
+        addedContainer:
+          type: object
+          required: [id, code]
+          properties:
+            id: { type: integer }
+            code: { type: string }
 
     FinancialTruthTotals:
       type: object

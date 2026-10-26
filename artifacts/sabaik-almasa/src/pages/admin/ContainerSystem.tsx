@@ -2632,12 +2632,14 @@ export default function ContainerSystem() {
       return
     }
     const now = new Date().toISOString()
+    const payload = record.payload as Record<string, unknown>
+    const delivered = record.status === "delivered" || Boolean(payload.deliverAt)
+    const returned = record.status === "returned" || Boolean(payload.returnAt)
     if (action === "emptying" || action === "pickup") {
       if (!delivered || returned) {
         toast({ title: "لا يمكن إنشاء مهمة قبل تسليم الحاوية فعليًا", variant: "destructive" })
         return
       }
-      const payload = record.payload as Record<string, unknown>
       const customerId = Number(payload.customerRecordId ?? 0)
       const containerId = Number(payload.containerRecordId ?? 0)
       const customer = (snapshot?.records ?? records).find(item => item.kind === "customer" && item.id === customerId)

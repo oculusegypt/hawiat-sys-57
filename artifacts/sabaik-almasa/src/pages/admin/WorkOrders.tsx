@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   getGetAdminWorkOrdersQueryKey,
   getGetDriverWorkOrdersQueryKey,
   getGetContainerSystemRecordsQueryKey,
+  useAddContainerToWorkOrder,
   useAssignServiceRequest,
   useGetContainerSystemRecords,
   useGetAdminWorkOrders,
@@ -134,14 +136,44 @@ function directionsUrl(location: string) {
 }
 
 function taskContainerIds(order: ServiceRequest) {
-  const extended = order as ServiceRequest & { containerRecordIds?: number[] };
+  const extended = order as unknown as {
+    containerRecordId?: number | null;
+    containerRecordIds?: number[];
+  };
   return Array.isArray(extended.containerRecordIds)
     ? extended.containerRecordIds.map(Number).filter(id => id > 0)
-    : [Number(order.containerRecordId ?? 0)].filter(id => id > 0);
+    : [Number(extended.containerRecordId ?? 0)].filter(id => id > 0);
+}
+
+function taskContractIds(order: ServiceRequest) {
+  const extended = order as unknown as {
+    contractRecordId?: number | null;
+    contractRecordIds?: number[];
+  };
+  return Array.isArray(extended.contractRecordIds)
+    ? extended.contractRecordIds.map(Number).filter(id => id > 0)
+    : [Number(extended.contractRecordId ?? 0)].filter(id => id > 0);
+}
+
+function workOrderIdentity(order: ServiceRequest) {
+  const operationKey = String(
+    (order as unknown as { operationKey?: unknown }).operationKey ?? "",
+  ).trim();
+  return operationKey ? `work-order:${operationKey}` : `request:${order.id}`;
+}
+
+function canCombineContainerWork(order: ServiceRequest) {
+  const isOperationalWorkOrder = Boolean(
+    (order as unknown as { operationKey?: unknown; operationType?: unknown }).operationKey ||
+    (order as unknown as { operationType?: unknown }).operationType,
+  );
+  return isOperationalWorkOrder && /تفريغ|empty|unload|استرجاع|سحب|pickup|return/i.test(
+    `${order.serviceType} ${order.containerSize}`,
+  );
 }
 
 function nearbyContainerCandidate(order: ServiceRequest, contract: ContainerSystemRecord) {
-  const task = order as ServiceRequest & { latitude?: number; longitude?: number };
+  const task = order as unknown as Record<string, unknown>;
   const payload = contract.payload as Record<string, unknown>;
   const parseCoords = (source: Record<string, unknown>, location: string) => {
     const match = location.match(/(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)/);
@@ -165,7 +197,7 @@ function nearbyContainerCandidate(order: ServiceRequest, contract: ContainerSyst
     ));
     return distance <= 5;
   }
-  const taskArea = String((task as Record<string, unknown>).neighborhood ?? (task as Record<string, unknown>).district ?? (task as Record<string, unknown>).area ?? "").trim().toLowerCase();
+  const taskArea = String(task.neighborhood ?? task.district ?? task.area ?? "").trim().toLowerCase();
   const targetArea = String(payload.neighborhood ?? payload.district ?? payload.area ?? "").trim().toLowerCase();
   if (taskArea && targetArea && taskArea === targetArea) return true;
   const normalize = (value: string) => value.toLowerCase().replace(/[،,؛;|/\\-]+/g, " ").replace(/\s+/g, " ").trim();
@@ -656,6 +688,86 @@ function CompletionEvidenceDialog({
   );
 }
 
+function ContainerCandidateDialog({
+  open,
+  order,
+  candidates,
+  assets,
+  loading,
+  pending,
+  onOpenChange,
+  onAdd,
+}: {
+  open: boolean;
+  order: ServiceRequest | null;
+  candidates: ContainerSystemRecord[];
+  assets: ContainerSystemRecord[];
+  loading: boolean;
+  pending: boolean;
+  onOpenChange: (open: boolean) => void;
+  onAdd: (containerRecordId: number) => void;
+}) {
+  const assetsById = new Map(assets.map(asset => [asset.id, asset]));
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent dir="rtl" className="max-h-[85vh] max-w-2xl overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>ضم حاوية قريبة إلى المهمة</DialogTitle>
+        </DialogHeader>
+        <p className="text-sm leading-6 text-slate-600">
+          {order?.serviceType}. لن تُضاف الحاوية إلا إذا كان عقدها مسلّمًا وموقعها ضمن نطاق المهمة.
+        </p>
+        {loading ? (
+          <p className="rounded-xl bg-slate-50 p-4 text-sm text-slate-500">جارٍ تحميل العقود والحاويات المؤهلة...</p>
+        ) : candidates.length === 0 ? (
+          <p className="rounded-xl bg-slate-50 p-4 text-sm text-slate-500">لا توجد حاويات مستوفية للشروط بالقرب من موقع المهمة.</p>
+        ) : (
+          <div className="space-y-3">
+            {candidates.map(contract => {
+              const payload = contract.payload as Record<string, unknown>;
+              const containerRecordId = Number(payload.containerRecordId ?? 0);
+              const asset = assetsById.get(containerRecordId);
+              const assetPayload = (asset?.payload ?? {}) as Record<string, unknown>;
+              const code = String(
+                assetPayload.assetCode ??
+                assetPayload.containerCode ??
+                payload.containerCode ??
+                asset?.reference ??
+                contract.reference,
+              );
+              const contractNumber = String(payload.contractNumber ?? contract.reference);
+              const customer = String(payload.customerName ?? payload.clientName ?? "العميل غير محدد");
+              const location = String(payload.location ?? payload.serviceAddress ?? payload.address ?? "الموقع غير محدد");
+              return (
+                <article
+                  key={contract.id}
+                  className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-4 sm:flex-row sm:items-center sm:justify-between"
+                  data-testid={`candidate-contract-${contract.id}`}
+                >
+                  <div className="min-w-0 space-y-1">
+                    <p className="font-bold text-slate-900">{code}</p>
+                    <p className="text-xs text-slate-600">العقد: {contractNumber} · {customer}</p>
+                    <p className="truncate text-xs text-slate-500">{location}</p>
+                  </div>
+                  <Button
+                    type="button"
+                    disabled={pending || containerRecordId <= 0}
+                    onClick={() => onAdd(containerRecordId)}
+                    className="shrink-0 gap-2 bg-[#0b2a3f] text-white hover:bg-[#123f5a]"
+                    data-testid={`button-add-container-${contract.id}`}
+                  >
+                    <Plus size={15} /> ضم إلى المهمة
+                  </Button>
+                </article>
+              );
+            })}
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function WorkOrderCard({
   order,
   allOrders,
@@ -681,7 +793,7 @@ function WorkOrderCard({
     order.driverStatus === DriverWorkOrderStatus.completed;
   const conflict = hasDriverConflict(order, allOrders);
   const overdue = isOverdue(order);
-  const isEmptying = /تفريغ|empty|unload/i.test(order.serviceType);
+  const canCombine = canCombineContainerWork(order);
   return (
     <article
       className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition-shadow hover:shadow-md sm:p-5"
@@ -731,10 +843,10 @@ function WorkOrderCard({
         </div>
       </div>
 
-      {!isDriver && isEmptying && nearbyCandidates.length > 0 && (
+      {!isDriver && canCombine && nearbyCandidates.length > 0 && (
         <div className="mt-3 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-900" data-testid={`nearby-emptying-warning-${order.id}`}>
           <AlertTriangle size={15} className="mt-0.5 shrink-0" />
-          <span>تنبيه: توجد {nearbyCandidates.length} حاوية مؤهلة للتفريغ في الحيز الجغرافي نفسه. يمكن ضمها إلى المهمة.</span>
+          <span>توجد {nearbyCandidates.length} حاوية مؤهلة قريبة يمكن ضمها إلى هذه المهمة.</span>
         </div>
       )}
 
@@ -767,7 +879,7 @@ function WorkOrderCard({
         >
           <ClipboardList size={16} /> عرض التفاصيل
         </Button>
-        {!isDriver && isEmptying && !isHistory && nearbyCandidates.length > 0 && (
+        {!isDriver && canCombine && !isHistory && nearbyCandidates.length > 0 && (
           <Button
             variant="outline"
             disabled={pending}
@@ -855,6 +967,7 @@ function WorkOrderCard({
 
 export default function WorkOrders() {
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const isDriver = localStorage.getItem("admin_role") === "driver";
   const isManager = ["admin", "manager"].includes(
     localStorage.getItem("admin_role") ?? "",
@@ -865,15 +978,49 @@ export default function WorkOrders() {
   const managerQuery = useGetAdminWorkOrders({
     query: { enabled: isManager, queryKey: getGetAdminWorkOrdersQueryKey() },
   });
+  const deliveredContractsQuery = useGetContainerSystemRecords(
+    { kind: "contract", status: "delivered" },
+    {
+      query: {
+        enabled: isManager,
+        staleTime: 30_000,
+        queryKey: getGetContainerSystemRecordsQueryKey({ kind: "contract", status: "delivered" }),
+      },
+    },
+  );
+  const containerAssetsQuery = useGetContainerSystemRecords(
+    { kind: "container_asset" },
+    {
+      query: {
+        enabled: isManager,
+        staleTime: 30_000,
+        queryKey: getGetContainerSystemRecordsQueryKey({ kind: "container_asset" }),
+      },
+    },
+  );
+  const legacyContainersQuery = useGetContainerSystemRecords(
+    { kind: "container" },
+    {
+      query: {
+        enabled: isManager,
+        staleTime: 30_000,
+        queryKey: getGetContainerSystemRecordsQueryKey({ kind: "container" }),
+      },
+    },
+  );
   const activeQuery = isDriver ? driverQuery : managerQuery;
   const orders = activeQuery.data;
   const { mutate: updateOrder, isPending } = useUpdateDriverWorkOrder();
   const { mutate: assignOrder, isPending: assigning } =
     useAssignServiceRequest();
+  const { mutate: addContainer, isPending: addingContainer } =
+    useAddContainerToWorkOrder();
   const [view, setView] = useState<"active" | "history">("active");
   const [selectedOrder, setSelectedOrder] = useState<ServiceRequest | null>(
     null,
   );
+  const [addContainerTarget, setAddContainerTarget] =
+    useState<ServiceRequest | null>(null);
   const [completionTarget, setCompletionTarget] =
     useState<ServiceRequest | null>(null);
   const operationKeys = useRef(new Map<string, string>());
@@ -996,6 +1143,68 @@ export default function WorkOrders() {
       : order.driverStatus === DriverWorkOrderStatus.rejected ||
         order.driverStatus === DriverWorkOrderStatus.completed,
   );
+  const containerAssets = useMemo(
+    () => [
+      ...(containerAssetsQuery.data ?? []),
+      ...(legacyContainersQuery.data ?? []),
+    ],
+    [containerAssetsQuery.data, legacyContainersQuery.data],
+  );
+  const nearbyCandidatesByOrder = useMemo(() => {
+    const assetsById = new Map(containerAssets.map(asset => [asset.id, asset]));
+    const activeContainerIds = new Set<number>();
+    const activeContractIds = new Set<number>();
+    for (const activeOrder of orders ?? []) {
+      if (
+        activeOrder.driverStatus === DriverWorkOrderStatus.completed ||
+        activeOrder.driverStatus === DriverWorkOrderStatus.rejected
+      ) continue;
+      taskContainerIds(activeOrder).forEach(id => activeContainerIds.add(id));
+      taskContractIds(activeOrder).forEach(id => activeContractIds.add(id));
+    }
+
+    const byOrder = new Map<string, ContainerSystemRecord[]>();
+    for (const order of visibleOrders) {
+      if (!canCombineContainerWork(order) || order.driverStatus === DriverWorkOrderStatus.completed) {
+        byOrder.set(workOrderIdentity(order), []);
+        continue;
+      }
+      const attachedContainerIds = new Set(taskContainerIds(order));
+      const candidates = (deliveredContractsQuery.data ?? []).filter(contract => {
+        if (contract.status !== "delivered" || activeContractIds.has(contract.id)) return false;
+        const payload = contract.payload as Record<string, unknown>;
+        const containerId = Number(payload.containerRecordId ?? 0);
+        if (!Number.isInteger(containerId) || containerId <= 0 ||
+            attachedContainerIds.has(containerId) || activeContainerIds.has(containerId)) return false;
+        const asset = assetsById.get(containerId);
+        if (!asset || asset.status === "archived") return false;
+        const assetPayload = asset.payload as Record<string, unknown>;
+        if (!["rented", "with_customer", "awaiting_return"].includes(
+          String(assetPayload.status ?? asset.status).toLowerCase(),
+        )) return false;
+        return nearbyContainerCandidate(order, contract);
+      }).sort((left, right) => {
+        const leftPayload = left.payload as Record<string, unknown>;
+        const rightPayload = right.payload as Record<string, unknown>;
+        return String(leftPayload.containerCode ?? left.reference)
+          .localeCompare(String(rightPayload.containerCode ?? right.reference), "ar");
+      });
+      byOrder.set(workOrderIdentity(order), candidates);
+    }
+    return byOrder;
+  }, [
+    containerAssets,
+    deliveredContractsQuery.data,
+    orders,
+    visibleOrders,
+  ]);
+  const selectedContainerCandidates = addContainerTarget
+    ? nearbyCandidatesByOrder.get(workOrderIdentity(addContainerTarget)) ?? []
+    : [];
+  const isLoadingContainerCandidates =
+    deliveredContractsQuery.isLoading ||
+    containerAssetsQuery.isLoading ||
+    legacyContainersQuery.isLoading;
 
   function handleAction(order: ServiceRequest, status: DriverWorkOrderStatus) {
     const extended = order as ServiceRequest & {
@@ -1077,6 +1286,33 @@ export default function WorkOrders() {
             variant: "destructive",
             title: "تعذر تحديث إسناد أمر العمل",
           }),
+      },
+    );
+  }
+
+  function handleAddContainer(containerRecordId: number) {
+    if (!addContainerTarget) return;
+    addContainer(
+      { id: addContainerTarget.id, data: { containerRecordId } },
+      {
+        onSuccess: () => {
+          toast({ title: "تم ضم الحاوية إلى المهمة" });
+          setAddContainerTarget(null);
+          void queryClient.invalidateQueries({
+            queryKey: getGetAdminWorkOrdersQueryKey(),
+          });
+          void queryClient.invalidateQueries({
+            queryKey: getGetContainerSystemRecordsQueryKey(),
+          });
+          void managerQuery.refetch();
+        },
+        onError: error => {
+          toast({
+            variant: "destructive",
+            title: "تعذر ضم الحاوية",
+            description: error instanceof Error ? error.message : "تحقق من حالة العقد والمهمة ثم أعد المحاولة.",
+          });
+        },
       },
     );
   }
@@ -1313,12 +1549,14 @@ export default function WorkOrders() {
         visibleOrders.length > 0 && (
           <div className="grid gap-4 md:grid-cols-2">
             {visibleOrders.map((order) => (
-              <div key={order.id} className="space-y-2">
+              <div key={workOrderIdentity(order)} className="space-y-2">
                 <WorkOrderCard
                   order={order}
                   allOrders={orders ?? []}
+                  nearbyCandidates={nearbyCandidatesByOrder.get(workOrderIdentity(order)) ?? []}
                   onAction={handleAction}
                   onOpenDetails={setSelectedOrder}
+                  onAddContainer={setAddContainerTarget}
                   pending={isPending || assigning}
                   isDriver={isDriver}
                 />
@@ -1362,6 +1600,18 @@ export default function WorkOrders() {
         open={!!selectedOrder}
         onClose={() => setSelectedOrder(null)}
         isDriver={isDriver}
+      />
+      <ContainerCandidateDialog
+        open={Boolean(addContainerTarget)}
+        order={addContainerTarget}
+        candidates={selectedContainerCandidates}
+        assets={containerAssets}
+        loading={isLoadingContainerCandidates}
+        pending={addingContainer}
+        onOpenChange={open => {
+          if (!open && !addingContainer) setAddContainerTarget(null);
+        }}
+        onAdd={handleAddContainer}
       />
       <CompletionEvidenceDialog
         open={Boolean(completionTarget)}
