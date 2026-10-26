@@ -1579,15 +1579,10 @@ router.post("/admin/container-system/contracts/workflow", requireContainerPermis
         const nextAssetPayload = { ...assetPayload, status: "reserved", assignmentRecordId: assignment.id, assignedContractRecordId: contract.id, assignedSiteRecordId: siteId };
         tx.update(containerSystemRecordsTable).set({ status: "reserved", payload: JSON.stringify(nextAssetPayload), updatedAt: now }).where(eq(containerSystemRecordsTable.id, assetId)).run();
       }
-      let appointment: typeof containerSystemRecordsTable.$inferSelect | null = null;
-      if (!isAssetlessContract) {
-        appointment = tx.insert(containerSystemRecordsTable).values({
-          kind: "appointment", status: "scheduled",
-          reference: referenceFor("appointment", appointmentPayload, Date.now()),
-          payload: JSON.stringify({ ...appointmentPayload, contractRecordId: contract.id, contractNumber, customerRecordId: customerId, containerRecordId: assetId || null }),
-          createdBy: adminReq.adminId,
-        }).returning().get();
-      }
+      // Driver tasks are the single operational schedule. Keep the submitted
+      // appointment fields as schedule metadata on the task, but do not create
+      // a parallel appointment record.
+      const appointment: typeof containerSystemRecordsTable.$inferSelect | null = null;
       let serviceRequest;
       if (existingRequestId > 0) {
         serviceRequest = tx.select().from(serviceRequestsTable).where(eq(serviceRequestsTable.id, existingRequestId)).get();
@@ -1630,7 +1625,7 @@ router.post("/admin/container-system/contracts/workflow", requireContainerPermis
       // request. Keep an explicitly supplied commercial request linked, but
       // never manufacture a new service_requests row for delivery/pickup/etc.
       let workOrder: typeof containerSystemRecordsTable.$inferSelect | null = null;
-      if (!isAssetlessContract && appointment) {
+      if (!isAssetlessContract) {
         const workOrderOperationKey = operationKey ? `${operationKey}:work-order` : `contract-${contract.id}-delivery`;
         const workOrderPayload = {
           operationKey: workOrderOperationKey,
@@ -1648,7 +1643,8 @@ router.post("/admin/container-system/contracts/workflow", requireContainerPermis
           containerCode: String(contractPayload.containerCode ?? assetPayload.assetCode ?? assetPayload.code ?? asset?.reference ?? ""),
           location: String(servicePayload.location ?? contractPayload.location ?? "يحدد لاحقًا"),
           notes: String(servicePayload.notes ?? contractPayload.notes ?? ""),
-          appointmentRecordId: appointment.id,
+          appointmentRecordId: null,
+          appointmentType: String(appointmentPayload.appointmentType ?? "scheduled"),
           scheduledAt: String(servicePayload.scheduledAt ?? appointmentPayload.scheduledAt ?? ""),
           driverStatus: "unassigned",
           status: "new",
@@ -1662,10 +1658,6 @@ router.post("/admin/container-system/contracts/workflow", requireContainerPermis
           operationKey: workOrderOperationKey,
           createdBy: adminReq.adminId,
         }).returning().get();
-        tx.update(containerSystemRecordsTable).set({
-          payload: JSON.stringify({ ...parsePayload(appointment.payload), workOrderRecordId: workOrder.id }),
-          updatedAt: now,
-        }).where(eq(containerSystemRecordsTable.id, appointment.id)).run();
       }
       let rentalLine: typeof containerSystemRecordsTable.$inferSelect | null = null;
       if (contractContainerType) {
@@ -1827,7 +1819,7 @@ router.post("/admin/container-system/contracts/workflow", requireContainerPermis
           }).run();
         }
       }
-      for (const record of [finalizedContract, ...(assignment ? [assignment] : []), ...(appointment ? [appointment] : []), ...(workOrder ? [workOrder] : []), ...(rentalLine ? [rentalLine] : [])]) {
+      for (const record of [finalizedContract, ...(assignment ? [assignment] : []), ...(workOrder ? [workOrder] : []), ...(rentalLine ? [rentalLine] : [])]) {
         tx.insert(containerSystemAuditTable).values({ recordId: record.id, kind: record.kind, action: "workflow_create", afterPayload: record.payload, actorId: adminReq.adminId }).run();
       }
       return { contract: finalizedContract, assignment, appointment, workOrder, serviceRequest, invoice, rentalLine };

@@ -2,12 +2,15 @@ import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import {
   getGetAdminWorkOrdersQueryKey,
   getGetDriverWorkOrdersQueryKey,
+  getGetContainerSystemRecordsQueryKey,
   useAssignServiceRequest,
+  useGetContainerSystemRecords,
   useGetAdminWorkOrders,
   useGetDriverWorkOrders,
   useUpdateDriverWorkOrder,
   DriverWorkOrderStatus,
   type ServiceRequest,
+  type ContainerSystemRecord,
 } from "@workspace/api-client-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -25,10 +28,12 @@ import {
   ClipboardList,
   Clock3,
   ExternalLink,
+  AlertTriangle,
   MapPin,
   Navigation,
   Phone,
   Play,
+  Plus,
   RotateCcw,
   UserRound,
   X,
@@ -126,6 +131,50 @@ function directionsUrl(location: string) {
     ? `${gps[1]},${gps[2]}`
     : `${location}، الرياض، المملكة العربية السعودية`;
   return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(destination)}`;
+}
+
+function taskContainerIds(order: ServiceRequest) {
+  const extended = order as ServiceRequest & { containerRecordIds?: number[] };
+  return Array.isArray(extended.containerRecordIds)
+    ? extended.containerRecordIds.map(Number).filter(id => id > 0)
+    : [Number(order.containerRecordId ?? 0)].filter(id => id > 0);
+}
+
+function nearbyContainerCandidate(order: ServiceRequest, contract: ContainerSystemRecord) {
+  const task = order as ServiceRequest & { latitude?: number; longitude?: number };
+  const payload = contract.payload as Record<string, unknown>;
+  const parseCoords = (source: Record<string, unknown>, location: string) => {
+    const match = location.match(/(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)/);
+    const lat = Number(source.latitude ?? source.lat ?? match?.[1]);
+    const lng = Number(source.longitude ?? source.lng ?? match?.[2]);
+    return Number.isFinite(lat) && Number.isFinite(lng) && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180
+      ? { lat, lng }
+      : null;
+  };
+  const taskLocation = String(order.location ?? "");
+  const targetLocation = String(payload.location ?? payload.serviceAddress ?? payload.address ?? "");
+  const taskCoords = parseCoords(task, taskLocation);
+  const targetCoords = parseCoords(payload, targetLocation);
+  if (taskCoords && targetCoords) {
+    const radians = (value: number) => value * Math.PI / 180;
+    const latDelta = radians(targetCoords.lat - taskCoords.lat);
+    const lngDelta = radians(targetCoords.lng - taskCoords.lng);
+    const distance = 6371 * 2 * Math.asin(Math.sqrt(
+      Math.sin(latDelta / 2) ** 2 +
+      Math.cos(radians(taskCoords.lat)) * Math.cos(radians(targetCoords.lat)) * Math.sin(lngDelta / 2) ** 2,
+    ));
+    return distance <= 5;
+  }
+  const taskArea = String((task as Record<string, unknown>).neighborhood ?? (task as Record<string, unknown>).district ?? (task as Record<string, unknown>).area ?? "").trim().toLowerCase();
+  const targetArea = String(payload.neighborhood ?? payload.district ?? payload.area ?? "").trim().toLowerCase();
+  if (taskArea && targetArea && taskArea === targetArea) return true;
+  const normalize = (value: string) => value.toLowerCase().replace(/[،,؛;|/\\-]+/g, " ").replace(/\s+/g, " ").trim();
+  const a = normalize(taskLocation);
+  const b = normalize(targetLocation);
+  if (a.length >= 6 && b.length >= 6 && (a.includes(b) || b.includes(a))) return true;
+  const ignored = new Set(["المملكة", "العربية", "السعودية", "الرياض", "حي", "شارع", "طريق", "منطقة", "مدينة"]);
+  const leftWords = new Set(a.split(" ").filter(word => word.length >= 3 && !ignored.has(word)));
+  return b.split(" ").filter(word => word.length >= 3 && !ignored.has(word) && leftWords.has(word)).length >= 2;
 }
 
 function SummaryTile({
@@ -610,15 +659,19 @@ function CompletionEvidenceDialog({
 function WorkOrderCard({
   order,
   allOrders,
+  nearbyCandidates,
   onAction,
   onOpenDetails,
+  onAddContainer,
   pending,
   isDriver,
 }: {
   order: ServiceRequest;
   allOrders: ServiceRequest[];
+  nearbyCandidates: ContainerSystemRecord[];
   onAction: (order: ServiceRequest, status: DriverWorkOrderStatus) => void;
   onOpenDetails: (order: ServiceRequest) => void;
+  onAddContainer: (order: ServiceRequest) => void;
   pending: boolean;
   isDriver: boolean;
 }) {
@@ -628,6 +681,7 @@ function WorkOrderCard({
     order.driverStatus === DriverWorkOrderStatus.completed;
   const conflict = hasDriverConflict(order, allOrders);
   const overdue = isOverdue(order);
+  const isEmptying = /تفريغ|empty|unload/i.test(order.serviceType);
   return (
     <article
       className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition-shadow hover:shadow-md sm:p-5"
@@ -677,6 +731,13 @@ function WorkOrderCard({
         </div>
       </div>
 
+      {!isDriver && isEmptying && nearbyCandidates.length > 0 && (
+        <div className="mt-3 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-900" data-testid={`nearby-emptying-warning-${order.id}`}>
+          <AlertTriangle size={15} className="mt-0.5 shrink-0" />
+          <span>تنبيه: توجد {nearbyCandidates.length} حاوية مؤهلة للتفريغ في الحيز الجغرافي نفسه. يمكن ضمها إلى المهمة.</span>
+        </div>
+      )}
+
       <div className="mt-4 grid gap-2 border-t border-slate-100 pt-4 text-sm text-slate-600 sm:grid-cols-2">
         <div className="flex min-w-0 items-center gap-2">
           <MapPin size={15} className="shrink-0 text-slate-400" />
@@ -706,6 +767,17 @@ function WorkOrderCard({
         >
           <ClipboardList size={16} /> عرض التفاصيل
         </Button>
+        {!isDriver && isEmptying && !isHistory && nearbyCandidates.length > 0 && (
+          <Button
+            variant="outline"
+            disabled={pending}
+            onClick={() => onAddContainer(order)}
+            className="h-11 flex-1 gap-2 border-amber-300 text-amber-900 hover:bg-amber-50"
+            data-testid={`button-add-nearby-container-${order.id}`}
+          >
+            <Plus size={16} /> إضافة حاوية
+          </Button>
+        )}
         {isDriver && !isHistory && (
           <>
             {order.driverStatus === DriverWorkOrderStatus.assigned && (

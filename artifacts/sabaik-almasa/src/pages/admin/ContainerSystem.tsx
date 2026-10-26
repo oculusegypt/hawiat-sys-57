@@ -1765,6 +1765,8 @@ function ContractRecordDetails({
   const proofPhotoUrl = String(payload.driverProofPhotoUrl ?? payload.proofPhotoUrl ?? linkedRequest?.driverProofPhotoUrl ?? "").trim()
   const openOperation = findOpenContainerOperation(allRecords, serviceRequests, record.id, containerId || null)
   const openDeliveryOperation = findOpenContainerOperation(allRecords, serviceRequests, record.id, containerId || null, "delivery")
+  const delivered = record.status === "delivered" || Boolean(payload.deliverAt)
+  const returned = record.status === "returned" || Boolean(payload.returnAt)
   const invoiceMoney = (value: unknown) => {
     const numeric = Number(value)
     return Number.isFinite(numeric) && numeric > 0 ? money(numeric) : "—"
@@ -1779,11 +1781,17 @@ function ContractRecordDetails({
       { action: "approve", label: "اعتماد العقد", className: "bg-emerald-700 hover:bg-emerald-800" },
       { action: "reject", label: "رفض العقد", className: "border-rose-200 text-rose-700", variant: "outline" as const },
     ] : []),
-    { action: "deliver", label: "تسجيل التسليم", className: "bg-cyan-800 hover:bg-cyan-900", disabled: Boolean(openDeliveryOperation) },
-    { action: "return", label: "تسجيل الاسترجاع", className: "border-cyan-200 text-cyan-900", variant: "outline" as const, disabled: Boolean(openOperation) },
+    ...(!delivered && !returned ? [
+      { action: "assign", label: "إسناد مهمة التسليم", className: "border-cyan-200 text-cyan-900", variant: "outline" as const },
+      { action: "deliver", label: "تسجيل التسليم الإداري", className: "bg-cyan-800 hover:bg-cyan-900", disabled: Boolean(openDeliveryOperation) },
+    ] : []),
+    ...(delivered && !returned ? [
+      { action: "emptying", label: "إنشاء مهمة تفريغ", className: "bg-amber-600 hover:bg-amber-700", disabled: Boolean(openOperation) },
+      { action: "pickup", label: "إنشاء مهمة سحب / استرجاع", className: "border-cyan-200 text-cyan-900", variant: "outline" as const, disabled: Boolean(openOperation) },
+    ] : []),
     { action: "settle", label: "تصفية العقد", className: "border-emerald-200 text-emerald-800", variant: "outline" as const },
     { action: "debt", label: "تحويل لمديونية", className: "border-rose-200 text-rose-700", variant: "outline" as const },
-    { action: "close", label: "إغلاق العقد", className: "border-slate-200 text-slate-700", variant: "outline" as const, disabled: Boolean(openOperation) },
+    ...(returned ? [{ action: "close", label: "إنهاء العقد", className: "border-slate-200 text-slate-700", variant: "outline" as const, disabled: Boolean(openOperation) }] : []),
   ]
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -1882,6 +1890,8 @@ function RecordDetails({ record, allRecords, serviceRequests = [], open, onOpenC
         paymentMethod: record.payload.paymentMethod ?? sourcePaymentPayload?.paymentMethod,
       }
     : record.payload
+  const delivered = record.status === "delivered" || Boolean(detailPayload.deliverAt)
+  const returned = record.status === "returned" || Boolean(detailPayload.returnAt)
   const entries = Object.entries(detailPayload).filter(([key]) => key !== "status" || !isContainer).filter(([, value]) => value !== "" && value !== null && value !== undefined)
   const containerPayload = record.payload as Record<string, unknown>
   const containerCode = String(containerPayload.assetCode ?? containerPayload.code ?? record.reference ?? `#${record.id}`)
@@ -2194,7 +2204,18 @@ function RecordDetails({ record, allRecords, serviceRequests = [], open, onOpenC
                  return <button type="button" key={invoice.id} onClick={() => { onOpenChange(false); navigate(`/admin/container-system/invoice/${invoice.id}/details`) }} className="grid w-full gap-2 rounded-xl bg-white p-3 text-right transition hover:bg-cyan-100/60 sm:grid-cols-[1.2fr_1fr_1fr_1fr_1fr]"><span className="font-black text-cyan-800" dir="ltr">{String(invoicePayload.invoiceNumber ?? invoice.reference)}</span><span><small className="block text-[10px] text-slate-400">الفترة</small>{String(invoicePayload.billingPeriod ?? invoicePayload.date ?? "—")}</span><span><small className="block text-[10px] text-slate-400">الإجمالي</small>{total.toLocaleString("ar-SA")} ر.س</span><span><small className="block text-[10px] text-slate-400">المدفوع</small><span className="text-emerald-700">{paid.toLocaleString("ar-SA")} ر.س</span></span><span><small className="block text-[10px] text-slate-400">المتبقي</small><span className="font-black text-rose-700">{Math.max(total - paid, 0).toLocaleString("ar-SA")} ر.س</span></span></button>
                })}</div>}
              </div>
-              <div className="rounded-2xl border border-amber-100 bg-amber-50/60 p-4"><h4 className="mb-3 text-sm font-black text-amber-950">دورة العقد</h4>{openOperation && <p className="mb-3 rounded-xl border border-amber-200 bg-white px-3 py-2 text-xs font-bold text-amber-900">أمر تشغيل قائم #{openOperation.id}: {openOperation.statusLabel} · {openOperation.assigned ? "تم الإسناد" : "غير مسند"}. ستبقى أزرار الاسترجاع والإغلاق معطلة حتى إكماله.</p>}{openDeliveryOperation && <p className="mb-3 rounded-xl border border-cyan-200 bg-white px-3 py-2 text-xs font-bold text-cyan-900">أمر إرسال قائم #{openDeliveryOperation.id}؛ تم تعطيل تسجيل التسليم حتى إكمال الأمر.</p>}<div className="flex flex-wrap gap-2">{["draft", "pending_approval", "issued"].includes(record.status) && <><Button size="sm" onClick={() => onContractAction(record, "approve")} className="bg-emerald-700 hover:bg-emerald-800">اعتماد العقد</Button><Button size="sm" variant="outline" onClick={() => onContractAction(record, "reject")} className="border-rose-200 text-rose-700">رفض العقد</Button></>}<Button size="sm" disabled={Boolean(openDeliveryOperation)} onClick={() => onContractAction(record, "deliver")} className="bg-cyan-800 hover:bg-cyan-900">تسجيل التسليم</Button><Button size="sm" variant="outline" disabled={Boolean(openOperation)} onClick={() => onContractAction(record, "return")} className="border-cyan-200 text-cyan-900">تسجيل الاسترجاع</Button><Button size="sm" variant="outline" onClick={() => onContractAction(record, "settle")} className="border-emerald-200 text-emerald-800">تصفية العقد</Button><Button size="sm" variant="outline" onClick={() => onContractAction(record, "debt")} className="border-rose-200 text-rose-700">تحويل لمديونية</Button><Button size="sm" variant="outline" disabled={Boolean(openOperation)} onClick={() => onContractAction(record, "close")} className="border-slate-200 text-slate-700">إغلاق العقد</Button></div></div>
+              <div className="rounded-2xl border border-amber-100 bg-amber-50/60 p-4">
+                <h4 className="mb-3 text-sm font-black text-amber-950">دورة العقد ومهام السائقين</h4>
+                {openOperation && <p className="mb-3 rounded-xl border border-amber-200 bg-white px-3 py-2 text-xs font-bold text-amber-900">مهمة قائمة #{openOperation.id}: {openOperation.statusLabel} · {openOperation.assigned ? "تم الإسناد" : "بانتظار الإسناد"}.</p>}
+                {openDeliveryOperation && <p className="mb-3 rounded-xl border border-cyan-200 bg-white px-3 py-2 text-xs font-bold text-cyan-900">مهمة التسليم قائمة #{openDeliveryOperation.id}؛ لن تتغير حالة الحاوية حتى اكتمالها.</p>}
+                <div className="flex flex-wrap gap-2">
+                  {["draft", "pending_approval", "issued"].includes(record.status) && <><Button size="sm" onClick={() => onContractAction(record, "approve")} className="bg-emerald-700 hover:bg-emerald-800">اعتماد العقد</Button><Button size="sm" variant="outline" onClick={() => onContractAction(record, "reject")} className="border-rose-200 text-rose-700">رفض العقد</Button></>}
+                  {!delivered && !returned && <><Button size="sm" variant="outline" onClick={() => onContractAction(record, "assign")} className="border-cyan-200 text-cyan-900">إسناد مهمة التسليم</Button><Button size="sm" disabled={Boolean(openDeliveryOperation)} onClick={() => onContractAction(record, "deliver")} className="bg-cyan-800 hover:bg-cyan-900">تسجيل التسليم الإداري</Button></>}
+                  {delivered && !returned && <><Button size="sm" disabled={Boolean(openOperation)} onClick={() => onContractAction(record, "emptying")} className="bg-amber-600 hover:bg-amber-700">إنشاء مهمة تفريغ</Button><Button size="sm" variant="outline" disabled={Boolean(openOperation)} onClick={() => onContractAction(record, "pickup")} className="border-cyan-200 text-cyan-900">إنشاء مهمة سحب / استرجاع</Button></>}
+                  <Button size="sm" variant="outline" onClick={() => onContractAction(record, "settle")} className="border-emerald-200 text-emerald-800">فتح التسوية</Button>
+                  {returned && <Button size="sm" variant="outline" disabled={Boolean(openOperation)} onClick={() => onContractAction(record, "close")} className="border-slate-200 text-slate-700">إنهاء العقد</Button>}
+                </div>
+              </div>
            </div>}
           </div>
         </DialogContent>
@@ -2540,8 +2561,8 @@ export default function ContainerSystem() {
         setContractWizardOpen(false)
         setContractFlowBusy(false)
         showSuccess((result as { invoice?: unknown } | undefined)?.invoice
-          ? "تم إنشاء العقد والفاتورة الأولى تلقائياً مع الموعد وأمر العمل"
-          : "تم إصدار العقد وإنشاء الموعد وأمر العمل وربطهما بالأصل")
+          ? "تم إنشاء العقد والفاتورة الأولى ومهمة التسليم وربطها بالحاوية"
+          : "تم إنشاء العقد ومهمة التسليم وربطها بالحاوية")
         const contractId = (result as { contract?: { id?: number } } | undefined)?.contract?.id
         if (contractId) navigate(`/admin/container-system/contract/${contractId}/print`)
       },
@@ -2596,18 +2617,67 @@ export default function ContainerSystem() {
       showSuccess("تم فتح شاشة التسوية الآمنة؛ سجّل الدفعة من كشف العقد")
       return
     }
-    if (action === "debt" || action === "close") {
+    if (action === "assign") {
+      setDetailRecord(null)
+      navigate("/admin/work-orders")
+      showSuccess("افتح مهمة التسليم غير المسندة من قائمة مهام السائقين")
+      return
+    }
+    if (action === "debt") {
       toast({
-        title: action === "debt"
-          ? "تحويل العقد إلى مديونية يتم من خلال قيد مالي مرحّل"
-          : "إغلاق العقد يتطلب إكمال دورة التسليم والاسترجاع والتسوية",
+        title: "تحويل العقد إلى مديونية يتم من خلال قيد مالي مرحّل",
         description: "لم يتم تغيير حالة العقد حتى لا ينفصل العقد عن كشف الحساب والقيود المالية.",
         variant: "destructive",
       })
       return
     }
     const now = new Date().toISOString()
-    if (["deliver", "return", "approve", "reject"].includes(action)) {
+    if (action === "emptying" || action === "pickup") {
+      if (!delivered || returned) {
+        toast({ title: "لا يمكن إنشاء مهمة قبل تسليم الحاوية فعليًا", variant: "destructive" })
+        return
+      }
+      const payload = record.payload as Record<string, unknown>
+      const customerId = Number(payload.customerRecordId ?? 0)
+      const containerId = Number(payload.containerRecordId ?? 0)
+      const customer = (snapshot?.records ?? records).find(item => item.kind === "customer" && item.id === customerId)
+      const customerPayload = customer?.payload as Record<string, unknown> | undefined
+      const serviceType = action === "emptying" ? "تفريغ حاوية" : "سحب واسترجاع حاوية"
+      const operationKey = crypto.randomUUID()
+      void fetch(`${API_BASE}/api/admin/service-requests/from-contract`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${localStorage.getItem("admin_token") ?? ""}`,
+          "Idempotency-Key": operationKey,
+        },
+        body: JSON.stringify({
+          operationKey,
+          customerRecordId: customerId,
+          containerRecordId: containerId,
+          contractRecordId: record.id,
+          clientName: String(payload.customerName ?? customerPayload?.name ?? customerPayload?.customerName ?? ""),
+          phone: String(payload.customerPhone ?? customerPayload?.phone ?? customerPayload?.mobile ?? ""),
+          email: String(payload.customerEmail ?? customerPayload?.email ?? ""),
+          serviceType,
+          containerSize: String(payload.containerCode ?? ""),
+          location: String(payload.location ?? ""),
+          duration: String(payload.duration ?? ""),
+          notes: String(payload.notes ?? ""),
+          appointmentType: "immediate",
+          scheduledAt: now,
+        }),
+      }).then(async response => {
+        const body = await response.json().catch(() => ({}))
+        if (!response.ok) throw new Error(String(body.error ?? "تعذر إنشاء مهمة السائق"))
+        invalidate()
+        setDetailRecord(null)
+        showSuccess(`تم إنشاء ${serviceType} وإضافتها إلى مهام السائقين`)
+        navigate("/admin/work-orders")
+      }).catch(error => toast({ title: error instanceof Error ? error.message : "تعذر إنشاء مهمة السائق", variant: "destructive" }))
+      return
+    }
+    if (["deliver", "return", "approve", "reject", "close"].includes(action)) {
       void fetch(`${API_BASE}/api/admin/container-system/contracts/${record.id}/lifecycle`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("admin_token") ?? ""}` },
@@ -2617,35 +2687,10 @@ export default function ContainerSystem() {
         if (!response.ok) throw new Error(String(body.error ?? "تعذر تنفيذ حركة العقد"))
         invalidate()
         setDetailRecord(null)
-        showSuccess(body.idempotent ? "تم تأكيد الحركة السابقة دون تكرارها" : action === "deliver" ? "تم التسليم وتحديث الأصل والحركة والتدقيق" : action === "return" ? "تم الاسترجاع وتحديث الأصل والحركة والتدقيق" : action === "approve" ? "تم اعتماد العقد وتسجيل أثر الاعتماد" : "تم رفض العقد وتسجيل السبب في التدقيق")
+        showSuccess(body.idempotent ? "تم تأكيد الحركة السابقة دون تكرارها" : action === "deliver" ? "تم التسليم الإداري وتحديث حالة العقد والحاوية" : action === "return" ? "تم الاسترجاع وتحديث الأصل والحركة والتدقيق" : action === "approve" ? "تم اعتماد العقد وتسجيل أثر الاعتماد" : action === "close" ? "تم إنهاء العقد وتسوية ارتباط الحاوية" : "تم رفض العقد وتسجيل السبب في التدقيق")
       }).catch(error => toast({ title: error instanceof Error ? error.message : "تعذر تنفيذ حركة العقد", variant: "destructive" }))
       return
     }
-    const payload = { ...record.payload, [`${action}At`]: now, lifecycleAction: action }
-    updateMutation.mutate({ id: record.id, data: { status, payload } }, {
-      onSuccess: updated => {
-        invalidate()
-        setDetailRecord(null)
-        showSuccess(`تم ${action === "deliver" ? "تسجيل التسليم" : action === "return" ? "تسجيل الاسترجاع" : action === "settle" ? "تصفية العقد" : action === "debt" ? "تحويل العقد إلى مديونية" : "إغلاق العقد"}`)
-        const containerCode = String(updated.payload.containerCode ?? "")
-        if (containerCode && (action === "deliver" || action === "return")) {
-          createMutation.mutate(
-            { data: { kind: "container_movement", status: "posted", payload: { contractNumber: updated.payload.contractNumber ?? updated.reference, containerCode, movementType: action === "deliver" ? "تسليم" : "استرجاع", movementDate: now, location: updated.payload.location ?? "" } } },
-            {
-              onSuccess: () => {
-                invalidate()
-                showSuccess(action === "deliver" ? "تم تحديث حالة الحاوية إلى مؤجرة" : "تم تحديث حالة الحاوية إلى متاحة")
-              },
-              onError: error => {
-                invalidate()
-                toast({ title: error instanceof Error ? error.message : "تم تحديث العقد ولم تتم مزامنة حالة الحاوية", variant: "destructive" })
-              },
-            },
-          )
-        }
-      },
-      onError: () => toast({ title: "تعذر تحديث دورة العقد", variant: "destructive" }),
-    })
   }
   const busy = createMutation.isPending || updateMutation.isPending || contractFlowBusy
   const loading = snapshotQuery.isLoading || (isCollection && recordsQuery.isLoading)

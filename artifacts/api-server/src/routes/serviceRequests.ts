@@ -65,16 +65,72 @@ function isEmptyingWork(request: typeof serviceRequestsTable.$inferSelect) {
   return /تفريغ|empty|unload/i.test(`${request.serviceType} ${request.notes ?? ""}`);
 }
 
+function coordinatesFromPayload(payload: Record<string, unknown>) {
+  const coordinates = String(payload.locationCoordinates ?? payload.coordinates ?? payload.location ?? "");
+  const match = coordinates.match(/(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)/);
+  const lat = Number(payload.latitude ?? payload.lat ?? match?.[1]);
+  const lng = Number(payload.longitude ?? payload.lng ?? match?.[2]);
+  return Number.isFinite(lat) && Number.isFinite(lng) && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180
+    ? { lat, lng }
+    : null;
+}
+
+function operationLocationsNearby(
+  left: Record<string, unknown>,
+  right: Record<string, unknown>,
+) {
+  const leftCoordinates = coordinatesFromPayload(left);
+  const rightCoordinates = coordinatesFromPayload(right);
+  if (leftCoordinates && rightCoordinates) {
+    const radians = (value: number) => value * Math.PI / 180;
+    const latDelta = radians(rightCoordinates.lat - leftCoordinates.lat);
+    const lngDelta = radians(rightCoordinates.lng - leftCoordinates.lng);
+    const haversine = Math.sin(latDelta / 2) ** 2 +
+      Math.cos(radians(leftCoordinates.lat)) * Math.cos(radians(rightCoordinates.lat)) *
+      Math.sin(lngDelta / 2) ** 2;
+    return 6371 * 2 * Math.atan2(Math.sqrt(haversine), Math.sqrt(1 - haversine)) <= 5;
+  }
+  const areaKeys = ["neighborhood", "district", "area", "city", "region"];
+  for (const key of areaKeys) {
+    const a = String(left[key] ?? "").trim().toLowerCase();
+    const b = String(right[key] ?? "").trim().toLowerCase();
+    if (a && b && a === b) return true;
+  }
+  const normalize = (value: unknown) => String(value ?? "")
+    .toLowerCase()
+    .replace(/[،,؛;|/\\\-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  const leftText = normalize(left.location ?? left.address ?? "");
+  const rightText = normalize(right.location ?? right.address ?? "");
+  if (leftText.length >= 6 && rightText.length >= 6 &&
+      (leftText.includes(rightText) || rightText.includes(leftText))) return true;
+  const ignored = new Set(["المملكة", "العربية", "السعودية", "الرياض", "حي", "شارع", "طريق", "منطقة", "مدينة"]);
+  const words = (value: string) => new Set(value.split(" ").filter(word => word.length >= 3 && !ignored.has(word)));
+  const leftWords = words(leftText);
+  const overlap = [...words(rightText)].filter(word => leftWords.has(word));
+  return overlap.length >= 2;
+}
+
 function operationalRecordAsWorkOrder(record: typeof containerSystemRecordsTable.$inferSelect) {
   const payload = parseContainerPayload(record.payload);
+  const containerRecordIds = Array.isArray(payload.containerRecordIds)
+    ? [...new Set(payload.containerRecordIds.map(Number).filter(id => Number.isInteger(id) && id > 0))]
+    : [Number(payload.containerRecordId ?? 0)].filter(id => id > 0);
+  const contractRecordIds = Array.isArray(payload.contractRecordIds)
+    ? [...new Set(payload.contractRecordIds.map(Number).filter(id => Number.isInteger(id) && id > 0))]
+    : [Number(payload.contractRecordId ?? 0)].filter(id => id > 0);
+  const containerCodes = Array.isArray(payload.containerCodes)
+    ? payload.containerCodes.map(String).filter(Boolean)
+    : [String(payload.containerCode ?? "")].filter(Boolean);
   return {
     id: record.id,
     clientName: String(payload.customerName ?? payload.clientName ?? ""),
     phone: String(payload.phone ?? ""),
     email: String(payload.email ?? ""),
     serviceType: String(payload.serviceType ?? payload.operationType ?? "عملية تشغيلية"),
-    containerSize: String(payload.containerCode ?? ""),
-    containerCount: Number(payload.containerCount ?? 1) || 1,
+    containerSize: containerCodes.join("، ") || String(payload.containerCode ?? ""),
+    containerCount: containerRecordIds.length || Number(payload.containerCount ?? 1) || 1,
     propertyType: null,
     areaSize: null,
     location: String(payload.location ?? "يحدد لاحقًا"),
@@ -87,6 +143,9 @@ function operationalRecordAsWorkOrder(record: typeof containerSystemRecordsTable
     customerRecordId: Number(payload.customerRecordId ?? 0) || null,
     containerRecordId: Number(payload.containerRecordId ?? 0) || null,
     contractRecordId: Number(payload.contractRecordId ?? 0) || null,
+    containerRecordIds,
+    contractRecordIds,
+    containerCodes,
     assignedDriverId: Number(payload.assignedDriverId ?? 0) || null,
     assignedVehicleId: Number(payload.assignedVehicleId ?? 0) || null,
     assignedVehiclePlate: payload.assignedVehiclePlate ? String(payload.assignedVehiclePlate) : null,
@@ -133,22 +192,62 @@ function isCleaningContractRequest(request: Pick<typeof serviceRequestsTable.$in
 
 async function prepareContainerCompletion(request: typeof serviceRequestsTable.$inferSelect) {
   if (!isContainerWork(request)) return null;
-  const contract = await db.select().from(containerSystemRecordsTable)
-    .where(eq(containerSystemRecordsTable.id, request.contractRecordId!)).get();
-  if (!contract || contract.kind !== "contract" || contract.status === "archived") {
-    throw new Error("العقد المرتبط بأمر العمل غير موجود");
-  }
-  const contractPayload = parseContainerPayload(contract.payload);
-  const containerCode = String(contractPayload.containerCode ?? "").trim();
-  if (!containerCode) throw new Error("العقد المرتبط لا يحتوي على رقم حاوية");
   const assets = await db.select().from(containerSystemRecordsTable);
-  const asset = assets.find(record =>
-    ["container", "container_asset"].includes(record.kind) &&
-    record.status !== "archived" &&
-    containerCodeFrom(parseContainerPayload(record.payload)) === containerCode,
-  );
-  if (!asset) throw new Error("أصل الحاوية المرتبط بأمر العمل غير موجود");
-  const requestFields = request as typeof request & { appointmentRecordId?: number | null };
+  const requestFields = request as typeof request & {
+    appointmentRecordId?: number | null;
+    containerRecordIds?: number[];
+    contractRecordIds?: number[];
+  };
+  const containerIds = [...new Set([
+    Number(request.containerRecordId ?? 0),
+    ...(Array.isArray(requestFields.containerRecordIds) ? requestFields.containerRecordIds.map(Number) : []),
+  ].filter(id => Number.isInteger(id) && id > 0))];
+  const contractIds = Array.isArray(requestFields.contractRecordIds)
+    ? requestFields.contractRecordIds.map(Number)
+    : [];
+  const items: Array<{
+    contract: typeof containerSystemRecordsTable.$inferSelect;
+    contractPayload: Record<string, unknown>;
+    asset: typeof containerSystemRecordsTable.$inferSelect;
+    containerCode: string;
+    appointment: typeof containerSystemRecordsTable.$inferSelect | null;
+  }> = [];
+  for (const [index, containerId] of containerIds.entries()) {
+    const asset = assets.find(record =>
+      record.id === containerId &&
+      ["container", "container_asset"].includes(record.kind) &&
+      record.status !== "archived",
+    );
+    if (!asset) throw new Error(`أصل الحاوية رقم ${containerId} غير موجود`);
+    const assetPayload = parseContainerPayload(asset.payload);
+    const code = containerCodeFrom(assetPayload) || asset.reference;
+    const requestedContractId = Number(contractIds[index] ?? (index === 0 ? request.contractRecordId : 0));
+    const contract = assets.find(record =>
+      record.kind === "contract" &&
+      record.status !== "archived" &&
+      (requestedContractId > 0
+        ? record.id === requestedContractId
+        : String(parseContainerPayload(record.payload).containerCode ?? "").trim() === code),
+    );
+    if (!contract || String(parseContainerPayload(contract.payload).containerCode ?? "").trim() !== code) {
+      throw new Error(`العقد المرتبط بالحاوية ${code} غير موجود أو لا يطابق الأصل`);
+    }
+    const contractPayload = parseContainerPayload(contract.payload);
+    if (isEmptyingWork(request) || isReturnWork(request)) {
+      if (contract.status !== "delivered" || !["rented", "with_customer", "awaiting_return"].includes(String(assetPayload.status ?? asset.status).toLowerCase())) {
+        throw new Error(`الحاوية ${code} لم تسلّم فعليًا ولا يمكن تفريغها أو سحبها`);
+      }
+    } else if (!["active", "approved", "issued", "scheduled"].includes(contract.status)) {
+      throw new Error(`لا يمكن إكمال مهمة التسليم للحاوية ${code} من الحالة الحالية`);
+    }
+    items.push({ contract, contractPayload, asset, containerCode: code, appointment: null });
+  }
+  if (!items.length) throw new Error("لا توجد حاويات مرتبطة بمهمة السائق");
+  const primary = items[0];
+  const { contract, contractPayload, asset, containerCode } = primary;
+  if (Number(request.contractRecordId ?? 0) !== contract.id) {
+    throw new Error("العقد الأساسي لا يطابق الحاوية الأولى في مهمة السائق");
+  }
   const requestedAppointmentId = Number(requestFields.appointmentRecordId ?? 0);
   const appointment = assets.find(record => {
     if (record.kind !== "appointment" || record.status === "archived") return false;
@@ -158,10 +257,10 @@ async function prepareContainerCompletion(request: typeof serviceRequestsTable.$
       Number(payload.containerRecordId ?? 0) === asset.id &&
       (!request.scheduledAt || String(payload.scheduledAt ?? "") === request.scheduledAt);
   }) ?? null;
+  primary.appointment = appointment;
   return {
-    contract,
-    contractPayload,
-    asset,
+    ...primary,
+    items,
     appointment,
     containerCode,
     returning: isReturnWork(request),
@@ -188,87 +287,111 @@ function syncContainerCompletion(
     movementType?: string | null;
     appointmentRecordId?: number | null;
     legacyRequestId?: number | null;
+    containerRecordIds?: number[];
+    contractRecordIds?: number[];
   };
   const operationKey = String(operationalFields.operationKey ?? "").trim() || `service-request-${request.id}`;
   const movementType = String(operationalFields.movementType ?? action);
-  const nextContractPayload = {
-    ...prepared.contractPayload,
-    [`${prepared.returning ? "return" : "deliver"}At`]: now,
-    lastWorkOrderId: request.id,
-  };
-  const nextAssetPayload = {
-    ...parseContainerPayload(prepared.asset.payload),
-    status: assetStatus,
-    location: request.location,
-    lastMovementAt: now,
-    lastWorkOrderId: request.id,
-  };
+  const items = prepared.items ?? [prepared];
+  for (const [index, item] of items.entries()) {
+    const nextContractPayload = {
+      ...item.contractPayload,
+      [`${prepared.returning ? "return" : "deliver"}At`]: now,
+      lastWorkOrderId: request.id,
+    };
+    const currentAssetPayload = parseContainerPayload(item.asset.payload);
+    const nextAssetPayload = prepared.emptying
+      ? { ...currentAssetPayload, lastEmptyingAt: now, lastWorkOrderId: request.id }
+      : {
+          ...currentAssetPayload,
+          status: assetStatus,
+          location: request.location,
+          lastMovementAt: now,
+          lastWorkOrderId: request.id,
+        };
 
-  if (!prepared.emptying) {
+    if (!prepared.emptying) {
+      writer.update(containerSystemRecordsTable).set({
+        status: contractStatus,
+        payload: JSON.stringify(nextContractPayload),
+        updatedAt: now,
+      }).where(eq(containerSystemRecordsTable.id, item.contract.id)).run();
+    }
     writer.update(containerSystemRecordsTable).set({
-      status: contractStatus,
-      payload: JSON.stringify(nextContractPayload),
-      updatedAt: now,
-    }).where(eq(containerSystemRecordsTable.id, prepared.contract.id)).run();
-    writer.update(containerSystemRecordsTable).set({
-      status: assetStatus,
+      ...(prepared.emptying ? {} : { status: assetStatus }),
       payload: JSON.stringify(nextAssetPayload),
       updatedAt: now,
-    }).where(eq(containerSystemRecordsTable.id, prepared.asset.id)).run();
-  } else {
-    writer.update(containerSystemRecordsTable).set({
-      payload: JSON.stringify({
-        ...parseContainerPayload(prepared.asset.payload),
-        lastEmptyingAt: now,
-        lastWorkOrderId: request.id,
-      }),
-      updatedAt: now,
-    }).where(eq(containerSystemRecordsTable.id, prepared.asset.id)).run();
-  }
+    }).where(eq(containerSystemRecordsTable.id, item.asset.id)).run();
 
-  const movement = writer.insert(containerSystemRecordsTable).values({
-    kind: "container_movement",
-    status: "posted",
-    reference: `MOV-WO-${request.id}`,
-    payload: JSON.stringify({
-      operationKey,
-      movementKey: String(operationalFields.movementKey ?? operationKey),
-      contractNumber: prepared.contractPayload.contractNumber ?? prepared.contract.reference,
-      contractRecordId: prepared.contract.id,
-      customerRecordId: request.customerRecordId ?? prepared.contractPayload.customerRecordId ?? null,
-      containerRecordId: prepared.asset.id,
-      containerCode: prepared.containerCode,
-      movementType,
-      movementDate: now,
-      location: request.location,
-      appointmentRecordId: operationalFields.appointmentRecordId ?? null,
-      workOrderId: request.id,
-      source: "driver_work_order",
-      operationalOnly: prepared.emptying,
-      driverId: request.assignedDriverId,
-      proofPhotoUrl: request.driverProofPhotoUrl,
-      receiverName: request.driverReceiverName,
-      signatureData: request.driverSignatureData,
-      locationLat: request.driverLocationLat,
-      locationLng: request.driverLocationLng,
-    }),
-    createdBy: actorId,
-  }).returning().get();
-  if (prepared.appointment) {
-    const appointmentPayload = parseContainerPayload(prepared.appointment.payload);
-    writer.update(containerSystemRecordsTable).set({
-      status: "completed",
+    const movement = writer.insert(containerSystemRecordsTable).values({
+      kind: "container_movement",
+      status: "posted",
+      reference: `MOV-WO-${request.id}-${item.asset.id}`,
       payload: JSON.stringify({
-        ...appointmentPayload,
-        operationStatus: "completed",
-        completedAt: now,
-        movementRecordId: movement.id,
+        operationKey: `${operationKey}:${item.asset.id}`,
+        movementKey: `${String(operationalFields.movementKey ?? operationKey)}:${item.asset.id}`,
+        contractNumber: item.contractPayload.contractNumber ?? item.contract.reference,
+        contractRecordId: item.contract.id,
+        customerRecordId: request.customerRecordId ?? item.contractPayload.customerRecordId ?? null,
+        containerRecordId: item.asset.id,
+        containerCode: item.containerCode,
+        movementType,
+        movementDate: now,
+        location: request.location,
+        appointmentRecordId: index === 0 ? operationalFields.appointmentRecordId ?? null : null,
         workOrderId: request.id,
+        source: "driver_work_order",
+        operationalOnly: prepared.emptying,
+        driverId: request.assignedDriverId,
         proofPhotoUrl: request.driverProofPhotoUrl,
         receiverName: request.driverReceiverName,
+        signatureData: request.driverSignatureData,
+        locationLat: request.driverLocationLat,
+        locationLng: request.driverLocationLng,
       }),
-      updatedAt: now,
-    }).where(eq(containerSystemRecordsTable.id, prepared.appointment.id)).run();
+      createdBy: actorId,
+    }).returning().get();
+    if (item.appointment) {
+      const appointmentPayload = parseContainerPayload(item.appointment.payload);
+      writer.update(containerSystemRecordsTable).set({
+        status: "completed",
+        payload: JSON.stringify({
+          ...appointmentPayload,
+          operationStatus: "completed",
+          completedAt: now,
+          movementRecordId: movement.id,
+          workOrderId: request.id,
+          proofPhotoUrl: request.driverProofPhotoUrl,
+          receiverName: request.driverReceiverName,
+        }),
+        updatedAt: now,
+      }).where(eq(containerSystemRecordsTable.id, item.appointment.id)).run();
+    }
+    writer.insert(containerSystemAuditTable).values([
+      {
+        recordId: item.asset.id,
+        kind: item.asset.kind,
+        action: "work_order_sync",
+        beforePayload: item.asset.payload,
+        afterPayload: JSON.stringify(nextAssetPayload),
+        actorId,
+      },
+      {
+        recordId: movement.id,
+        kind: "container_movement",
+        action: "work_order_create",
+        afterPayload: movement.payload,
+        actorId,
+      },
+      ...(!prepared.emptying ? [{
+        recordId: item.contract.id,
+        kind: "contract",
+        action: "work_order_sync",
+        beforePayload: item.contract.payload,
+        afterPayload: JSON.stringify(nextContractPayload),
+        actorId,
+      }] : []),
+    ]).run();
   }
   const legacyRequestId = Number(operationalFields.legacyRequestId ?? 0);
   if (legacyRequestId > 0) {
@@ -315,33 +438,6 @@ function syncContainerCompletion(
         actorId,
       }).run();
     }
-  }
-  writer.insert(containerSystemAuditTable).values([
-    {
-      recordId: prepared.asset.id,
-      kind: prepared.asset.kind,
-      action: "work_order_sync",
-      beforePayload: prepared.asset.payload,
-      afterPayload: JSON.stringify(nextAssetPayload),
-      actorId,
-    },
-    {
-      recordId: movement.id,
-      kind: "container_movement",
-      action: "work_order_create",
-      afterPayload: movement.payload,
-      actorId,
-    },
-  ]).run();
-  if (!prepared.emptying) {
-    writer.insert(containerSystemAuditTable).values({
-      recordId: prepared.contract.id,
-      kind: "contract",
-      action: "work_order_sync",
-      beforePayload: prepared.contract.payload,
-      afterPayload: JSON.stringify(nextContractPayload),
-      actorId,
-    }).run();
   }
 }
 
@@ -469,6 +565,15 @@ router.post("/admin/service-requests/from-contract", requireAdmin, requireAnySec
   }
   const operation = String(requestedServiceType).match(/تفريغ|empty/i) ? "EMPTY_CONTAINER" :
     String(requestedServiceType).match(/استرجاع|سحب|pickup|return/i) ? "PICKUP_CONTAINER" : "DELIVER_CONTAINER";
+  const currentAssetStatus = String(containerPayload.status ?? containerRecord.status).trim().toLowerCase();
+  if (operation === "DELIVER_CONTAINER") {
+    if (!["active", "approved", "issued", "scheduled"].includes(String(contract.status).toLowerCase()) ||
+        !["reserved", "available", "inspection", "active"].includes(currentAssetStatus)) {
+      return res.status(409).json({ error: "لا يمكن إنشاء مهمة تسليم إلا لعقد نشط وحاوية محجوزة أو متاحة" });
+    }
+  } else if (contract.status !== "delivered" || !["rented", "with_customer", "awaiting_return"].includes(currentAssetStatus)) {
+    return res.status(409).json({ error: "لا يمكن إنشاء مهمة التفريغ أو السحب قبل تسليم الحاوية فعليًا" });
+  }
   const scheduledDay = String(scheduledAt).slice(0, 10).replace(/[^0-9-]/g, "");
   const suppliedOperationKey = String(requestedOperationKey ?? "").trim();
   const operationKey = suppliedOperationKey.length >= 8 && suppliedOperationKey.length <= 160
@@ -512,24 +617,6 @@ router.post("/admin/service-requests/from-contract", requireAdmin, requireAnySec
       eq(serviceRequestsTable.scheduledAt, String(scheduledAt)),
       eq(serviceRequestsTable.serviceType, requestedServiceType),
     ));
-  const [appointment] = await db.insert(containerSystemRecordsTable).values({
-    kind: "appointment",
-    status: "scheduled",
-    reference: `APT-${contractId}-${Date.now()}`,
-    payload: JSON.stringify({
-      operationKey: `${operationKey}:appointment`,
-      movementKey: operationKey,
-      movementType: operation === "EMPTY_CONTAINER" ? "تفريغ" : operation === "PICKUP_CONTAINER" ? "سحب" : "تسليم",
-      contractRecordId: contractId,
-      customerRecordId: customerId,
-      containerRecordId: containerId,
-      appointmentType: operation,
-      scheduledAt: String(scheduledAt),
-      location: String(location ?? "يحدد لاحقًا"),
-      source: "contract_operation",
-    }),
-    createdBy: (req as AdminRequest).adminId,
-  }).returning();
   const workOrderPayload = {
     operationKey,
     workOrderNumber: `WO-${contractId}-${Date.now()}`,
@@ -542,7 +629,7 @@ router.post("/admin/service-requests/from-contract", requireAdmin, requireAnySec
     containerSize: String(containerSize ?? ""), location: String(location ?? "يحدد لاحقًا"),
     duration: duration ? String(duration) : "", notes: notes ? String(notes) : "",
     appointmentType: String(appointmentType ?? "scheduled"), scheduledAt: String(scheduledAt),
-    appointmentRecordId: appointment.id,
+    appointmentRecordId: null,
     driverStatus: "unassigned", status: "new", source: "contract_operation",
     legacyRequestId: existingRequest?.id ?? null,
   };
@@ -550,22 +637,115 @@ router.post("/admin/service-requests/from-contract", requireAdmin, requireAnySec
     kind: "work_order", status: "new", reference: workOrderPayload.workOrderNumber,
     payload: JSON.stringify(workOrderPayload), operationKey, createdBy: (req as AdminRequest).adminId,
   }).returning();
-  await db.update(containerSystemRecordsTable).set({
-    payload: JSON.stringify({
-      ...parseContainerPayload(appointment.payload),
-      workOrderRecordId: workOrder.id,
-    }),
-    updatedAt: new Date().toISOString(),
-  }).where(eq(containerSystemRecordsTable.id, appointment.id));
 
   await createNotification({
-    title: "أمر عمل جديد من عقد",
-    message: `تم إنشاء أمر عمل مرتبط بالعقد ${String(contractPayload.contractNumber ?? contract.reference)}`,
+    title: "مهمة سائق جديدة من عقد",
+    message: `تم إنشاء مهمة ${requestedServiceType} مرتبطة بالعقد ${String(contractPayload.contractNumber ?? contract.reference)}`,
     type: "service_request",
     refId: workOrder.id,
     refType: "work_order",
   });
   return res.status(201).json(operationalRecordAsWorkOrder(workOrder));
+});
+
+router.patch("/admin/work-orders/:id/containers", requireAdmin, requireSectionPermission("work_orders"), requireManagerOrAdmin, async (req, res) => {
+  const taskId = Number(req.params.id);
+  const containerId = Number(req.body?.containerRecordId);
+  if (!Number.isInteger(taskId) || taskId <= 0 || !Number.isInteger(containerId) || containerId <= 0) {
+    return res.status(400).json({ error: "رقم المهمة والحاوية مطلوبان" });
+  }
+  const task = await db.select().from(containerSystemRecordsTable)
+    .where(eq(containerSystemRecordsTable.id, taskId)).get();
+  if (!task || task.kind !== "work_order" || task.status === "archived") {
+    return res.status(404).json({ error: "مهمة السائق غير موجودة" });
+  }
+  const taskPayload = parseContainerPayload(task.payload);
+  if (!/تفريغ|empty|unload/i.test(`${taskPayload.serviceType ?? ""} ${taskPayload.operationType ?? ""}`)) {
+    return res.status(409).json({ error: "يمكن إضافة حاويات إلى مهام التفريغ فقط" });
+  }
+  const taskStatus = String(taskPayload.driverStatus ?? task.status).toLowerCase();
+  if (["completed", "cancelled", "rejected", "closed"].includes(taskStatus)) {
+    return res.status(409).json({ error: "لا يمكن تعديل مهمة مكتملة أو مغلقة" });
+  }
+  const currentContainerIds = Array.isArray(taskPayload.containerRecordIds)
+    ? taskPayload.containerRecordIds.map(Number).filter(id => Number.isInteger(id) && id > 0)
+    : [Number(taskPayload.containerRecordId ?? 0)].filter(id => id > 0);
+  if (currentContainerIds.includes(containerId)) {
+    return res.status(409).json({ error: "الحاوية مرتبطة بهذه المهمة بالفعل" });
+  }
+  const allRecords = await db.select().from(containerSystemRecordsTable);
+  const asset = allRecords.find(row =>
+    row.id === containerId && ["container", "container_asset"].includes(row.kind) && row.status !== "archived",
+  );
+  if (!asset) return res.status(404).json({ error: "أصل الحاوية غير موجود" });
+  const assetPayload = parseContainerPayload(asset.payload);
+  const code = containerCodeFrom(assetPayload) || asset.reference;
+  const contract = allRecords.find(row =>
+    row.kind === "contract" &&
+    row.status === "delivered" &&
+    Number(parseContainerPayload(row.payload).containerRecordId ?? 0) === containerId,
+  );
+  if (!contract || !["rented", "with_customer", "awaiting_return"].includes(String(assetPayload.status ?? asset.status).toLowerCase())) {
+    return res.status(409).json({ error: `الحاوية ${code} ليست لدى العميل أو لم تسلّم فعليًا` });
+  }
+  const contractPayload = parseContainerPayload(contract.payload);
+  if (!operationLocationsNearby(taskPayload, {
+    ...contractPayload,
+    location: contractPayload.location ?? contractPayload.serviceAddress ?? "",
+  })) {
+    return res.status(409).json({ error: "موقع الحاوية لا يطابق الحيز الجغرافي للمهمة؛ تحقق من الحي أو الإحداثيات قبل ضمها" });
+  }
+  const activeWorkOrder = allRecords.find(row => {
+    if (row.kind !== "work_order" || row.id === taskId || row.status === "archived") return false;
+    const payload = parseContainerPayload(row.payload);
+    const ids = Array.isArray(payload.containerRecordIds)
+      ? payload.containerRecordIds.map(Number)
+      : [Number(payload.containerRecordId ?? 0)];
+    return ids.includes(containerId) &&
+      !["completed", "cancelled", "rejected", "closed"].includes(String(payload.driverStatus ?? row.status).toLowerCase());
+  });
+  const requestWithAssignment = await db.select().from(serviceRequestsTable);
+  const activeRequest = requestWithAssignment.find(row =>
+    row.containerRecordId === containerId &&
+    !["completed", "cancelled", "rejected", "closed"].includes(String(row.driverStatus || row.status).toLowerCase()),
+  );
+  if (activeWorkOrder || activeRequest) {
+    return res.status(409).json({ error: "للحاوية مهمة سائق أخرى مفتوحة؛ ألغِ التداخل أو أكمل المهمة الحالية أولًا" });
+  }
+
+  const contractIds = Array.isArray(taskPayload.contractRecordIds)
+    ? taskPayload.contractRecordIds.map(Number).filter(id => Number.isInteger(id) && id > 0)
+    : [Number(taskPayload.contractRecordId ?? 0)].filter(id => id > 0);
+  const codes = Array.isArray(taskPayload.containerCodes)
+    ? taskPayload.containerCodes.map(String).filter(Boolean)
+    : [String(taskPayload.containerCode ?? "")].filter(Boolean);
+  const nextPayload = {
+    ...taskPayload,
+    containerRecordIds: [...currentContainerIds, containerId],
+    contractRecordIds: [...contractIds, contract.id],
+    containerCodes: [...codes, code],
+    containerCount: currentContainerIds.length + 1,
+    containerSize: [...codes, code].join("، "),
+    nearbyContainerAddedAt: new Date().toISOString(),
+  };
+  const now = new Date().toISOString();
+  const result = db.transaction(tx => {
+    const updated = tx.update(containerSystemRecordsTable).set({
+      payload: JSON.stringify(nextPayload),
+      updatedAt: now,
+    }).where(eq(containerSystemRecordsTable.id, taskId)).returning().get();
+    if (!updated) throw new Error("تعذر تحديث المهمة");
+    tx.insert(containerSystemAuditTable).values({
+      recordId: taskId,
+      kind: "work_order",
+      action: "work_order_add_container",
+      beforePayload: task.payload,
+      afterPayload: JSON.stringify(nextPayload),
+      actorId: (req as AdminRequest).adminId,
+    }).run();
+    return operationalRecordAsWorkOrder(updated);
+  });
+  return res.json({ ...result, addedContainer: { id: asset.id, code }, containerCount: currentContainerIds.length + 1 });
 });
 
 router.post("/service-requests", async (req, res) => {
