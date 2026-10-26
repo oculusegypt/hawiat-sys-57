@@ -2,6 +2,7 @@
 type ModuleMap = Record<string, () => Promise<Record<string, unknown>>>;
 export const modules: ModuleMap = {
   "./components/mockups/container-asset-details/Redesign.tsx": () => import("../components/mockups/container-asset-details/Redesign.tsx"),
+  "./components/mockups/container-asset-profile/Redesign.tsx": () => import("../components/mockups/container-asset-profile/Redesign.tsx"),
   "./components/mockups/container-rental-ads/Contracts.tsx": () => import("../components/mockups/container-rental-ads/Contracts.tsx"),
   "./components/mockups/container-rental-ads/Fleet.tsx": () => import("../components/mockups/container-rental-ads/Fleet.tsx"),
   "./components/mockups/container-rental-ads/Insights.tsx": () => import("../components/mockups/container-rental-ads/Insights.tsx"),
@@ -11,6 +12,5 @@ export const modules: ModuleMap = {
   "./components/mockups/container-rental-carousel/Slide03.tsx": () => import("../components/mockups/container-rental-carousel/Slide03.tsx"),
   "./components/mockups/container-rental-carousel/Slide04.tsx": () => import("../components/mockups/container-rental-carousel/Slide04.tsx"),
   "./components/mockups/container-rental-carousel/Slide05.tsx": () => import("../components/mockups/container-rental-carousel/Slide05.tsx"),
-  "./components/mockups/container-asset-profile/Redesign.tsx": () => import("../components/mockups/container-asset-profile/Redesign.tsx"),
   "./components/mockups/how-it-works/Current.tsx": () => import("../components/mockups/how-it-works/Current.tsx")
 };
