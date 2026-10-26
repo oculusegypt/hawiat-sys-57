@@ -168,3 +168,17 @@ mtime_ms = 1791764644130
 storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:c72c350c-8f04-42ac-bdaf-f02d6ecface3/68c6ea5c-612c-49df-a74c-4d013fa2fd0c/0f019788-60d1-474c-b05b-a71cf6449dc4"
 storage_version_token = "1791764676037145"
 content_type = "image/jpeg"
+
+[[outputs]]
+id = "kgfNe-3R0cok-PpbCIz45"
+uri = "file://docs/container-lifecycle-live-test-2026-10-26.md"
+type = "text"
+title = "سجل تجربة دورة الحاويات — 26 أكتوبر 2026"
+description = "مرجع مؤرخ لحالة الاختبار، معرّفات السجلات، نتائج دورة الحاويات، مشكلة تصنيف السحب، وخطوات التحديث التالية."
+logical_id = "4c346b9f-fcbe-4d6d-86fc-26b512992edf"
+content_hash = "sha256:38aaec9e4c91d583215b3854d072253397e0ca736f81bc16311afcfccae3aa02"
+size = 13531
+mtime_ms = 1792987977062
+storage_uri = "gcs://replit-rams-assets-worf/rams/assets/repl:9a2f05d3-2d28-458e-adab-76266eff6eb0/4c346b9f-fcbe-4d6d-86fc-26b512992edf/8194989b-abab-4f78-be25-5f55d563d8e0"
+storage_version_token = "1792987994426840"
+content_type = "text/markdown"
