@@ -5,8 +5,10 @@
  * Sabaik Almasa API
  * OpenAPI spec version: 0.1.0
  */
+import type { WorkOrderRecordType } from './workOrderRecordType';
 
 export interface ServiceRequestAssignment {
+  recordType?: WorkOrderRecordType;
   /** @nullable */
   driverId: number | null;
   /** @nullable */

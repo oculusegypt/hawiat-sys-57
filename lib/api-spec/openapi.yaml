@@ -554,7 +554,7 @@ paths:
     patch:
       operationId: assignServiceRequest
       tags: [services]
-      summary: Assign a service request to a driver (admin or manager)
+      summary: Assign a service request or work order to a driver (admin or manager)
       parameters:
         - name: id
           in: path
@@ -1909,6 +1909,8 @@ components:
       required: [id, clientName, phone, serviceType, containerSize, location, status, createdAt]
       properties:
         id: { type: integer }
+        recordType:
+          $ref: "#/components/schemas/WorkOrderRecordType"
         clientName: { type: string }
         phone: { type: string }
         email: { type: ["string", "null"] }
@@ -2017,9 +2019,15 @@ components:
       type: object
       required: [driverId]
       properties:
+        recordType:
+          $ref: "#/components/schemas/WorkOrderRecordType"
         driverId: { type: ["integer", "null"] }
         vehicleId: { type: ["integer", "null"] }
         adminNotes: { type: ["string", "null"] }
+
+    WorkOrderRecordType:
+      type: string
+      enum: [service_request, work_order]
 
     DriverWorkOrderStatus:
       type: string
@@ -2029,6 +2037,8 @@ components:
       type: object
       required: [status]
       properties:
+        recordType:
+          $ref: "#/components/schemas/WorkOrderRecordType"
         status:
           $ref: "#/components/schemas/DriverWorkOrderStatus"
         operationKey:

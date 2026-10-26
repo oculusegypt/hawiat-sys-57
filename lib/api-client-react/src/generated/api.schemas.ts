@@ -503,8 +503,17 @@ export const ServiceRequestDriverStatus = {
   completed: 'completed',
 } as const;
 
+export type WorkOrderRecordType = typeof WorkOrderRecordType[keyof typeof WorkOrderRecordType];
+
+
+export const WorkOrderRecordType = {
+  service_request: 'service_request',
+  work_order: 'work_order',
+} as const;
+
 export interface ServiceRequest {
   id: number;
+  recordType?: WorkOrderRecordType;
   clientName: string;
   phone: string;
   /** @nullable */
@@ -669,6 +678,7 @@ export interface ServiceRequestUpdate {
 }
 
 export interface ServiceRequestAssignment {
+  recordType?: WorkOrderRecordType;
   /** @nullable */
   driverId: number | null;
   /** @nullable */
@@ -691,6 +701,7 @@ export const DriverWorkOrderStatus = {
 } as const;
 
 export interface DriverWorkOrderUpdate {
+  recordType?: WorkOrderRecordType;
   status: DriverWorkOrderStatus;
   /**
      * @minLength 8

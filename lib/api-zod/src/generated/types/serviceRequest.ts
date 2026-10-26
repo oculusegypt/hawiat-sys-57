@@ -7,9 +7,11 @@
  */
 import type { ServiceRequestDriverStatus } from './serviceRequestDriverStatus';
 import type { ServiceRequestStatus } from './serviceRequestStatus';
+import type { WorkOrderRecordType } from './workOrderRecordType';
 
 export interface ServiceRequest {
   id: number;
+  recordType?: WorkOrderRecordType;
   clientName: string;
   phone: string;
   /** @nullable */

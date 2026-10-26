@@ -564,6 +564,7 @@ export const GetServiceRequestsQueryParams = zod.object({
 
 export const GetServiceRequestsResponseItem = zod.object({
   "id": zod.number(),
+  "recordType": zod.enum(['service_request', 'work_order']).optional(),
   "clientName": zod.string(),
   "phone": zod.string(),
   "email": zod.string().nullish(),
@@ -661,6 +662,7 @@ export const SubmitServiceRequestBody = zod.object({
 
 export const SubmitServiceRequestResponse = zod.object({
   "id": zod.number(),
+  "recordType": zod.enum(['service_request', 'work_order']).optional(),
   "clientName": zod.string(),
   "phone": zod.string(),
   "email": zod.string().nullish(),
@@ -715,6 +717,7 @@ export const GetServiceRequestParams = zod.object({
 
 export const GetServiceRequestResponse = zod.object({
   "id": zod.number(),
+  "recordType": zod.enum(['service_request', 'work_order']).optional(),
   "clientName": zod.string(),
   "phone": zod.string(),
   "email": zod.string().nullish(),
@@ -791,6 +794,7 @@ export const UpdateServiceRequestBody = zod.object({
 
 export const UpdateServiceRequestResponse = zod.object({
   "id": zod.number(),
+  "recordType": zod.enum(['service_request', 'work_order']).optional(),
   "clientName": zod.string(),
   "phone": zod.string(),
   "email": zod.string().nullish(),
@@ -844,13 +848,14 @@ export const DeleteServiceRequestResponse = zod.void()
 
 
 /**
- * @summary Assign a service request to a driver (admin or manager)
+ * @summary Assign a service request or work order to a driver (admin or manager)
  */
 export const AssignServiceRequestParams = zod.object({
   "id": zod.coerce.number()
 })
 
 export const AssignServiceRequestBody = zod.object({
+  "recordType": zod.enum(['service_request', 'work_order']).optional(),
   "driverId": zod.number().nullable(),
   "vehicleId": zod.number().nullish(),
   "adminNotes": zod.string().nullish()
@@ -861,6 +866,7 @@ export const AssignServiceRequestBody = zod.object({
 
 export const AssignServiceRequestResponse = zod.object({
   "id": zod.number(),
+  "recordType": zod.enum(['service_request', 'work_order']).optional(),
   "clientName": zod.string(),
   "phone": zod.string(),
   "email": zod.string().nullish(),
@@ -918,6 +924,7 @@ export const GetDriverWorkOrdersQueryParams = zod.object({
 
 export const GetDriverWorkOrdersResponseItem = zod.object({
   "id": zod.number(),
+  "recordType": zod.enum(['service_request', 'work_order']).optional(),
   "clientName": zod.string(),
   "phone": zod.string(),
   "email": zod.string().nullish(),
@@ -977,6 +984,7 @@ export const updateDriverWorkOrderBodyOperationKeyMax = 160;
 
 
 export const UpdateDriverWorkOrderBody = zod.object({
+  "recordType": zod.enum(['service_request', 'work_order']).optional(),
   "status": zod.enum(['assigned', 'accepted', 'rejected', 'started', 'en_route', 'arrived', 'completed']),
   "operationKey": zod.string().min(updateDriverWorkOrderBodyOperationKeyMin).max(updateDriverWorkOrderBodyOperationKeyMax).optional(),
   "notes": zod.string().nullish(),
@@ -992,6 +1000,7 @@ export const UpdateDriverWorkOrderBody = zod.object({
 
 export const UpdateDriverWorkOrderResponse = zod.object({
   "id": zod.number(),
+  "recordType": zod.enum(['service_request', 'work_order']).optional(),
   "clientName": zod.string(),
   "phone": zod.string(),
   "email": zod.string().nullish(),
@@ -1045,6 +1054,7 @@ export const UpdateDriverWorkOrderResponse = zod.object({
 
 export const GetAdminWorkOrdersResponseItem = zod.object({
   "id": zod.number(),
+  "recordType": zod.enum(['service_request', 'work_order']).optional(),
   "clientName": zod.string(),
   "phone": zod.string(),
   "email": zod.string().nullish(),
@@ -1161,6 +1171,7 @@ export const GetAdminStatsResponse = zod.object({
 })),
   "recentRequests": zod.array(zod.object({
   "id": zod.number(),
+  "recordType": zod.enum(['service_request', 'work_order']).optional(),
   "clientName": zod.string(),
   "phone": zod.string(),
   "email": zod.string().nullish(),

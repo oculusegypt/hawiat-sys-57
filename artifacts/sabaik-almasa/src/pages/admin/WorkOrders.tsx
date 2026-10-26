@@ -49,6 +49,7 @@ const COMPLETION_DRAFT_KEY = "cleanflow-driver-completion-draft";
 type QueuedStatusUpdate = {
   id: number;
   data: {
+    recordType?: "service_request" | "work_order";
     status: DriverWorkOrderStatus;
     notes?: string | null;
     operationKey: string;
@@ -159,7 +160,12 @@ function workOrderIdentity(order: ServiceRequest) {
   const operationKey = String(
     (order as unknown as { operationKey?: unknown }).operationKey ?? "",
   ).trim();
-  return operationKey ? `work-order:${operationKey}` : `request:${order.id}`;
+  const recordType = order.recordType ??
+    ((order as unknown as { operationKey?: unknown; operationType?: unknown }).operationKey ||
+      (order as unknown as { operationType?: unknown }).operationType
+      ? "work_order"
+      : "service_request");
+  return operationKey ? `work-order:${operationKey}` : `${recordType}:${order.id}`;
 }
 
 function canCombineContainerWork(order: ServiceRequest) {
@@ -1228,7 +1234,7 @@ export default function WorkOrders() {
       toast({ variant: "destructive", title: "سبب الرفض مطلوب" });
       return;
     }
-    const operationKeyId = `${order.id}:${status}`;
+    const operationKeyId = `${workOrderIdentity(order)}:${status}`;
     const operationKey =
       operationKeys.current.get(operationKeyId) ??
       (crypto.randomUUID
@@ -1237,7 +1243,10 @@ export default function WorkOrders() {
     operationKeys.current.set(operationKeyId, operationKey);
     if (!navigator.onLine) {
       const queue = readStatusQueue().filter(item => item.data.operationKey !== operationKey);
-      queue.push({ id: order.id, data: { status, notes: notes ?? null, operationKey } });
+      queue.push({
+        id: order.id,
+        data: { recordType: order.recordType, status, notes: notes ?? null, operationKey },
+      });
       writeStatusQueue(queue);
       setQueuedUpdates(queue.length);
       toast({ title: "تم حفظ الإجراء للمزامنة لاحقًا", description: "سيُرسل تلقائيًا عند عودة الاتصال." });
@@ -1246,7 +1255,7 @@ export default function WorkOrders() {
     updateOrder(
       {
         id: order.id,
-        data: { status, notes: notes ?? null, operationKey },
+        data: { recordType: order.recordType, status, notes: notes ?? null, operationKey },
       },
       {
         onSuccess: () => {
@@ -1271,7 +1280,7 @@ export default function WorkOrders() {
   function handleAssignment(order: ServiceRequest, value: string) {
     const driverId = value === "unassigned" ? null : Number(value);
     assignOrder(
-      { id: order.id, data: { driverId } },
+      { id: order.id, data: { recordType: order.recordType, driverId } },
       {
         onSuccess: () => {
           toast({
@@ -1329,7 +1338,7 @@ export default function WorkOrders() {
       toast({ variant: "destructive", title: "الاتصال مطلوب لحفظ إثبات التنفيذ", description: "تم الاحتفاظ بالبيانات كمسودة داخل النموذج؛ أعد الإرسال بعد عودة الاتصال." });
       return;
     }
-    const operationKeyId = `${completionTarget.id}:${DriverWorkOrderStatus.completed}`;
+    const operationKeyId = `${workOrderIdentity(completionTarget)}:${DriverWorkOrderStatus.completed}`;
     const existingKey = operationKeys.current.get(operationKeyId);
     const operationKey =
       existingKey ??
@@ -1341,6 +1350,7 @@ export default function WorkOrders() {
       {
         id: completionTarget.id,
         data: {
+          recordType: completionTarget.recordType,
           status: DriverWorkOrderStatus.completed,
           operationKey,
           notes: "تم استلام إثبات التسليم من السائق",

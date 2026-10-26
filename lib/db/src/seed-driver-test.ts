@@ -5,7 +5,10 @@ import { adminsTable } from "./schema/admins.js";
 import { containerSystemRecordsTable } from "./schema/containerSystem.js";
 
 const username = "driver.test";
-const password = "Driver@2026!";
+const password = process.env.DRIVER_TEST_PASSWORD;
+if (!password) {
+  throw new Error("DRIVER_TEST_PASSWORD must be set before seeding the driver test account.");
+}
 const driverName = "سائق الاختبار — محمد العتيبي";
 const driverPhone = "0551234567";
 const vehiclePlate = "ر س ن 2026";
@@ -21,6 +24,7 @@ let adminId: number;
 if (existingAdmin) {
   adminId = existingAdmin.id;
   db.update(adminsTable).set({
+    passwordHash: hashPassword(password),
     name: driverName,
     role: "driver",
     email: "driver.test@example.com",

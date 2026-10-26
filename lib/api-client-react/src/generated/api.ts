@@ -2338,7 +2338,7 @@ export const getAssignServiceRequestUrl = (id: number,) => {
 }
 
 /**
- * @summary Assign a service request to a driver (admin or manager)
+ * @summary Assign a service request or work order to a driver (admin or manager)
  */
 export const assignServiceRequest = async (id: number,
     serviceRequestAssignment: ServiceRequestAssignment, options?: RequestInit): Promise<ServiceRequest> => {
@@ -2388,7 +2388,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type AssignServiceRequestMutationError = ErrorType<unknown>
 
     /**
- * @summary Assign a service request to a driver (admin or manager)
+ * @summary Assign a service request or work order to a driver (admin or manager)
  */
 export const useAssignServiceRequest = <TError = ErrorType<unknown>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof assignServiceRequest>>, TError,{id: number;data: BodyType<ServiceRequestAssignment>}, TContext>, request?: SecondParameter<typeof customFetch>}

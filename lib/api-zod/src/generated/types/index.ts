@@ -112,3 +112,4 @@ export * from './setConversationTyping200';
 export * from './successResult';
 export * from './testimonial';
 export * from './testimonialInput';
+export * from './workOrderRecordType';

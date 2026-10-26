@@ -24,8 +24,15 @@ if (!testSecret) throw new Error("SESSION_SECRET must be set to a test-only valu
 const testAdminPassword = "cleanflow-container-lifecycle-test-password";
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 
-function insertRecord(kind: string, status: string, reference: string, payload: Record<string, unknown>) {
+function insertRecord(
+  kind: string,
+  status: string,
+  reference: string,
+  payload: Record<string, unknown>,
+  id?: number,
+) {
   return db.insert(containerSystemRecordsTable).values({
+    ...(id ? { id } : {}),
     kind,
     status,
     reference,
@@ -200,6 +207,76 @@ async function main() {
     scheduledAt: "2026-10-26T10:00:00.000Z",
     testData: true,
   });
+  const legacyAmbiguousAsset = insertRecord("container_asset", "rented", "TEST-AMBIGUOUS-ASSET-001", {
+    assetCode: "TEST-AMBIGUOUS-ASSET-001",
+    status: "rented",
+    location: testLocation,
+    testData: true,
+  });
+  const legacyAmbiguousContract = insertRecord("contract", "delivered", "TEST-AMBIGUOUS-CONTRACT-001", {
+    contractNumber: "TEST-AMBIGUOUS-CONTRACT-001",
+    containerRecordId: legacyAmbiguousAsset.id,
+    containerCode: "TEST-AMBIGUOUS-ASSET-001",
+    customerRecordId: customer.id,
+    customerName: "TEST ONLY — عميل لا يستخدم للتشغيل",
+    location: testLocation,
+    testData: true,
+  });
+  const legacyAmbiguousWorkOrder = insertRecord("work_order", "assigned", "TEST-LEGACY-AMBIGUOUS-WORK-ORDER", {
+    serviceType: "TEST ONLY — استرجاع الحاوية بعد التفريغ",
+    operationKey: "TEST-LEGACY-AMBIGUOUS-OP-001",
+    contractRecordId: legacyAmbiguousContract.id,
+    containerRecordId: legacyAmbiguousAsset.id,
+    containerCode: "TEST-AMBIGUOUS-ASSET-001",
+    customerRecordId: customer.id,
+    customerName: "TEST ONLY — عميل لا يستخدم للتشغيل",
+    location: testLocation,
+    movementType: "استرجاع",
+    assignedDriverId: null,
+    scheduledAt: "2026-10-24T10:00:00.000Z",
+    driverStatus: "unassigned",
+    status: "assigned",
+    testData: true,
+  });
+  const collisionId = 9000;
+  const collisionWorkOrder = insertRecord("work_order", "new", "TEST-ID-COLLISION-WORK-ORDER", {
+    serviceType: "TEST ONLY — collision work order",
+    operationType: "DELIVER_CONTAINER",
+    assignedDriverId: null,
+    scheduledAt: "2026-10-30T12:00:00.000Z",
+    duration: "1 hour",
+    driverStatus: "unassigned",
+    status: "new",
+    testData: true,
+  }, collisionId);
+  const collisionServiceRequest = db.insert(serviceRequestsTable).values({
+    id: collisionId,
+    clientName: "TEST ONLY — colliding request",
+    phone: testPhone,
+    serviceType: "TEST ONLY — collision service request",
+    containerSize: "none",
+    location: testLocation,
+    scheduledAt: "2026-10-30T08:00:00.000Z",
+    duration: "1 hour",
+    appointmentType: "scheduled",
+    status: "pending",
+    driverStatus: "unassigned",
+  }).returning().get();
+  const pickupAsset = insertRecord("container_asset", "rented", "TEST-PICKUP-ASSET-001", {
+    assetCode: "TEST-PICKUP-ASSET-001",
+    status: "rented",
+    location: testLocation,
+    testData: true,
+  });
+  const pickupContract = insertRecord("contract", "delivered", "TEST-PICKUP-CONTRACT-001", {
+    contractNumber: "TEST-PICKUP-CONTRACT-001",
+    containerRecordId: pickupAsset.id,
+    containerCode: "TEST-PICKUP-ASSET-001",
+    customerRecordId: customer.id,
+    customerName: "TEST ONLY — عميل لا يستخدم للتشغيل",
+    location: testLocation,
+    testData: true,
+  });
 
   const portProbe = createServer();
   await new Promise<void>(resolve => portProbe.listen(0, "127.0.0.1", resolve));
@@ -267,6 +344,132 @@ async function main() {
     assert.ok(loginBody.token, "admin login must return an authenticated session token");
     authorization = `Bearer ${loginBody.token}`;
 
+    const ambiguousOperationCount = db.select().from(containerSystemRecordsTable).all()
+      .filter(row => row.kind === "work_order").length;
+    const ambiguousOperationResponse = await fetch(
+      `http://127.0.0.1:${port}/api/admin/service-requests/from-contract`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization },
+        body: JSON.stringify({
+          clientName: "TEST ONLY — عميل لا يستخدم للتشغيل",
+          phone: testPhone,
+          serviceType: "TEST ONLY — استرجاع الحاوية بعد التفريغ",
+          containerSize: "TEST-PICKUP-ASSET-001",
+          location: testLocation,
+          scheduledAt: "2026-10-23T10:00:00.000Z",
+          operationKey: "TEST-AMBIGUOUS-CONTAINER-OP-001",
+          customerRecordId: customer.id,
+          containerRecordId: pickupAsset.id,
+          contractRecordId: pickupContract.id,
+        }),
+      },
+    );
+    assert.equal(ambiguousOperationResponse.status, 422, "a request that mixes pickup and emptying terms must be rejected");
+    assert.equal(
+      db.select().from(containerSystemRecordsTable).all().filter(row => row.kind === "work_order").length,
+      ambiguousOperationCount,
+      "rejecting an ambiguous operation must not create a work order",
+    );
+
+    const pickupCreateResponse = await fetch(
+      `http://127.0.0.1:${port}/api/admin/service-requests/from-contract`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization },
+        body: JSON.stringify({
+          clientName: "TEST ONLY — عميل لا يستخدم للتشغيل",
+          phone: testPhone,
+          serviceType: "TEST ONLY — سحب حاوية الاختبار 12 ياردة",
+          containerSize: "TEST-PICKUP-ASSET-001",
+          location: testLocation,
+          scheduledAt: "2026-10-23T10:00:00.000Z",
+          operationKey: "TEST-PICKUP-CONTAINER-OP-001",
+          customerRecordId: customer.id,
+          containerRecordId: pickupAsset.id,
+          contractRecordId: pickupContract.id,
+        }),
+      },
+    );
+    assert.equal(pickupCreateResponse.status, 201, await pickupCreateResponse.clone().text());
+    const pickupWorkOrder = await pickupCreateResponse.json() as {
+      id: number;
+      recordType: string;
+      operationType: string;
+      movementType: string;
+    };
+    assert.equal(pickupWorkOrder.recordType, "work_order");
+    assert.equal(pickupWorkOrder.operationType, "PICKUP_CONTAINER");
+    assert.equal(pickupWorkOrder.movementType, "سحب");
+
+    const ambiguousAssignmentResponse = await fetch(
+      `http://127.0.0.1:${port}/api/service-requests/${collisionId}/assignment`,
+      {
+        method: "PATCH",
+        headers: { "content-type": "application/json", authorization },
+        body: JSON.stringify({ driverId: driver.id }),
+      },
+    );
+    assert.equal(ambiguousAssignmentResponse.status, 409, "untyped assignment must reject a colliding ID");
+
+    const assignCollisionServiceRequest = await fetch(
+      `http://127.0.0.1:${port}/api/service-requests/${collisionId}/assignment`,
+      {
+        method: "PATCH",
+        headers: { "content-type": "application/json", authorization },
+        body: JSON.stringify({ recordType: "service_request", driverId: driver.id }),
+      },
+    );
+    assert.equal(assignCollisionServiceRequest.status, 200, await assignCollisionServiceRequest.clone().text());
+    assert.equal((await assignCollisionServiceRequest.json() as { recordType: string }).recordType, "service_request");
+    assert.equal(
+      db.select().from(containerSystemRecordsTable).where(eq(containerSystemRecordsTable.id, collisionId)).get()?.status,
+      "new",
+      "assigning the service request must not mutate its colliding work order",
+    );
+
+    const assignCollisionWorkOrder = await fetch(
+      `http://127.0.0.1:${port}/api/service-requests/${collisionId}/assignment`,
+      {
+        method: "PATCH",
+        headers: { "content-type": "application/json", authorization },
+        body: JSON.stringify({ recordType: "work_order", driverId: driver.id }),
+      },
+    );
+    assert.equal(assignCollisionWorkOrder.status, 200, await assignCollisionWorkOrder.clone().text());
+    assert.equal((await assignCollisionWorkOrder.json() as { recordType: string }).recordType, "work_order");
+
+    const assignPickupWorkOrder = await fetch(
+      `http://127.0.0.1:${port}/api/service-requests/${pickupWorkOrder.id}/assignment`,
+      {
+        method: "PATCH",
+        headers: { "content-type": "application/json", authorization },
+        body: JSON.stringify({ recordType: "work_order", driverId: driver.id }),
+      },
+    );
+    assert.equal(assignPickupWorkOrder.status, 200, await assignPickupWorkOrder.clone().text());
+
+    const assignLegacyAmbiguousWorkOrder = await fetch(
+      `http://127.0.0.1:${port}/api/service-requests/${legacyAmbiguousWorkOrder.id}/assignment`,
+      {
+        method: "PATCH",
+        headers: { "content-type": "application/json", authorization },
+        body: JSON.stringify({ recordType: "work_order", driverId: driver.id }),
+      },
+    );
+    assert.equal(assignLegacyAmbiguousWorkOrder.status, 200, await assignLegacyAmbiguousWorkOrder.clone().text());
+
+    const adminOrdersResponse = await fetch(`http://127.0.0.1:${port}/api/admin/work-orders`, {
+      headers: { authorization },
+    });
+    assert.equal(adminOrdersResponse.status, 200);
+    const adminOrders = await adminOrdersResponse.json() as Array<{ id: number; recordType?: string }>;
+    assert.deepEqual(
+      adminOrders.filter(row => row.id === collisionId).map(row => row.recordType).sort(),
+      ["service_request", "work_order"],
+      "combined work-order lists must distinguish records with a colliding numeric ID",
+    );
+
     const addedContainerResponse = await fetch(
       `http://127.0.0.1:${port}/api/admin/work-orders/${multiReturnTask.id}/containers`,
       {
@@ -313,12 +516,155 @@ async function main() {
     const driverLoginBody = await driverLoginResponse.json() as { token?: string };
     assert.ok(driverLoginBody.token);
     const driverAuthorization = `Bearer ${driverLoginBody.token}`;
+    const driverOrdersResponse = await fetch(`http://127.0.0.1:${port}/api/driver/work-orders`, {
+      headers: { authorization: driverAuthorization },
+    });
+    assert.equal(driverOrdersResponse.status, 200);
+    const driverOrders = await driverOrdersResponse.json() as Array<{ id: number; recordType?: string }>;
+    assert.deepEqual(
+      driverOrders.filter(row => row.id === collisionId).map(row => row.recordType).sort(),
+      ["service_request", "work_order"],
+      "driver lists must distinguish records with a colliding numeric ID",
+    );
+
+    const untypedCollisionStatus = await fetch(
+      `http://127.0.0.1:${port}/api/driver/work-orders/${collisionId}`,
+      {
+        method: "PATCH",
+        headers: { "content-type": "application/json", authorization: driverAuthorization },
+        body: JSON.stringify({ status: "accepted" }),
+      },
+    );
+    assert.equal(untypedCollisionStatus.status, 409, "untyped driver updates must reject a colliding ID");
+
+    const updateCollisionServiceRequest = await fetch(
+      `http://127.0.0.1:${port}/api/driver/work-orders/${collisionId}`,
+      {
+        method: "PATCH",
+        headers: { "content-type": "application/json", authorization: driverAuthorization },
+        body: JSON.stringify({ recordType: "service_request", status: "accepted" }),
+      },
+    );
+    assert.equal(updateCollisionServiceRequest.status, 200, await updateCollisionServiceRequest.clone().text());
+    assert.equal(
+      db.select().from(containerSystemRecordsTable).where(eq(containerSystemRecordsTable.id, collisionId)).get()?.status,
+      "assigned",
+      "updating the service request must not change its colliding work order",
+    );
+
+    const updateCollisionWorkOrder = await fetch(
+      `http://127.0.0.1:${port}/api/driver/work-orders/${collisionId}`,
+      {
+        method: "PATCH",
+        headers: { "content-type": "application/json", authorization: driverAuthorization },
+        body: JSON.stringify({ recordType: "work_order", status: "accepted" }),
+      },
+    );
+    assert.equal(updateCollisionWorkOrder.status, 200, await updateCollisionWorkOrder.clone().text());
+    assert.equal(
+      JSON.parse(String(db.select().from(containerSystemRecordsTable)
+        .where(eq(containerSystemRecordsTable.id, collisionId)).get()?.payload)).driverStatus,
+      "accepted",
+    );
+    assert.equal(
+      db.select().from(serviceRequestsTable).where(eq(serviceRequestsTable.id, collisionId)).get()?.driverStatus,
+      "accepted",
+    );
+
+    const updatePickupWorkOrder = (status: string, evidence = false) => fetch(
+      `http://127.0.0.1:${port}/api/driver/work-orders/${pickupWorkOrder.id}`,
+      {
+        method: "PATCH",
+        headers: { "content-type": "application/json", authorization: driverAuthorization },
+        body: JSON.stringify({
+          recordType: "work_order",
+          status,
+          ...(evidence ? {
+            receiverName: "TEST ONLY — مستلم السحب",
+            proofPhotoUrl: "/uploads/TEST-ONLY-pickup-proof.webp",
+            signatureData: "TEST ONLY — pickup signature",
+            locationLat: "24.7136",
+            locationLng: "46.6753",
+          } : {}),
+        }),
+      },
+    );
+    for (const status of ["accepted", "started", "en_route", "arrived"]) {
+      const response = await updatePickupWorkOrder(status);
+      assert.equal(response.status, 200, await response.clone().text());
+    }
+    const completePickupWorkOrder = await updatePickupWorkOrder("completed", true);
+    assert.equal(completePickupWorkOrder.status, 200, await completePickupWorkOrder.clone().text());
+    const returnedPickupContract = db.select().from(containerSystemRecordsTable)
+      .where(eq(containerSystemRecordsTable.id, pickupContract.id)).get();
+    const availablePickupAsset = db.select().from(containerSystemRecordsTable)
+      .where(eq(containerSystemRecordsTable.id, pickupAsset.id)).get();
+    assert.equal(returnedPickupContract?.status, "returned");
+    assert.equal(availablePickupAsset?.status, "available");
+    const pickupMovement = db.select().from(containerSystemRecordsTable).all().find(record =>
+      record.kind === "container_movement" &&
+      Number((JSON.parse(record.payload) as Record<string, unknown>).workOrderId) === pickupWorkOrder.id,
+    );
+    assert.ok(pickupMovement, "a successful pickup must create its movement");
+    const pickupMovementPayload = JSON.parse(pickupMovement.payload) as Record<string, unknown>;
+    assert.equal(pickupMovementPayload.movementType, "سحب");
+    assert.notEqual(pickupMovementPayload.operationalOnly, true);
+
+    const updateLegacyAmbiguousWorkOrder = (status: string, evidence = false) => fetch(
+      `http://127.0.0.1:${port}/api/driver/work-orders/${legacyAmbiguousWorkOrder.id}`,
+      {
+        method: "PATCH",
+        headers: { "content-type": "application/json", authorization: driverAuthorization },
+        body: JSON.stringify({
+          recordType: "work_order",
+          status,
+          ...(evidence ? {
+            receiverName: "TEST ONLY — مستلم غير حقيقي",
+            proofPhotoUrl: "/uploads/TEST-ONLY-ambiguous-proof.webp",
+            signatureData: "TEST ONLY — ambiguous signature",
+          } : {}),
+        }),
+      },
+    );
+    for (const status of ["accepted", "started", "en_route", "arrived"]) {
+      const response = await updateLegacyAmbiguousWorkOrder(status);
+      assert.equal(response.status, 200, await response.clone().text());
+    }
+    const ambiguousCompletionResponse = await updateLegacyAmbiguousWorkOrder("completed", true);
+    assert.equal(ambiguousCompletionResponse.status, 422, "a legacy mixed-operation order must not be completed");
+    const ambiguousTaskAfter = db.select().from(containerSystemRecordsTable)
+      .where(eq(containerSystemRecordsTable.id, legacyAmbiguousWorkOrder.id)).get();
+    assert.equal(
+      JSON.parse(String(ambiguousTaskAfter?.payload)).driverStatus,
+      "arrived",
+      "a rejected ambiguous completion must preserve the driver's last valid state",
+    );
+    assert.equal(
+      db.select().from(containerSystemRecordsTable)
+        .where(eq(containerSystemRecordsTable.id, legacyAmbiguousContract.id)).get()?.status,
+      "delivered",
+    );
+    assert.equal(
+      db.select().from(containerSystemRecordsTable)
+        .where(eq(containerSystemRecordsTable.id, legacyAmbiguousAsset.id)).get()?.status,
+      "rented",
+    );
+    assert.equal(
+      db.select().from(containerSystemRecordsTable).all().filter(record =>
+        record.kind === "container_movement" &&
+        Number((JSON.parse(record.payload) as Record<string, unknown>).workOrderId) === legacyAmbiguousWorkOrder.id,
+      ).length,
+      0,
+      "a rejected ambiguous completion must not create a movement",
+    );
+
     const updateReturnTask = (status: string, evidence = false) => fetch(
       `http://127.0.0.1:${port}/api/driver/work-orders/${multiReturnTask.id}`,
       {
         method: "PATCH",
         headers: { "content-type": "application/json", authorization: driverAuthorization },
         body: JSON.stringify({
+          recordType: "work_order",
           status,
           ...(evidence ? {
             receiverName: "TEST ONLY — مستلم الإرجاع",

@@ -57,12 +57,32 @@ function isContainerWork(request: typeof serviceRequestsTable.$inferSelect) {
   );
 }
 
-function isReturnWork(request: typeof serviceRequestsTable.$inferSelect) {
-  return /استرجاع|سحب|رفع|return|withdraw/i.test(`${request.serviceType} ${request.notes ?? ""}`);
+type ContainerOperationType = "DELIVER_CONTAINER" | "EMPTY_CONTAINER" | "PICKUP_CONTAINER";
+type WorkOrderRecordType = "service_request" | "work_order";
+
+function classifyContainerOperation(value: unknown): ContainerOperationType | null {
+  const text = String(value ?? "");
+  const emptying = /تفريغ|empty|unload/i.test(text);
+  const pickup = /استرجاع|سحب|رفع|pickup|return|withdraw/i.test(text);
+  if (emptying && pickup) return null;
+  if (emptying) return "EMPTY_CONTAINER";
+  if (pickup) return "PICKUP_CONTAINER";
+  return "DELIVER_CONTAINER";
 }
 
-function isEmptyingWork(request: typeof serviceRequestsTable.$inferSelect) {
-  return /تفريغ|empty|unload/i.test(`${request.serviceType} ${request.notes ?? ""}`);
+function operationTypeForRequest(request: typeof serviceRequestsTable.$inferSelect): ContainerOperationType {
+  const explicitType = String(
+    (request as typeof request & { operationType?: unknown }).operationType ?? "",
+  ).trim().toUpperCase();
+  if (explicitType) {
+    if (["DELIVER_CONTAINER", "EMPTY_CONTAINER", "PICKUP_CONTAINER"].includes(explicitType)) {
+      return explicitType as ContainerOperationType;
+    }
+    throw new Error("نوع عملية الحاوية غير مدعوم");
+  }
+  const inferredType = classifyContainerOperation(`${request.serviceType} ${request.notes ?? ""}`);
+  if (!inferredType) throw new Error("نوع عملية الحاوية ملتبس؛ حدد السحب أو التفريغ فقط");
+  return inferredType;
 }
 
 function coordinatesFromPayload(payload: Record<string, unknown>) {
@@ -125,6 +145,7 @@ function operationalRecordAsWorkOrder(record: typeof containerSystemRecordsTable
     : [String(payload.containerCode ?? "")].filter(Boolean);
   return {
     id: record.id,
+    recordType: "work_order" as const,
     clientName: String(payload.customerName ?? payload.clientName ?? ""),
     phone: String(payload.phone ?? ""),
     email: String(payload.email ?? ""),
@@ -195,6 +216,7 @@ function prepareContainerCompletion(
   reader: Pick<typeof db, "select"> = db,
 ) {
   if (!isContainerWork(request)) return null;
+  const operationType = operationTypeForRequest(request);
   const assets = reader.select().from(containerSystemRecordsTable).all();
   const requestFields = request as typeof request & {
     appointmentRecordId?: number | null;
@@ -246,7 +268,7 @@ function prepareContainerCompletion(
       throw new Error(`العقد المرتبط بالحاوية ${code} غير موجود أو لا يطابق الأصل`);
     }
     const contractPayload = parseContainerPayload(contract.payload);
-    if (isEmptyingWork(request) || isReturnWork(request)) {
+    if (operationType === "EMPTY_CONTAINER" || operationType === "PICKUP_CONTAINER") {
       if (contract.status !== "delivered" || !["rented", "with_customer", "awaiting_return"].includes(String(assetPayload.status ?? asset.status).toLowerCase())) {
         throw new Error(`الحاوية ${code} لم تسلّم فعليًا ولا يمكن تفريغها أو سحبها`);
       }
@@ -276,8 +298,8 @@ function prepareContainerCompletion(
     items,
     appointment,
     containerCode,
-    returning: isReturnWork(request),
-    emptying: isEmptyingWork(request),
+    returning: operationType === "PICKUP_CONTAINER",
+    emptying: operationType === "EMPTY_CONTAINER",
   };
 }
 
@@ -576,8 +598,10 @@ router.post("/admin/service-requests/from-contract", requireAdmin, requireAnySec
     !["container", "container_asset"].includes(containerRecord.kind) || !customerMatches || !containerMatches) {
     return res.status(409).json({ error: "علاقات أمر العمل لا تطابق العميل أو أصل الحاوية في العقد" });
   }
-  const operation = String(requestedServiceType).match(/تفريغ|empty/i) ? "EMPTY_CONTAINER" :
-    String(requestedServiceType).match(/استرجاع|سحب|pickup|return/i) ? "PICKUP_CONTAINER" : "DELIVER_CONTAINER";
+  const operation = classifyContainerOperation(requestedServiceType);
+  if (!operation) {
+    return res.status(422).json({ error: "نوع العملية ملتبس؛ استخدم وصفاً واضحاً للسحب أو التفريغ فقط" });
+  }
   const currentAssetStatus = String(containerPayload.status ?? containerRecord.status).trim().toLowerCase();
   if (operation === "DELIVER_CONTAINER") {
     if (!["active", "approved", "issued", "scheduled"].includes(String(contract.status).toLowerCase()) ||
@@ -1019,6 +1043,11 @@ router.patch("/service-requests/:id", requireAdmin, requireSectionPermission("re
 router.patch("/service-requests/:id/assignment", requireAdmin, requireSectionPermission("work_orders"), requireRequestAssignment, async (req, res) => {
   const adminRequest = req as AdminRequest;
   const id = parseInt(String(req.params.id), 10);
+  const rawRecordType = req.body?.recordType;
+  if (rawRecordType !== undefined && rawRecordType !== "service_request" && rawRecordType !== "work_order") {
+    return res.status(400).json({ error: "نوع سجل أمر العمل غير صحيح" });
+  }
+  const recordType = rawRecordType as WorkOrderRecordType | undefined;
   const driverId = req.body?.driverId === null || req.body?.driverId === undefined
     ? null
     : Number(req.body.driverId);
@@ -1057,9 +1086,25 @@ router.patch("/service-requests/:id/assignment", requireAdmin, requireSectionPer
     vehiclePlate = String(vehiclePayload.vehiclePlate ?? vehiclePayload.plateNumber ?? vehiclePayload.plate ?? vehicle.reference ?? "").trim();
   }
 
-  const operationalRow = await db.select().from(containerSystemRecordsTable)
+  const operationalRow = recordType === "service_request" ? undefined : await db.select().from(containerSystemRecordsTable)
     .where(eq(containerSystemRecordsTable.id, id)).get();
-  if (operationalRow?.kind === "work_order") {
+  const serviceRequest = recordType === "work_order" ? undefined : await db.select().from(serviceRequestsTable)
+    .where(eq(serviceRequestsTable.id, id)).get();
+  const workOrder = operationalRow?.kind === "work_order" ? operationalRow : undefined;
+  if (!recordType && workOrder && serviceRequest) {
+    return res.status(409).json({ error: "يتطابق رقم أمر العمل مع طلب خدمة آخر؛ أعد الإرسال مع recordType لتحديد السجل" });
+  }
+  if (recordType === "work_order" && !workOrder) {
+    return res.status(404).json({ error: "أمر العمل غير موجود" });
+  }
+  if (recordType === "service_request" && !serviceRequest) {
+    return res.status(404).json({ error: "الطلب غير موجود" });
+  }
+  if (!workOrder && !serviceRequest) {
+    return res.status(404).json({ error: "الطلب أو أمر العمل غير موجود" });
+  }
+
+  if (workOrder) {
     const now = new Date().toISOString();
     const outcome = db.transaction((tx) => {
       const freshRow = tx.select().from(containerSystemRecordsTable).where(eq(containerSystemRecordsTable.id, id)).get();
@@ -1116,10 +1161,6 @@ router.patch("/service-requests/:id/assignment", requireAdmin, requireSectionPer
     if ("error" in outcome) return res.status(outcome.status ?? 409).json({ error: outcome.error });
     return res.json(outcome.order);
   }
-
-  const request = await db.select().from(serviceRequestsTable)
-    .where(eq(serviceRequestsTable.id, id));
-  if (!request.length) return res.status(404).json({ error: "الطلب غير موجود" });
 
   const now = new Date().toISOString();
   const outcome = db.transaction((tx) => {
@@ -1179,7 +1220,11 @@ router.patch("/service-requests/:id/assignment", requireAdmin, requireSectionPer
       recipientAdminId: driverId,
     });
   }
-  return res.json({ ...updated, driverProofPhotoUrl: refreshPrivateUploadUrl(updated.driverProofPhotoUrl) });
+  return res.json({
+    ...updated,
+    recordType: "service_request",
+    driverProofPhotoUrl: refreshPrivateUploadUrl(updated.driverProofPhotoUrl),
+  });
 });
 
 router.get("/driver/work-orders", requireAdmin, requireDriver, async (req, res) => {
@@ -1211,7 +1256,11 @@ router.get("/driver/work-orders", requireAdmin, requireDriver, async (req, res) 
     ...requests
       .filter(request => !isCleaningContractRequest(request))
       .filter(request => !supersededLegacyIds.has(request.id))
-      .map(request => ({ ...request, driverProofPhotoUrl: refreshPrivateUploadUrl(request.driverProofPhotoUrl) })),
+        .map(request => ({
+          ...request,
+          recordType: "service_request" as const,
+          driverProofPhotoUrl: refreshPrivateUploadUrl(request.driverProofPhotoUrl),
+        })),
     ...operational,
   ]);
 });
@@ -1235,7 +1284,11 @@ router.get("/admin/work-orders", requireAdmin, requireSectionPermission("work_or
     ...requests
       .filter(request => !isCleaningContractRequest(request))
       .filter(request => !supersededLegacyIds.has(request.id))
-      .map(request => ({ ...request, driverProofPhotoUrl: refreshPrivateUploadUrl(request.driverProofPhotoUrl) })),
+      .map(request => ({
+        ...request,
+        recordType: "service_request" as const,
+        driverProofPhotoUrl: refreshPrivateUploadUrl(request.driverProofPhotoUrl),
+      })),
     ...operational,
   ];
   const driverIds = [...new Set(allOrders.map(request => request.assignedDriverId).filter((id): id is number => id !== null))];
@@ -1254,6 +1307,11 @@ router.get("/admin/work-orders", requireAdmin, requireSectionPermission("work_or
 router.patch("/driver/work-orders/:id", requireAdmin, requireDriver, async (req, res) => {
   const adminRequest = req as AdminRequest;
   const id = parseInt(String(req.params.id), 10);
+  const rawRecordType = req.body?.recordType;
+  if (rawRecordType !== undefined && rawRecordType !== "service_request" && rawRecordType !== "work_order") {
+    return res.status(400).json({ error: "نوع سجل أمر العمل غير صحيح" });
+  }
+  const recordType = rawRecordType as WorkOrderRecordType | undefined;
   const nextStatus = String(req.body?.status ?? "");
   const operationKey = String(req.get("Idempotency-Key") ?? req.body?.operationKey ?? "").trim();
   const notes = req.body?.notes === undefined ? undefined : String(req.body.notes ?? "").trim();
@@ -1276,10 +1334,25 @@ router.patch("/driver/work-orders/:id", requireAdmin, requireDriver, async (req,
     return res.status(422).json({ error: "مفتاح العملية غير صالح" });
   }
 
-  const operationalRow = await db.select().from(containerSystemRecordsTable)
+  const operationalRow = recordType === "service_request" ? undefined : await db.select().from(containerSystemRecordsTable)
     .where(eq(containerSystemRecordsTable.id, id)).get();
-  if (operationalRow?.kind === "work_order") {
-    const current = operationalRecordAsWorkOrder(operationalRow);
+  const serviceRequestRecord = recordType === "work_order" ? undefined : await db.select().from(serviceRequestsTable)
+    .where(eq(serviceRequestsTable.id, id)).get();
+  const workOrder = operationalRow?.kind === "work_order" ? operationalRow : undefined;
+  if (!recordType && workOrder && serviceRequestRecord) {
+    return res.status(409).json({ error: "يتطابق رقم أمر العمل مع طلب خدمة آخر؛ أعد الإرسال مع recordType لتحديد السجل" });
+  }
+  if (recordType === "work_order" && !workOrder) {
+    return res.status(404).json({ error: "أمر العمل غير موجود" });
+  }
+  if (recordType === "service_request" && !serviceRequestRecord) {
+    return res.status(404).json({ error: "أمر العمل غير موجود" });
+  }
+  if (!workOrder && !serviceRequestRecord) {
+    return res.status(404).json({ error: "أمر العمل غير موجود" });
+  }
+  if (workOrder) {
+    const current = operationalRecordAsWorkOrder(workOrder);
     if (isAssetlessContractWorkOrder(current)) {
       return res.status(404).json({ error: "عقد النظافة لا يحتاج إلى إسناد أو أمر تشغيل" });
     }
@@ -1367,12 +1440,10 @@ router.patch("/driver/work-orders/:id", requireAdmin, requireDriver, async (req,
     return res.json(updated);
   }
 
-  const [request] = await db.select().from(serviceRequestsTable)
-    .where(and(
-      eq(serviceRequestsTable.id, id),
-      eq(serviceRequestsTable.assignedDriverId, adminRequest.adminId),
-    ));
-  if (!request) return res.status(404).json({ error: "أمر العمل غير موجود" });
+  const request = serviceRequestRecord;
+  if (!request || request.assignedDriverId !== adminRequest.adminId) {
+    return res.status(404).json({ error: "أمر العمل غير موجود" });
+  }
   if (isCleaningContractRequest(request)) {
     return res.status(404).json({ error: "عقد النظافة لا يحتاج إلى إسناد أو أمر تشغيل" });
   }

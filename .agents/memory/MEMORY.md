@@ -19,7 +19,8 @@
 - [Replit preview manifest Shield](replit-preview-manifest-shield.md) — preview may rewrite a valid same-origin manifest request through Replit Shield and show a 401/CORS console warning.
 - [Atomic financial settlement](atomic-financial-settlement.md) — keep postings atomic, and never mark a bank deposit reconciled without statement evidence.
 - [Multi-container return evidence](multi-container-return-evidence.md) — validate every contract/asset pair atomically and keep driver proof on each movement.
-- [Container operation classification](container-operation-classification.md) — pickup text that also mentions emptying can be classified as emptying; verify the operation type.
+- [Container operation classification](container-operation-classification.md) — reject mixed pickup/emptying wording and carry one explicit operation type through completion.
 - [Shared dispatch resources](shared-dispatch-resources.md) — service requests and work orders share drivers and vehicles, so assignments must check both schedules.
+- [Merged work-order identity](merged-work-order-identity.md) — service requests and work orders have independent ID spaces; qualify merged-list actions with record type.
 - [Production-like demo identity safety](demo-identity-safety.md) — unverified phones must not link or overwrite existing profiles; isolate tests and merge only after explicit review.
 - [Production-like database testing](production-like-db-testing.md) — run synthetic lifecycle and financial tests against an isolated SQLite copy, never the production-like source.

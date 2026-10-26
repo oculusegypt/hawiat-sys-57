@@ -6,8 +6,10 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { DriverWorkOrderStatus } from './driverWorkOrderStatus';
+import type { WorkOrderRecordType } from './workOrderRecordType';
 
 export interface DriverWorkOrderUpdate {
+  recordType?: WorkOrderRecordType;
   status: DriverWorkOrderStatus;
   /**
      * @minLength 8
