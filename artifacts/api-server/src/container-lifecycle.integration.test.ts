@@ -190,6 +190,7 @@ async function main() {
       return { asset, contract: returnContract };
     },
   );
+  const futureTestAppointment = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
   const multiReturnTask = insertRecord("work_order", "assigned", "TEST-MULTI-RETURN-WORK-ORDER", {
     serviceType: "سحب واسترجاع حاوية",
     operationType: "PICKUP_CONTAINER",
@@ -204,7 +205,7 @@ async function main() {
     driverStatus: "assigned",
     status: "assigned",
     location: multiReturnLocation,
-    scheduledAt: "2026-10-26T10:00:00.000Z",
+    scheduledAt: futureTestAppointment,
     testData: true,
   });
   const legacyAmbiguousAsset = insertRecord("container_asset", "rented", "TEST-AMBIGUOUS-ASSET-001", {
@@ -708,6 +709,7 @@ async function main() {
       }) })
       .where(eq(containerSystemRecordsTable.id, returnContainers[1].asset.id))
       .run();
+    assert.ok(Date.parse(futureTestAppointment) > Date.now(), "this test work order must still be ahead of its appointment");
     const completedMultiReturn = await updateReturnTask("completed", true);
     assert.equal(completedMultiReturn.status, 200, await completedMultiReturn.clone().text());
     for (const item of returnContainers.slice(0, 2)) {

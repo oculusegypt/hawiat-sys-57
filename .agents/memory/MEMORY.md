@@ -20,6 +20,7 @@
 - [Atomic financial settlement](atomic-financial-settlement.md) — keep postings atomic, and never mark a bank deposit reconciled without statement evidence.
 - [Multi-container return evidence](multi-container-return-evidence.md) — validate every contract/asset pair atomically and keep driver proof on each movement.
 - [Container operation classification](container-operation-classification.md) — reject mixed pickup/emptying wording and carry one explicit operation type through completion.
+- [Early work-order completion](early-work-order-completion.md) — the user confirmed scheduled work may be completed early without an added time restriction.
 - [Shared dispatch resources](shared-dispatch-resources.md) — service requests and work orders share drivers and vehicles, so assignments must check both schedules.
 - [Merged work-order identity](merged-work-order-identity.md) — service requests and work orders have independent ID spaces; qualify merged-list actions with record type.
 - [Production-like demo identity safety](demo-identity-safety.md) — unverified phones must not link or overwrite existing profiles; isolate tests and merge only after explicit review.
