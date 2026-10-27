@@ -27,7 +27,8 @@ function normalizedOperation(value: unknown): string | null {
   if (emptying && pickup) return null;
   if (emptying) return "EMPTY_CONTAINER";
   if (pickup) return "PICKUP_CONTAINER";
-  return text ? "DELIVER_CONTAINER" : null;
+  if (/تسليم|توصيل|deliver|delivery|drop[\s-]?off/i.test(text)) return "DELIVER_CONTAINER";
+  return null;
 }
 
 function requestOperation(request: typeof serviceRequestsTable.$inferSelect): string | null {
@@ -66,19 +67,37 @@ function sameReferencesAndSchedule(
   );
 }
 
-function sameDriverState(
+function sameDispatchState(
   payload: DispatchPayload,
   request: typeof serviceRequestsTable.$inferSelect,
 ): boolean {
-  return String(payload.driverStatus ?? "unassigned") === String(request.driverStatus ?? "unassigned") &&
-    numericId(payload.assignedDriverId) === numericId(request.assignedDriverId) &&
-    numericId(payload.assignedVehicleId) === numericId(request.assignedVehicleId);
+  if (
+    String(payload.driverStatus ?? "unassigned") !== String(request.driverStatus ?? "unassigned") ||
+    numericId(payload.assignedDriverId) !== numericId(request.assignedDriverId) ||
+    numericId(payload.assignedVehicleId) !== numericId(request.assignedVehicleId)
+  ) return false;
+
+  const fields: Array<[unknown, unknown]> = [
+    [payload.assignedAt, request.assignedAt],
+    [payload.driverResponseAt, request.driverResponseAt],
+    [payload.driverStartedAt, request.driverStartedAt],
+    [payload.driverCompletedAt, request.driverCompletedAt],
+    [payload.driverNotes, request.driverNotes],
+    [payload.driverLocationLat, request.driverLocationLat],
+    [payload.driverLocationLng, request.driverLocationLng],
+    [payload.driverProofPhotoUrl, request.driverProofPhotoUrl],
+    [payload.driverSignatureData, request.driverSignatureData],
+    [payload.driverReceiverName, request.driverReceiverName],
+  ];
+  return fields.every(([left, right]) =>
+    String(left ?? "").trim() === String(right ?? "").trim(),
+  );
 }
 
 function appointmentWorkOrderPayload(appointment: typeof containerSystemRecordsTable.$inferSelect) {
   const source = parsePayload(appointment.payload);
   const type = String(source.appointmentType ?? "scheduled");
-  const operationType = normalizedOperation(type);
+  const operationType = normalizedOperation(source.operationType ?? source.serviceType);
   return {
     operationKey: `legacy-appointment-${appointment.id}`,
     workOrderNumber: `APT-WO-${appointment.id}`,
@@ -91,7 +110,7 @@ function appointmentWorkOrderPayload(appointment: typeof containerSystemRecordsT
     contractRecordId: numericId(source.contractRecordId) || null,
     containerRecordId: numericId(source.containerRecordId) || null,
     containerCode: String(source.containerCode ?? ""),
-    serviceType: String(source.serviceType ?? source.operationType ?? type),
+    serviceType: String(source.serviceType ?? source.operationType ?? "موعد تشغيل"),
     operationType: operationType ?? "APPOINTMENT",
     location: String(source.location ?? "يحدد لاحقًا"),
     duration: String(source.duration ?? ""),
@@ -139,10 +158,14 @@ export function ensureCanonicalDispatchTasks(): void {
 
       const candidates = workOrders.filter((row) => sameReferencesAndSchedule(parsePayload(row.payload), request));
       const operation = requestOperation(request);
+      const candidatePayload = candidates.length === 1 ? parsePayload(candidates[0].payload) : {};
       const safeMatch = candidates.length === 1 &&
-        !numericId(parsePayload(candidates[0].payload).legacyRequestId) &&
-        sameDriverState(parsePayload(candidates[0].payload), request) &&
-        normalizedOperation(parsePayload(candidates[0].payload).operationType ?? parsePayload(candidates[0].payload).serviceType) === operation;
+        candidates[0].status !== "archived" &&
+        !numericId(candidatePayload.legacyRequestId) &&
+        candidatePayload.reconciliationRequired !== true &&
+        sameDispatchState(candidatePayload, request) &&
+        operation !== null &&
+        normalizedOperation(candidatePayload.operationType ?? candidatePayload.serviceType) === operation;
 
       if (safeMatch) {
         const existing = candidates[0];
@@ -163,6 +186,14 @@ export function ensureCanonicalDispatchTasks(): void {
           beforePayload,
           afterPayload: JSON.stringify(nextPayload),
         }).run();
+        const workOrderIndex = workOrders.findIndex((row) => row.id === existing.id);
+        if (workOrderIndex >= 0) {
+          workOrders[workOrderIndex] = {
+            ...existing,
+            payload: JSON.stringify(nextPayload),
+            updatedAt: new Date().toISOString(),
+          };
+        }
         continue;
       }
 
@@ -231,14 +262,13 @@ export function ensureCanonicalDispatchTasks(): void {
       const alreadyLinked = workOrders.find((row) => {
         const payload = parsePayload(row.payload);
         return numericId(payload.appointmentRecordId) === appointmentId ||
-          numericId(payload.legacyAppointmentId) === appointmentId ||
-          numericId(payload.workOrderRecordId) === row.id;
+          numericId(payload.legacyAppointmentId) === appointmentId;
       });
       if (alreadyLinked) continue;
 
       const referencedWorkOrderId = numericId(source.workOrderRecordId);
       const explicitlyLinked = referencedWorkOrderId
-        ? workOrders.find((row) => row.id === referencedWorkOrderId)
+        ? workOrders.find((row) => row.id === referencedWorkOrderId && row.status !== "archived")
         : undefined;
       const requestId = numericId(source.serviceRequestId ?? source.requestId);
       const linkedRequestOrder = requestId
@@ -247,23 +277,109 @@ export function ensureCanonicalDispatchTasks(): void {
       const scheduledAt = scheduledAtFromAppointment(source);
       const contractId = numericId(source.contractRecordId);
       const containerId = numericId(source.containerRecordId);
+      const appointmentOperation = normalizedOperation(source.operationType ?? source.serviceType);
       const matchingOrders = workOrders.filter((row) => {
         const payload = parsePayload(row.payload);
         return contractId > 0 && containerId > 0 && scheduledAt !== "" &&
           numericId(payload.contractRecordId) === contractId &&
           numericId(payload.containerRecordId) === containerId &&
-          String(payload.scheduledAt ?? "").trim() === scheduledAt &&
-          !numericId(payload.appointmentRecordId);
+          String(payload.scheduledAt ?? "").trim() === scheduledAt;
       });
-      const linked = explicitlyLinked ?? linkedRequestOrder ?? (matchingOrders.length === 1 ? matchingOrders[0] : undefined);
+      let reviewReason: string | null = null;
+      let linked: typeof workOrders[number] | undefined;
+
+      if (referencedWorkOrderId > 0) {
+        if (explicitlyLinked) linked = explicitlyLinked;
+        else reviewReason = "رابط أمر العمل الصريح للموعد غير موجود أو مؤرشف؛ يلزم مراجعة الإدارة";
+      } else if (requestId > 0) {
+        if (linkedRequestOrder) linked = linkedRequestOrder;
+        else reviewReason = "رابط طلب الخدمة للموعد لا يقود إلى أمر عمل؛ يلزم مراجعة الإدارة";
+      } else if (matchingOrders.length === 1 && appointmentOperation !== null) {
+        const candidatePayload = parsePayload(matchingOrders[0].payload);
+        const candidateOperation = normalizedOperation(candidatePayload.operationType ?? candidatePayload.serviceType);
+        const candidateAppointmentId = numericId(candidatePayload.appointmentRecordId);
+        if (
+          matchingOrders[0].status !== "archived" &&
+          !candidateAppointmentId &&
+          !candidatePayload.reconciliationRequired &&
+          candidateOperation === appointmentOperation
+        ) {
+          linked = matchingOrders[0];
+        } else {
+          reviewReason = "تعذر التحقق من تطابق العملية أو رابط الموعد؛ يلزم مراجعة الإدارة";
+        }
+      } else if (matchingOrders.length > 0) {
+        reviewReason = matchingOrders.length > 1
+          ? "تعذر ربط الموعد بأمر تشغيل واحد بشكل آمن؛ يلزم مراجعة الإدارة"
+          : "نوع العملية أو رابط الموعد غير مؤكد؛ يلزم مراجعة الإدارة";
+      }
+
       if (linked) {
         const beforePayload = linked.payload;
+        const linkedPayload = parsePayload(beforePayload);
+        const appointmentOperationText = String(source.operationType ?? source.serviceType ?? "").trim();
+        if (appointmentOperationText && appointmentOperation === null) {
+          reviewReason = "نوع عملية الموعد ملتبس؛ يلزم مراجعة الإدارة";
+        }
+        const previousAppointmentId = numericId(linkedPayload.appointmentRecordId);
+        if (previousAppointmentId > 0 && previousAppointmentId !== appointmentId) {
+          reviewReason = "أمر العمل مرتبط مسبقًا بموعد آخر؛ يلزم مراجعة الإدارة";
+          linked = undefined;
+        }
+        const linkedSchedule = String(linkedPayload.scheduledAt ?? "").trim();
+        if (linked && linkedSchedule && scheduledAt && linkedSchedule !== scheduledAt) {
+          reviewReason = "موعد الجدولة يختلف عن الوقت المحفوظ في أمر العمل؛ يلزم مراجعة الإدارة";
+        }
+        const linkedOperation = normalizedOperation(linkedPayload.operationType ?? linkedPayload.serviceType);
+        if (linked && appointmentOperation && linkedOperation && appointmentOperation !== linkedOperation) {
+          reviewReason = "نوع عملية الموعد يختلف عن نوع أمر العمل؛ يلزم مراجعة الإدارة";
+        }
+        const appointmentDriverId = numericId(source.assignedDriverId);
+        const workOrderDriverId = numericId(linkedPayload.assignedDriverId);
+        const appointmentVehicleId = numericId(source.assignedVehicleId);
+        const workOrderVehicleId = numericId(linkedPayload.assignedVehicleId);
+        if (linked && (
+          (appointmentDriverId > 0 && appointmentDriverId !== workOrderDriverId) ||
+          (appointmentVehicleId > 0 && appointmentVehicleId !== workOrderVehicleId)
+        )) {
+          reviewReason = "إسناد السائق أو الشاحنة يختلف بين الموعد وأمر العمل؛ يلزم مراجعة الإدارة";
+        }
+        if (!linked) {
+          const payload = {
+            ...appointmentWorkOrderPayload(appointment),
+            reconciliationRequired: true,
+            reconciliationReason: reviewReason,
+          };
+          const created = tx.insert(containerSystemRecordsTable).values({
+            kind: "work_order",
+            status: appointment.status,
+            reference: String(payload.workOrderNumber),
+            payload: JSON.stringify(payload),
+            operationKey: String(payload.operationKey),
+          }).returning().get();
+          workOrders.push(created);
+          tx.insert(containerSystemAuditTable).values({
+            recordId: created.id,
+            kind: "work_order",
+            action: "legacy_appointment_promoted",
+            beforePayload: appointment.payload,
+            afterPayload: JSON.stringify(payload),
+          }).run();
+          continue;
+        }
         const nextPayload = {
-          ...parsePayload(beforePayload),
+          ...linkedPayload,
           appointmentRecordId: appointmentId,
           legacyAppointmentId: appointmentId,
-          appointmentType: source.appointmentType ?? parsePayload(beforePayload).appointmentType,
-          scheduledAt: scheduledAt || parsePayload(beforePayload).scheduledAt,
+          appointmentType: linkedPayload.appointmentType || source.appointmentType || "scheduled",
+          scheduledAt: linkedSchedule || scheduledAt,
+          ...(reviewReason ? {
+            reconciliationRequired: true,
+            reconciliationReason: reviewReason,
+            ...(linkedSchedule && scheduledAt && linkedSchedule !== scheduledAt
+              ? { legacyAppointmentScheduledAt: scheduledAt }
+              : {}),
+          } : {}),
         };
         tx.update(containerSystemRecordsTable).set({
           payload: JSON.stringify(nextPayload),
@@ -276,14 +392,22 @@ export function ensureCanonicalDispatchTasks(): void {
           beforePayload,
           afterPayload: JSON.stringify(nextPayload),
         }).run();
+        const workOrderIndex = workOrders.findIndex((row) => row.id === linked?.id);
+        if (workOrderIndex >= 0) {
+          workOrders[workOrderIndex] = {
+            ...linked,
+            payload: JSON.stringify(nextPayload),
+            updatedAt: new Date().toISOString(),
+          };
+        }
         continue;
       }
 
       const payload = {
         ...appointmentWorkOrderPayload(appointment),
-        ...(matchingOrders.length > 1 ? {
+        ...(reviewReason ? {
           reconciliationRequired: true,
-          reconciliationReason: "تعذر ربط الموعد بأمر تشغيل واحد بشكل آمن؛ يلزم مراجعة الإدارة",
+          reconciliationReason: reviewReason,
         } : {}),
       };
       const created = tx.insert(containerSystemRecordsTable).values({

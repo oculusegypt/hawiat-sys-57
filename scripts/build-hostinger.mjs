@@ -795,6 +795,7 @@ for (const hub of ["blog", "areas"]) {
 mkdirSync(join(ROOT, "build_php/api"), { recursive: true });
 copyFileSync(join(ROOT, "scripts/api-index.php"), join(ROOT, "build_php/api/index.php"));
 copyFileSync(join(ROOT, "scripts/container-system.php"), join(ROOT, "build_php/api/container-system.php"));
+copyFileSync(join(ROOT, "scripts/dispatch-canonicalization.php"), join(ROOT, "build_php/api/dispatch-canonicalization.php"));
 // Hostinger has no environment-variable manager in the deployed PHP process.
 // Give each archive its own signing secret instead of shipping the historical
 // public fallback secret in the production API.

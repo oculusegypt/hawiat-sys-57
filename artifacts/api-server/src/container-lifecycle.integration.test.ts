@@ -6,6 +6,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   adminsTable,
+  containerSystemAuditTable,
   containerSystemRecordsTable,
   db,
   serviceRequestsTable,
@@ -13,6 +14,7 @@ import {
 } from "@workspace/db";
 import { postToFinancialCore } from "@workspace/db";
 import { findScheduledDispatchConflict } from "./lib/containerDispatch.js";
+import { ensureCanonicalDispatchTasks } from "./lib/dispatchCanonicalization.js";
 import { hashPassword } from "./routes/auth.js";
 import { eq } from "drizzle-orm";
 
@@ -263,6 +265,104 @@ async function main() {
     status: "pending",
     driverStatus: "unassigned",
   }).returning().get();
+  const reconciliationAsset = insertRecord("container_asset", "rented", "TEST-RECONCILIATION-ASSET-001", {
+    assetCode: "TEST-RECONCILIATION-ASSET-001",
+    status: "rented",
+    testData: true,
+  });
+  const reconciliationContract = insertRecord("contract", "delivered", "TEST-RECONCILIATION-CONTRACT-001", {
+    contractNumber: "TEST-RECONCILIATION-CONTRACT-001",
+    containerRecordId: reconciliationAsset.id,
+    containerCode: "TEST-RECONCILIATION-ASSET-001",
+    testData: true,
+  });
+  const reconciliationRequest = db.insert(serviceRequestsTable).values({
+    clientName: "TEST ONLY — conflicting dispatch",
+    phone: testPhone,
+    serviceType: "تسليم حاوية — TEST ONLY",
+    containerSize: "TEST ONLY",
+    location: testLocation,
+    scheduledAt: "2034-07-01T10:00:00.000Z",
+    duration: "1 hour",
+    appointmentType: "scheduled",
+    contractRecordId: reconciliationContract.id,
+    containerRecordId: reconciliationAsset.id,
+    status: "in_progress",
+    driverStatus: "arrived",
+    assignedDriverId: driver.id,
+    assignedVehicleId: vehicle.id,
+    driverStartedAt: "2034-07-01T09:30:00.000Z",
+  }).returning().get();
+  const conflictingCandidate = insertRecord("work_order", "completed", "TEST-RECONCILIATION-WORK-ORDER-001", {
+    serviceType: "تسليم حاوية",
+    operationType: "DELIVER_CONTAINER",
+    contractRecordId: reconciliationContract.id,
+    containerRecordId: reconciliationAsset.id,
+    scheduledAt: "2034-07-01T10:00:00.000Z",
+    duration: "1 hour",
+    assignedDriverId: driver.id,
+    assignedVehicleId: vehicle.id,
+    driverStatus: "completed",
+    driverCompletedAt: "2034-07-01T11:00:00.000Z",
+    driverProofPhotoUrl: "/uploads/TEST-ONLY-conflicting-proof.webp",
+    status: "completed",
+    testData: true,
+  });
+  const appointmentTarget = insertRecord("work_order", "assigned", "TEST-EXPLICIT-APPOINTMENT-WORK-ORDER", {
+    serviceType: "تسليم حاوية",
+    operationType: "DELIVER_CONTAINER",
+    contractRecordId: reconciliationContract.id,
+    containerRecordId: reconciliationAsset.id,
+    scheduledAt: "2034-07-02T10:00:00.000Z",
+    driverStatus: "assigned",
+    status: "assigned",
+    testData: true,
+  });
+  const explicitAppointment = insertRecord("appointment", "scheduled", "TEST-EXPLICIT-APPOINTMENT", {
+    workOrderRecordId: appointmentTarget.id,
+    serviceType: "تسليم حاوية",
+    appointmentType: "scheduled",
+    contractRecordId: reconciliationContract.id,
+    containerRecordId: reconciliationAsset.id,
+    scheduledAt: "2034-07-02T10:00:00.000Z",
+    testData: true,
+  });
+  ensureCanonicalDispatchTasks();
+  const canonicalConflict = db.select().from(containerSystemRecordsTable).all().find(record =>
+    record.kind === "work_order" &&
+    Number((JSON.parse(record.payload) as Record<string, unknown>).legacyRequestId) === reconciliationRequest.id,
+  );
+  assert.ok(canonicalConflict, "a legacy request must be promoted to a canonical work order");
+  const canonicalConflictPayload = JSON.parse(canonicalConflict.payload) as Record<string, unknown>;
+  assert.equal(canonicalConflictPayload.reconciliationRequired, true, "different driver states must require review");
+  assert.equal(canonicalConflictPayload.driverStatus, "arrived", "the legacy request state must be preserved");
+  assert.equal(
+    JSON.parse(String(db.select().from(containerSystemRecordsTable)
+      .where(eq(containerSystemRecordsTable.id, conflictingCandidate.id)).get()?.payload)).driverStatus,
+    "completed",
+    "the existing conflicting work order must not be changed",
+  );
+  assert.equal(
+    JSON.parse(String(db.select().from(containerSystemRecordsTable)
+      .where(eq(containerSystemRecordsTable.id, appointmentTarget.id)).get()?.payload)).appointmentRecordId,
+    explicitAppointment.id,
+    "the explicit legacy appointment link must be preserved",
+  );
+  const canonicalizationCounts = {
+    workOrders: db.select().from(containerSystemRecordsTable).all().filter(row => row.kind === "work_order").length,
+    audits: db.select().from(containerSystemAuditTable).all().length,
+  };
+  ensureCanonicalDispatchTasks();
+  assert.equal(
+    db.select().from(containerSystemRecordsTable).all().filter(row => row.kind === "work_order").length,
+    canonicalizationCounts.workOrders,
+    "re-running canonicalization must not duplicate work orders",
+  );
+  assert.equal(
+    db.select().from(containerSystemAuditTable).all().length,
+    canonicalizationCounts.audits,
+    "re-running canonicalization must not create duplicate audit records",
+  );
   const pickupAsset = insertRecord("container_asset", "rented", "TEST-PICKUP-ASSET-001", {
     assetCode: "TEST-PICKUP-ASSET-001",
     status: "rented",
@@ -460,6 +560,16 @@ async function main() {
     );
     assert.equal(assignLegacyAmbiguousWorkOrder.status, 200, await assignLegacyAmbiguousWorkOrder.clone().text());
 
+    const flaggedAssignmentResponse = await fetch(
+      `http://127.0.0.1:${port}/api/service-requests/${canonicalConflict!.id}/assignment`,
+      {
+        method: "PATCH",
+        headers: { "content-type": "application/json", authorization },
+        body: JSON.stringify({ recordType: "work_order", driverId: driver.id }),
+      },
+    );
+    assert.equal(flaggedAssignmentResponse.status, 409, "a work order needing reconciliation must not be reassigned");
+
     const adminOrdersResponse = await fetch(`http://127.0.0.1:${port}/api/admin/work-orders`, {
       headers: { authorization },
     });
@@ -467,8 +577,8 @@ async function main() {
     const adminOrders = await adminOrdersResponse.json() as Array<{ id: number; recordType?: string }>;
     assert.deepEqual(
       adminOrders.filter(row => row.id === collisionId).map(row => row.recordType).sort(),
-      ["service_request", "work_order"],
-      "combined work-order lists must distinguish records with a colliding numeric ID",
+      ["work_order"],
+      "the canonical work-order queue must not include service-request source rows",
     );
 
     const addedContainerResponse = await fetch(
@@ -517,6 +627,31 @@ async function main() {
     const driverLoginBody = await driverLoginResponse.json() as { token?: string };
     assert.ok(driverLoginBody.token);
     const driverAuthorization = `Bearer ${driverLoginBody.token}`;
+    const movementCountBeforeFlaggedCompletion = db.select().from(containerSystemRecordsTable).all()
+      .filter(record => record.kind === "container_movement").length;
+    const flaggedCompletionResponse = await fetch(
+      `http://127.0.0.1:${port}/api/driver/work-orders/${canonicalConflict!.id}`,
+      {
+        method: "PATCH",
+        headers: { "content-type": "application/json", authorization: driverAuthorization },
+        body: JSON.stringify({
+          recordType: "work_order",
+          status: "completed",
+          receiverName: "TEST ONLY — reconciliation test",
+          proofPhotoUrl: "/uploads/TEST-ONLY-reconciliation-proof.webp",
+          signatureData: "TEST ONLY — reconciliation signature",
+        }),
+      },
+    );
+    assert.equal(flaggedCompletionResponse.status, 409, "a flagged order must not complete before review");
+    const flaggedOrderAfter = db.select().from(containerSystemRecordsTable)
+      .where(eq(containerSystemRecordsTable.id, canonicalConflict!.id)).get();
+    assert.equal(JSON.parse(String(flaggedOrderAfter?.payload)).driverStatus, "arrived");
+    assert.equal(
+      db.select().from(containerSystemRecordsTable).all().filter(record => record.kind === "container_movement").length,
+      movementCountBeforeFlaggedCompletion,
+      "a flagged work order must not create a movement",
+    );
     const blockedDeliveryAsset = insertRecord("container_asset", "available", "TEST-BLOCKED-DELIVERY-001", {
       assetCode: "TEST-BLOCKED-DELIVERY-001",
       status: "available",
@@ -534,7 +669,7 @@ async function main() {
       serviceType: "container delivery — TEST ONLY",
       containerSize: "TEST ONLY",
       location: testLocation,
-      scheduledAt: "2026-10-14T10:00:00.000Z",
+      scheduledAt: "2026-10-15T10:00:00.000Z",
       duration: "1 hour",
       appointmentType: "scheduled",
       contractRecordId: blockedDeliveryContract.id,
@@ -594,8 +729,8 @@ async function main() {
     const driverOrders = await driverOrdersResponse.json() as Array<{ id: number; recordType?: string }>;
     assert.deepEqual(
       driverOrders.filter(row => row.id === collisionId).map(row => row.recordType).sort(),
-      ["service_request", "work_order"],
-      "driver lists must distinguish records with a colliding numeric ID",
+      ["work_order"],
+      "the driver queue must contain canonical work orders only",
     );
 
     const untypedCollisionStatus = await fetch(
@@ -618,6 +753,11 @@ async function main() {
     );
     assert.equal(updateCollisionServiceRequest.status, 200, await updateCollisionServiceRequest.clone().text());
     assert.equal(
+      (await updateCollisionServiceRequest.json() as { recordType: string }).recordType,
+      "work_order",
+      "legacy service-request writes must resolve to the canonical work order",
+    );
+    assert.equal(
       db.select().from(containerSystemRecordsTable).where(eq(containerSystemRecordsTable.id, collisionId)).get()?.status,
       "assigned",
       "updating the service request must not change its colliding work order",
@@ -639,7 +779,8 @@ async function main() {
     );
     assert.equal(
       db.select().from(serviceRequestsTable).where(eq(serviceRequestsTable.id, collisionId)).get()?.driverStatus,
-      "accepted",
+      "unassigned",
+      "the legacy request remains a source record, not a parallel dispatch record",
     );
 
     const updatePickupWorkOrder = (status: string, evidence = false) => fetch(

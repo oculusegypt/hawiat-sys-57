@@ -118,6 +118,7 @@ const previousSecret = hostingerPatchSecret();
 const apiSource = readFileSync(apiTemplatePath, "utf8").replaceAll("__HOSTINGER_TOKEN_SECRET__", previousSecret);
 writeFileSync(join(apiDir, "index.php"), apiSource, "utf8");
 copyFileSync(join(ROOT, "scripts/container-system.php"), join(apiDir, "container-system.php"));
+copyFileSync(join(ROOT, "scripts/dispatch-canonicalization.php"), join(apiDir, "dispatch-canonicalization.php"));
 
 const htaccessRoot = join(ROOT, "build_php/.htaccess");
 if (existsSync(htaccessRoot)) copyFileSync(htaccessRoot, join(PATCH_DIR, ".htaccess"));

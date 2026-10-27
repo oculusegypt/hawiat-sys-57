@@ -159,4 +159,80 @@ $rejectionId = $insertRecord('contract', 'draft', 'TEST-ONLY-CONTRACT-REJECT', [
 $rejected = hsUpdateContainerContractLifecycle($pdo, $rejectionId, 'reject', '', 1, $manager);
 lifecycleExpectSame('rejected', (string)$rejected['contract']['status'], 'a manager may reject an eligible contract');
 
-echo "PHP contract lifecycle assertions passed using an isolated in-memory database\n";
+$conflictingRequestId = 0;
+$pdo->prepare("INSERT INTO service_requests
+    (client_name, phone, service_type, location, created_at, updated_at, status, scheduled_at,
+     duration, contract_record_id, container_record_id, assigned_driver_id, driver_status)
+    VALUES ('TEST ONLY — conflicting dispatch', 'TEST ONLY', 'تسليم حاوية', 'TEST ONLY',
+     ?, ?, 'in_progress', '2026-10-30T10:00:00.000Z', '1 hour', ?, ?, 7, 'arrived')")
+    ->execute([date('c'), date('c'), $contractId, $containerId]);
+$conflictingRequestId = (int)$pdo->lastInsertId();
+$conflictingWorkOrderId = $insertRecord('work_order', 'completed', 'TEST-ONLY-CONFLICTING-WORK-ORDER', [
+    'operationType' => 'DELIVER_CONTAINER',
+    'serviceType' => 'تسليم حاوية',
+    'contractRecordId' => $contractId,
+    'containerRecordId' => $containerId,
+    'scheduledAt' => '2026-10-30T10:00:00.000Z',
+    'assignedDriverId' => 7,
+    'driverStatus' => 'completed',
+    'status' => 'completed',
+]);
+$targetWorkOrderId = $insertRecord('work_order', 'assigned', 'TEST-ONLY-EXPLICIT-APPOINTMENT-LINK', [
+    'operationType' => 'DELIVER_CONTAINER',
+    'serviceType' => 'تسليم حاوية',
+    'contractRecordId' => $contractId,
+    'containerRecordId' => $containerId,
+    'scheduledAt' => '2026-10-31T10:00:00.000Z',
+    'driverStatus' => 'assigned',
+    'status' => 'assigned',
+]);
+$appointmentId = $insertRecord('appointment', 'scheduled', 'TEST-ONLY-LEGACY-APPOINTMENT', [
+    'workOrderRecordId' => $targetWorkOrderId,
+    'serviceType' => 'تسليم حاوية',
+    'appointmentType' => 'scheduled',
+    'contractRecordId' => $contractId,
+    'containerRecordId' => $containerId,
+    'scheduledAt' => '2026-10-31T10:00:00.000Z',
+]);
+
+$movementCountBeforeMigration = (int)$pdo->query(
+    "SELECT COUNT(*) FROM container_system_records WHERE kind='container_movement'"
+)->fetchColumn();
+hsEnsureCanonicalDispatchTasks($pdo);
+
+$canonicalRequestStmt = $pdo->prepare("SELECT id,payload FROM container_system_records
+    WHERE kind='work_order' AND json_extract(payload, '$.legacyRequestId')=:request_id LIMIT 1");
+$canonicalRequestStmt->execute([':request_id' => $conflictingRequestId]);
+$canonicalRequest = $canonicalRequestStmt->fetch(PDO::FETCH_ASSOC);
+lifecycleExpectSame(true, is_array($canonicalRequest), 'a legacy request must be promoted into a work order');
+$canonicalRequestPayload = json_decode((string)$canonicalRequest['payload'], true);
+lifecycleExpectSame(true, (bool)($canonicalRequestPayload['reconciliationRequired'] ?? false),
+    'a request with conflicting driver state must require reconciliation');
+lifecycleExpectSame('arrived', (string)($canonicalRequestPayload['driverStatus'] ?? ''),
+    'the promoted request must preserve its own driver state');
+lifecycleExpectSame('completed', (string)hsPayload(
+    $pdo->query("SELECT payload FROM container_system_records WHERE id = {$conflictingWorkOrderId}")->fetchColumn()
+)['driverStatus'], 'the conflicting existing work order must remain unchanged');
+
+$linkedAppointmentPayload = hsPayload(
+    $pdo->query("SELECT payload FROM container_system_records WHERE id = {$targetWorkOrderId}")->fetchColumn()
+);
+lifecycleExpectSame($appointmentId, (int)($linkedAppointmentPayload['appointmentRecordId'] ?? 0),
+    'an explicit appointment-to-work-order reference must be preserved');
+lifecycleExpectSame($movementCountBeforeMigration, (int)$pdo->query(
+    "SELECT COUNT(*) FROM container_system_records WHERE kind='container_movement'"
+)->fetchColumn(), 'canonicalization must not create container movements');
+
+$workOrderCountAfterMigration = (int)$pdo->query(
+    "SELECT COUNT(*) FROM container_system_records WHERE kind='work_order'"
+)->fetchColumn();
+$auditCountAfterMigration = (int)$pdo->query("SELECT COUNT(*) FROM container_system_audit")->fetchColumn();
+hsEnsureCanonicalDispatchTasks($pdo);
+lifecycleExpectSame($workOrderCountAfterMigration, (int)$pdo->query(
+    "SELECT COUNT(*) FROM container_system_records WHERE kind='work_order'"
+)->fetchColumn(), 'canonicalization must be idempotent');
+lifecycleExpectSame($auditCountAfterMigration, (int)$pdo->query(
+    "SELECT COUNT(*) FROM container_system_audit"
+)->fetchColumn(), 'an idempotent rerun must not duplicate audit rows');
+
+echo "PHP contract lifecycle and dispatch canonicalization assertions passed using an isolated in-memory database\n";

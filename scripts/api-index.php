@@ -1032,7 +1032,8 @@ try {
         ]);
     }
 
-    function hsEnsureCanonicalDispatchTasks(PDO $pdo): void {
+    /** @deprecated Use the shared implementation loaded by container-system.php. */
+    function hsEnsureCanonicalDispatchTasksLegacy(PDO $pdo): void {
         $ownsTransaction = !$pdo->inTransaction();
         if ($ownsTransaction) $pdo->beginTransaction();
         try {

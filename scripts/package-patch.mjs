@@ -15,6 +15,8 @@ mkdirSync(patchDir, { recursive: true });
 // 1. مجلد الـ API الكامل (PHP backend)
 mkdirSync(join(patchDir, 'api'), { recursive: true });
 copyFileSync(join(ROOT, 'build_php/api/index.php'), join(patchDir, 'api/index.php'));
+copyFileSync(join(ROOT, 'build_php/api/dispatch-canonicalization.php'), join(patchDir, 'api/dispatch-canonicalization.php'));
+copyFileSync(join(ROOT, 'build_php/api/container-system.php'), join(patchDir, 'api/container-system.php'));
 if (existsSync(join(ROOT, 'build_php/api/.htaccess'))) {
   copyFileSync(join(ROOT, 'build_php/api/.htaccess'), join(patchDir, 'api/.htaccess'));
 }
