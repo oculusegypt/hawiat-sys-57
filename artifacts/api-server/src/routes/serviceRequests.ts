@@ -85,6 +85,14 @@ function operationTypeForRequest(request: typeof serviceRequestsTable.$inferSele
   return inferredType;
 }
 
+class ContainerCompletionValidationError extends Error {
+  readonly name = "ContainerCompletionValidationError";
+}
+
+function containerCompletionValidationMessage(error: unknown, fallback: string) {
+  return error instanceof ContainerCompletionValidationError ? error.message : fallback;
+}
+
 function coordinatesFromPayload(payload: Record<string, unknown>) {
   const coordinates = String(payload.locationCoordinates ?? payload.coordinates ?? payload.location ?? "");
   const match = coordinates.match(/(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)/);
@@ -216,7 +224,14 @@ function prepareContainerCompletion(
   reader: Pick<typeof db, "select"> = db,
 ) {
   if (!isContainerWork(request)) return null;
-  const operationType = operationTypeForRequest(request);
+  let operationType: ContainerOperationType;
+  try {
+    operationType = operationTypeForRequest(request);
+  } catch (error) {
+    throw new ContainerCompletionValidationError(
+      error instanceof Error ? error.message : "نوع عملية الحاوية غير صالح",
+    );
+  }
   const assets = reader.select().from(containerSystemRecordsTable).all();
   const requestFields = request as typeof request & {
     appointmentRecordId?: number | null;
@@ -232,13 +247,13 @@ function prepareContainerCompletion(
     ? requestFields.contractRecordIds.map(Number)
     : [];
   if (containerIds.length !== rawContainerIds.length) {
-    throw new Error("تحتوي المهمة على حاوية مكررة");
+    throw new ContainerCompletionValidationError("تحتوي المهمة على حاوية مكررة");
   }
   if (contractIds.length && contractIds.length !== containerIds.length) {
-    throw new Error("عدد العقود لا يطابق عدد الحاويات في المهمة");
+    throw new ContainerCompletionValidationError("عدد العقود لا يطابق عدد الحاويات في المهمة");
   }
   if (contractIds.some(id => !Number.isInteger(id) || id <= 0)) {
-    throw new Error("رقم أحد العقود المرتبطة بالمهمة غير صالح");
+    throw new ContainerCompletionValidationError("رقم أحد العقود المرتبطة بالمهمة غير صالح");
   }
   const items: Array<{
     contract: typeof containerSystemRecordsTable.$inferSelect;
@@ -253,7 +268,7 @@ function prepareContainerCompletion(
       ["container", "container_asset"].includes(record.kind) &&
       record.status !== "archived",
     );
-    if (!asset) throw new Error(`أصل الحاوية رقم ${containerId} غير موجود`);
+    if (!asset) throw new ContainerCompletionValidationError(`أصل الحاوية رقم ${containerId} غير موجود`);
     const assetPayload = parseContainerPayload(asset.payload);
     const code = containerCodeFrom(assetPayload) || asset.reference;
     const requestedContractId = Number(contractIds[index] ?? (index === 0 ? request.contractRecordId : 0));
@@ -265,23 +280,25 @@ function prepareContainerCompletion(
         : String(parseContainerPayload(record.payload).containerCode ?? "").trim() === code),
     );
     if (!contract || String(parseContainerPayload(contract.payload).containerCode ?? "").trim() !== code) {
-      throw new Error(`العقد المرتبط بالحاوية ${code} غير موجود أو لا يطابق الأصل`);
+      throw new ContainerCompletionValidationError(`العقد المرتبط بالحاوية ${code} غير موجود أو لا يطابق الأصل`);
     }
     const contractPayload = parseContainerPayload(contract.payload);
     if (operationType === "EMPTY_CONTAINER" || operationType === "PICKUP_CONTAINER") {
       if (contract.status !== "delivered" || !["rented", "with_customer", "awaiting_return"].includes(String(assetPayload.status ?? asset.status).toLowerCase())) {
-        throw new Error(`الحاوية ${code} لم تسلّم فعليًا ولا يمكن تفريغها أو سحبها`);
+        throw new ContainerCompletionValidationError(`الحاوية ${code} لم تسلّم فعليًا ولا يمكن تفريغها أو سحبها`);
       }
     } else if (!["active", "approved", "issued", "scheduled"].includes(contract.status)) {
-      throw new Error(`لا يمكن إكمال مهمة التسليم للحاوية ${code} من الحالة الحالية`);
+      throw new ContainerCompletionValidationError(
+        `حالة عقد الحاوية ${code} لا تسمح بإتمام التسليم. تواصل مع الإدارة قبل إعادة المحاولة.`,
+      );
     }
     items.push({ contract, contractPayload, asset, containerCode: code, appointment: null });
   }
-  if (!items.length) throw new Error("لا توجد حاويات مرتبطة بمهمة السائق");
+  if (!items.length) throw new ContainerCompletionValidationError("لا توجد حاويات مرتبطة بمهمة السائق");
   const primary = items[0];
   const { contract, contractPayload, asset, containerCode } = primary;
   if (Number(request.contractRecordId ?? 0) !== contract.id) {
-    throw new Error("العقد الأساسي لا يطابق الحاوية الأولى في مهمة السائق");
+    throw new ContainerCompletionValidationError("العقد الأساسي لا يطابق الحاوية الأولى في مهمة السائق");
   }
   const requestedAppointmentId = Number(requestFields.appointmentRecordId ?? 0);
   const appointment = assets.find(record => {
@@ -1366,7 +1383,9 @@ router.patch("/driver/work-orders/:id", requireAdmin, requireDriver, async (req,
       try {
         preparedContainerCompletion = await prepareContainerCompletion(current);
       } catch (error) {
-        return res.status(422).json({ error: "تعذر التحقق من ارتباط الحاوية بالعقد" });
+        return res.status(422).json({
+          error: containerCompletionValidationMessage(error, "تعذر التحقق من ارتباط الحاوية بالعقد"),
+        });
       }
       if (preparedContainerCompletion && (!receiverName || !signatureData || !proofPhotoUrl)) {
         return res.status(422).json({ error: "يلزم تسجيل اسم المستلم وتوقيع العميل وصورة إثبات قبل إكمال حركة الحاوية" });
@@ -1469,7 +1488,10 @@ router.patch("/driver/work-orders/:id", requireAdmin, requireDriver, async (req,
       preparedContainerCompletion = await prepareContainerCompletion(request);
     } catch (error) {
       return res.status(422).json({
-        error: "لا يمكن إكمال أمر العمل قبل اكتمال ربط العقد والحاوية",
+        error: containerCompletionValidationMessage(
+          error,
+          "لا يمكن إكمال أمر العمل قبل اكتمال ربط العقد والحاوية",
+        ),
       });
     }
     if (preparedContainerCompletion && (!receiverName || !signatureData || !proofPhotoUrl)) {

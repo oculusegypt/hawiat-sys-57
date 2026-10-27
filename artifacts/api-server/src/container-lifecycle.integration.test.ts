@@ -517,6 +517,76 @@ async function main() {
     const driverLoginBody = await driverLoginResponse.json() as { token?: string };
     assert.ok(driverLoginBody.token);
     const driverAuthorization = `Bearer ${driverLoginBody.token}`;
+    const blockedDeliveryAsset = insertRecord("container_asset", "available", "TEST-BLOCKED-DELIVERY-001", {
+      assetCode: "TEST-BLOCKED-DELIVERY-001",
+      status: "available",
+      testData: true,
+    });
+    const blockedDeliveryContract = insertRecord("contract", "closed", "TEST-BLOCKED-CONTRACT-001", {
+      contractNumber: "TEST-BLOCKED-CONTRACT-001",
+      containerRecordId: blockedDeliveryAsset.id,
+      containerCode: "TEST-BLOCKED-DELIVERY-001",
+      testData: true,
+    });
+    const blockedDeliveryRequest = db.insert(serviceRequestsTable).values({
+      clientName: "TEST ONLY — blocked delivery",
+      phone: testPhone,
+      serviceType: "container delivery — TEST ONLY",
+      containerSize: "TEST ONLY",
+      location: testLocation,
+      scheduledAt: "2026-10-14T10:00:00.000Z",
+      duration: "1 hour",
+      appointmentType: "scheduled",
+      contractRecordId: blockedDeliveryContract.id,
+      containerRecordId: blockedDeliveryAsset.id,
+      status: "in_progress",
+      driverStatus: "arrived",
+      assignedDriverId: driver.id,
+      adminNotes: "TEST ONLY — must remain blocked without a valid contract",
+    }).returning().get();
+    const movementCountBeforeBlockedDelivery = db.select().from(containerSystemRecordsTable).all()
+      .filter(record => record.kind === "container_movement").length;
+    const blockedDeliveryResponse = await fetch(
+      `http://127.0.0.1:${port}/api/driver/work-orders/${blockedDeliveryRequest.id}`,
+      {
+        method: "PATCH",
+        headers: { "content-type": "application/json", authorization: driverAuthorization },
+        body: JSON.stringify({
+          recordType: "service_request",
+          status: "completed",
+          receiverName: "TEST ONLY — receiver",
+          proofPhotoUrl: "/uploads/TEST-ONLY-blocked-delivery-proof.webp",
+          signatureData: "TEST ONLY — signature",
+          operationKey: "test-blocked-delivery-operation-001",
+        }),
+      },
+    );
+    assert.equal(blockedDeliveryResponse.status, 422);
+    assert.match(
+      String((await blockedDeliveryResponse.json() as { error?: unknown }).error),
+      /تواصل مع الإدارة/,
+      "drivers should be told to contact administration when a closed contract blocks delivery",
+    );
+    assert.equal(
+      db.select().from(serviceRequestsTable).where(eq(serviceRequestsTable.id, blockedDeliveryRequest.id)).get()?.driverStatus,
+      "arrived",
+      "an invalid delivery must not complete the service request",
+    );
+    assert.equal(
+      db.select().from(containerSystemRecordsTable).where(eq(containerSystemRecordsTable.id, blockedDeliveryContract.id)).get()?.status,
+      "closed",
+      "an invalid delivery must not change the closed contract",
+    );
+    assert.equal(
+      db.select().from(containerSystemRecordsTable).where(eq(containerSystemRecordsTable.id, blockedDeliveryAsset.id)).get()?.status,
+      "available",
+      "an invalid delivery must not change the available container",
+    );
+    assert.equal(
+      db.select().from(containerSystemRecordsTable).all().filter(record => record.kind === "container_movement").length,
+      movementCountBeforeBlockedDelivery,
+      "an invalid delivery must not create a container movement",
+    );
     const driverOrdersResponse = await fetch(`http://127.0.0.1:${port}/api/driver/work-orders`, {
       headers: { authorization: driverAuthorization },
     });

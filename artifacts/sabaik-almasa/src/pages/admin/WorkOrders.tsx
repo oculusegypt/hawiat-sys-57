@@ -46,6 +46,17 @@ const API_BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") || "";
 const OFFLINE_QUEUE_KEY = "cleanflow-driver-status-queue";
 const COMPLETION_DRAFT_KEY = "cleanflow-driver-completion-draft";
 
+function completionErrorMessage(error: unknown, fallback: string) {
+  if (error && typeof error === "object" && "data" in error) {
+    const data = (error as { data?: unknown }).data;
+    if (data && typeof data === "object" && "error" in data) {
+      const message = (data as { error?: unknown }).error;
+      if (typeof message === "string" && message.trim()) return message;
+    }
+  }
+  return error instanceof Error && error.message ? error.message : fallback;
+}
+
 type QueuedStatusUpdate = {
   id: number;
   data: {
@@ -496,11 +507,17 @@ function CompletionEvidenceDialog({
   const [locationLat, setLocationLat] = useState("");
   const [locationLng, setLocationLng] = useState("");
   const [proofFile, setProofFile] = useState<File | null>(null);
+  const [uploadedProofPhotoUrl, setUploadedProofPhotoUrl] = useState("");
   const [uploadingProof, setUploadingProof] = useState(false);
   const [signatureData, setSignatureData] = useState("");
   const [locationMessage, setLocationMessage] = useState("");
   const [fileMessage, setFileMessage] = useState("");
   useEffect(() => {
+    if (!open) {
+      setProofFile(null);
+      setUploadedProofPhotoUrl("");
+      return;
+    }
     const draft = readCompletionDraft();
     setReceiverName(draft.receiverName ?? "");
     setLocationLat(draft.locationLat ?? "");
@@ -537,8 +554,12 @@ function CompletionEvidenceDialog({
     if (uploadingProof) return;
     setUploadingProof(true);
     try {
-      let proofPhotoUrl = "";
-      if (proofFile) {
+      let proofPhotoUrl = uploadedProofPhotoUrl;
+      const cachedExpiry = Number(
+        new URLSearchParams(uploadedProofPhotoUrl.split("?")[1] ?? "").get("expires") ?? 0,
+      );
+      const cachedUploadIsValid = cachedExpiry > Math.floor(Date.now() / 1000);
+      if (proofFile && !cachedUploadIsValid) {
         const form = new FormData();
         form.append("file", proofFile);
         const response = await fetch(`${API_BASE}/api/driver/uploads`, {
@@ -551,6 +572,7 @@ function CompletionEvidenceDialog({
         const body = await response.json().catch(() => ({}));
         if (!response.ok || !body.url) throw new Error("تعذر رفع صورة الإثبات");
         proofPhotoUrl = String(body.url);
+        setUploadedProofPhotoUrl(proofPhotoUrl);
       }
       onSubmit({
         receiverName,
@@ -602,23 +624,27 @@ function CompletionEvidenceDialog({
                   const file = event.target.files?.[0] ?? null;
                   if (!file) {
                     setProofFile(null);
+                    setUploadedProofPhotoUrl("");
                     setFileMessage("");
                     return;
                   }
                   if (!ACCEPTED_PROOF_TYPES.has(file.type)) {
                     setProofFile(null);
+                    setUploadedProofPhotoUrl("");
                     setFileMessage("اختر صورة بصيغة JPEG أو PNG أو WebP أو GIF أو AVIF.");
                     event.target.value = "";
                     return;
                   }
                   if (file.size > MAX_PROOF_SIZE) {
                     setProofFile(null);
+                    setUploadedProofPhotoUrl("");
                     setFileMessage("حجم الصورة يجب ألا يتجاوز 8 ميغابايت.");
                     event.target.value = "";
                     return;
                   }
                   setFileMessage("");
                   setProofFile(file);
+                  setUploadedProofPhotoUrl("");
                 }}
                 className="mt-1 block w-full rounded-md border border-input bg-background p-2 text-xs"
               />
@@ -1364,11 +1390,11 @@ export default function WorkOrders() {
           setCompletionTarget(null);
           activeQuery.refetch();
         },
-        onError: () =>
+        onError: error =>
           toast({
             variant: "destructive",
             title: "تعذر حفظ إثبات المهمة",
-            description: "تحقق من البيانات وحاول مرة أخرى",
+            description: completionErrorMessage(error, "تحقق من البيانات وحاول مرة أخرى"),
           }),
       },
     );
