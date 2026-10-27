@@ -194,6 +194,23 @@ $appointmentId = $insertRecord('appointment', 'scheduled', 'TEST-ONLY-LEGACY-APP
     'containerRecordId' => $containerId,
     'scheduledAt' => '2026-10-31T10:00:00.000Z',
 ]);
+$unknownAppointmentId = $insertRecord('appointment', 'scheduled', 'TEST-ONLY-UNKNOWN-APPOINTMENT', [
+    'appointmentType' => 'scheduled',
+    'scheduledAt' => '2026-11-01T10:00:00.000Z',
+]);
+$pdo->prepare("INSERT INTO service_requests
+    (client_name, phone, service_type, location, created_at, updated_at, status, driver_status)
+    VALUES ('TEST ONLY — duplicate links', 'TEST ONLY', 'TEST ONLY — generic request', 'TEST ONLY', ?, ?, 'pending', 'unassigned')")
+    ->execute([date('c'), date('c')]);
+$duplicateLinkRequestId = (int)$pdo->lastInsertId();
+$insertRecord('work_order', 'new', 'TEST-ONLY-DUPLICATE-LINK-A', [
+    'legacyRequestId' => $duplicateLinkRequestId,
+    'operationKey' => 'TEST-ONLY-DUPLICATE-LINK-A',
+]);
+$insertRecord('work_order', 'new', 'TEST-ONLY-DUPLICATE-LINK-B', [
+    'legacyRequestId' => $duplicateLinkRequestId,
+    'operationKey' => 'TEST-ONLY-DUPLICATE-LINK-B',
+]);
 
 $movementCountBeforeMigration = (int)$pdo->query(
     "SELECT COUNT(*) FROM container_system_records WHERE kind='container_movement'"
@@ -201,7 +218,7 @@ $movementCountBeforeMigration = (int)$pdo->query(
 hsEnsureCanonicalDispatchTasks($pdo);
 
 $canonicalRequestStmt = $pdo->prepare("SELECT id,payload FROM container_system_records
-    WHERE kind='work_order' AND json_extract(payload, '$.legacyRequestId')=:request_id LIMIT 1");
+    WHERE kind='work_order' AND CAST(json_extract(payload, '$.legacyRequestId') AS INTEGER)=:request_id LIMIT 1");
 $canonicalRequestStmt->execute([':request_id' => $conflictingRequestId]);
 $canonicalRequest = $canonicalRequestStmt->fetch(PDO::FETCH_ASSOC);
 lifecycleExpectSame(true, is_array($canonicalRequest), 'a legacy request must be promoted into a work order');
@@ -219,6 +236,23 @@ $linkedAppointmentPayload = hsPayload(
 );
 lifecycleExpectSame($appointmentId, (int)($linkedAppointmentPayload['appointmentRecordId'] ?? 0),
     'an explicit appointment-to-work-order reference must be preserved');
+$unknownAppointmentOrder = null;
+$duplicateLinkOrders = [];
+foreach ($pdo->query("SELECT id,payload FROM container_system_records WHERE kind='work_order'")->fetchAll(PDO::FETCH_ASSOC) as $workOrderRow) {
+    $workOrderPayload = hsPayload($workOrderRow['payload']);
+    if ((int)($workOrderPayload['legacyAppointmentId'] ?? 0) === $unknownAppointmentId) {
+        $unknownAppointmentOrder = $workOrderPayload;
+    }
+    if ((int)($workOrderPayload['legacyRequestId'] ?? 0) === $duplicateLinkRequestId) {
+        $duplicateLinkOrders[] = $workOrderPayload;
+    }
+}
+lifecycleExpectSame(true, (bool)($unknownAppointmentOrder['reconciliationRequired'] ?? false),
+    'an appointment without a recognized operation must be held for review');
+lifecycleExpectSame(2, count($duplicateLinkOrders), 'pre-existing duplicate links must be retained');
+lifecycleExpectSame(true, !empty($duplicateLinkOrders[0]['reconciliationRequired'])
+    && !empty($duplicateLinkOrders[1]['reconciliationRequired']),
+    'every duplicate canonical link must be flagged for reconciliation');
 lifecycleExpectSame($movementCountBeforeMigration, (int)$pdo->query(
     "SELECT COUNT(*) FROM container_system_records WHERE kind='container_movement'"
 )->fetchColumn(), 'canonicalization must not create container movements');

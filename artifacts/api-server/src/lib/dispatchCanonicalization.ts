@@ -151,10 +151,36 @@ export function ensureCanonicalDispatchTasks(): void {
 
     for (const request of requests) {
       if (/(?:عقد|عقود)\s*(?:ال)?(?:نظافة|تنظيف)/u.test(String(request.serviceType ?? "").trim())) continue;
-      const existingLink = workOrders.find((row) =>
+      const existingLinks = workOrders.filter((row) =>
+        row.status !== "archived" &&
         numericId(parsePayload(row.payload).legacyRequestId) === request.id,
       );
-      if (existingLink) continue;
+      if (existingLinks.length === 1) continue;
+      if (existingLinks.length > 1) {
+        for (const existing of existingLinks) {
+          const beforePayload = existing.payload;
+          const payload = parsePayload(beforePayload);
+          if (payload.reconciliationRequired === true) continue;
+          const afterPayload = JSON.stringify({
+            ...payload,
+            reconciliationRequired: true,
+            reconciliationReason: "أكثر من أمر عمل مرتبط بطلب الخدمة نفسه؛ يلزم مراجعة الإدارة",
+          });
+          const updatedAt = new Date().toISOString();
+          tx.update(containerSystemRecordsTable).set({ payload: afterPayload, updatedAt })
+            .where(eq(containerSystemRecordsTable.id, existing.id)).run();
+          tx.insert(containerSystemAuditTable).values({
+            recordId: existing.id,
+            kind: "work_order",
+            action: "legacy_request_link_conflict",
+            beforePayload,
+            afterPayload,
+          }).run();
+          const workOrderIndex = workOrders.findIndex((row) => row.id === existing.id);
+          if (workOrderIndex >= 0) workOrders[workOrderIndex] = { ...existing, payload: afterPayload, updatedAt };
+        }
+        continue;
+      }
 
       const candidates = workOrders.filter((row) => sameReferencesAndSchedule(parsePayload(row.payload), request));
       const operation = requestOperation(request);
@@ -261,8 +287,9 @@ export function ensureCanonicalDispatchTasks(): void {
       const appointmentId = appointment.id;
       const alreadyLinked = workOrders.find((row) => {
         const payload = parsePayload(row.payload);
-        return numericId(payload.appointmentRecordId) === appointmentId ||
-          numericId(payload.legacyAppointmentId) === appointmentId;
+        return row.status !== "archived" &&
+          (numericId(payload.appointmentRecordId) === appointmentId ||
+            numericId(payload.legacyAppointmentId) === appointmentId);
       });
       if (alreadyLinked) continue;
 
@@ -272,7 +299,10 @@ export function ensureCanonicalDispatchTasks(): void {
         : undefined;
       const requestId = numericId(source.serviceRequestId ?? source.requestId);
       const linkedRequestOrder = requestId
-        ? workOrders.find((row) => numericId(parsePayload(row.payload).legacyRequestId) === requestId)
+        ? workOrders.find((row) =>
+          row.status !== "archived" &&
+          numericId(parsePayload(row.payload).legacyRequestId) === requestId,
+        )
         : undefined;
       const scheduledAt = scheduledAtFromAppointment(source);
       const contractId = numericId(source.contractRecordId);
@@ -312,6 +342,10 @@ export function ensureCanonicalDispatchTasks(): void {
         reviewReason = matchingOrders.length > 1
           ? "تعذر ربط الموعد بأمر تشغيل واحد بشكل آمن؛ يلزم مراجعة الإدارة"
           : "نوع العملية أو رابط الموعد غير مؤكد؛ يلزم مراجعة الإدارة";
+      }
+
+      if (!linked && appointmentOperation === null && !reviewReason) {
+        reviewReason = "نوع عملية الموعد غير محدد؛ يلزم مراجعة الإدارة قبل التنفيذ";
       }
 
       if (linked) {

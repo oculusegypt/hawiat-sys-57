@@ -161,7 +161,7 @@ async function main() {
     contractNumber,
     assignedDriverId: driver.id,
     assignedVehicleId: vehicle.id,
-    scheduledAt: "2026-10-14T10:00:00.000Z",
+    scheduledAt: "2026-10-14T14:00:00.000Z",
     driverStatus: "completed",
     status: "completed",
     customerPhone: testPhone,
@@ -327,6 +327,30 @@ async function main() {
     scheduledAt: "2034-07-02T10:00:00.000Z",
     testData: true,
   });
+  const unknownAppointment = insertRecord("appointment", "scheduled", "TEST-UNKNOWN-APPOINTMENT", {
+    appointmentType: "scheduled",
+    scheduledAt: "2034-07-03T10:00:00.000Z",
+    testData: true,
+  });
+  const duplicateLinkRequest = db.insert(serviceRequestsTable).values({
+    clientName: "TEST ONLY — duplicate legacy links",
+    phone: testPhone,
+    serviceType: "TEST ONLY — generic request",
+    containerSize: "TEST ONLY",
+    location: testLocation,
+    status: "pending",
+    driverStatus: "unassigned",
+  }).returning().get();
+  insertRecord("work_order", "new", "TEST-DUPLICATE-LEGACY-LINK-A", {
+    legacyRequestId: duplicateLinkRequest.id,
+    operationKey: "TEST-DUPLICATE-LEGACY-LINK-A",
+    testData: true,
+  });
+  insertRecord("work_order", "new", "TEST-DUPLICATE-LEGACY-LINK-B", {
+    legacyRequestId: duplicateLinkRequest.id,
+    operationKey: "TEST-DUPLICATE-LEGACY-LINK-B",
+    testData: true,
+  });
   ensureCanonicalDispatchTasks();
   const canonicalConflict = db.select().from(containerSystemRecordsTable).all().find(record =>
     record.kind === "work_order" &&
@@ -347,6 +371,25 @@ async function main() {
       .where(eq(containerSystemRecordsTable.id, appointmentTarget.id)).get()?.payload)).appointmentRecordId,
     explicitAppointment.id,
     "the explicit legacy appointment link must be preserved",
+  );
+  const unknownAppointmentOrder = db.select().from(containerSystemRecordsTable).all().find(record =>
+    record.kind === "work_order" &&
+    Number((JSON.parse(record.payload) as Record<string, unknown>).legacyAppointmentId) === unknownAppointment.id,
+  );
+  assert.equal(
+    JSON.parse(String(unknownAppointmentOrder?.payload)).reconciliationRequired,
+    true,
+    "an appointment with no recognized operation must not enter dispatch unflagged",
+  );
+  const duplicateLinkOrders = db.select().from(containerSystemRecordsTable).all().filter(record =>
+    record.kind === "work_order" &&
+    Number((JSON.parse(record.payload) as Record<string, unknown>).legacyRequestId) === duplicateLinkRequest.id,
+  );
+  assert.equal(duplicateLinkOrders.length, 2, "pre-existing duplicate links must be retained for review");
+  assert.equal(
+    duplicateLinkOrders.every(record => (JSON.parse(record.payload) as Record<string, unknown>).reconciliationRequired === true),
+    true,
+    "all pre-existing duplicate links must be flagged",
   );
   const canonicalizationCounts = {
     workOrders: db.select().from(containerSystemRecordsTable).all().filter(row => row.kind === "work_order").length,
@@ -522,7 +565,7 @@ async function main() {
       },
     );
     assert.equal(assignCollisionServiceRequest.status, 200, await assignCollisionServiceRequest.clone().text());
-    assert.equal((await assignCollisionServiceRequest.json() as { recordType: string }).recordType, "service_request");
+    assert.equal((await assignCollisionServiceRequest.json() as { recordType: string }).recordType, "work_order");
     assert.equal(
       db.select().from(containerSystemRecordsTable).where(eq(containerSystemRecordsTable.id, collisionId)).get()?.status,
       "new",

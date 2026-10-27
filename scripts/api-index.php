@@ -6823,12 +6823,17 @@ try {
             echo json_encode(['error' => 'نوع سجل أمر العمل غير صحيح'], JSON_UNESCAPED_UNICODE);
             exit;
         }
-        $legacyRequestId = $recordType === 'service_request' ? $id : 0;
-        if ($recordType === '' && !$pdo->query("SELECT 1 FROM container_system_records WHERE id = " . (int)$id . " AND kind='work_order'")->fetchColumn()) {
-            $requestCheck = $pdo->prepare("SELECT id FROM service_requests WHERE id=:id LIMIT 1");
-            $requestCheck->execute([':id' => $id]);
-            if ($requestCheck->fetchColumn()) $legacyRequestId = $id;
+        $hasWorkOrder = (bool)$pdo->query("SELECT 1 FROM container_system_records WHERE id = " . (int)$id . " AND kind='work_order'")->fetchColumn();
+        $requestCheck = $pdo->prepare("SELECT id FROM service_requests WHERE id=:id LIMIT 1");
+        $requestCheck->execute([':id' => $id]);
+        $hasServiceRequest = (bool)$requestCheck->fetchColumn();
+        if ($recordType === '' && $hasWorkOrder && $hasServiceRequest) {
+            http_response_code(409);
+            echo json_encode(['error' => 'معرّف المهمة ملتبس؛ حدّد نوع السجل'], JSON_UNESCAPED_UNICODE);
+            exit;
         }
+        $legacyRequestId = $recordType === 'service_request' ? $id : 0;
+        if ($recordType === '' && !$hasWorkOrder && $hasServiceRequest) $legacyRequestId = $id;
         if ($legacyRequestId > 0) {
             $canonical = null;
             foreach ($pdo->query("SELECT * FROM container_system_records WHERE kind='work_order' AND status<>'archived'")->fetchAll(PDO::FETCH_ASSOC) as $candidate) {

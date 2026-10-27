@@ -106,6 +106,7 @@ function hsEnsureCanonicalDispatchTasks(PDO $pdo): void {
             $requestId = (int)$request['id'];
             $linkedRows = [];
             foreach ($workOrders as $row) {
+                if (($row['status'] ?? '') === 'archived') continue;
                 if ((int)($parse($row)['legacyRequestId'] ?? 0) === $requestId) $linkedRows[] = $row;
             }
             if (count($linkedRows) === 1) continue;
@@ -219,6 +220,7 @@ function hsEnsureCanonicalDispatchTasks(PDO $pdo): void {
             $source = $parse($appointment);
             $alreadyLinked = false;
             foreach ($workOrders as $row) {
+                if (($row['status'] ?? '') === 'archived') continue;
                 $payload = $parse($row);
                 if ((int)($payload['appointmentRecordId'] ?? 0) === $appointmentId
                     || (int)($payload['legacyAppointmentId'] ?? 0) === $appointmentId) {
@@ -251,7 +253,8 @@ function hsEnsureCanonicalDispatchTasks(PDO $pdo): void {
                 if (!$linked) $reviewReason = 'رابط أمر العمل الصريح للموعد غير موجود أو مؤرشف؛ يلزم مراجعة الإدارة';
             } elseif ($requestReference > 0) {
                 foreach ($workOrders as $row) {
-                    if ((int)($parse($row)['legacyRequestId'] ?? 0) === $requestReference) {
+                    if (($row['status'] ?? '') !== 'archived'
+                        && (int)($parse($row)['legacyRequestId'] ?? 0) === $requestReference) {
                         $linked = $row;
                         break;
                     }
@@ -285,6 +288,10 @@ function hsEnsureCanonicalDispatchTasks(PDO $pdo): void {
                         ? 'تعذر ربط الموعد بأمر تشغيل واحد بشكل آمن؛ يلزم مراجعة الإدارة'
                         : 'نوع العملية أو رابط الموعد غير مؤكد؛ يلزم مراجعة الإدارة';
                 }
+            }
+
+            if (!$linked && $appointmentOperation === null && !$reviewReason) {
+                $reviewReason = 'نوع عملية الموعد غير محدد؛ يلزم مراجعة الإدارة قبل التنفيذ';
             }
 
             if ($linked) {

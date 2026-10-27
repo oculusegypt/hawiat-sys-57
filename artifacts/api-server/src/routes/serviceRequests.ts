@@ -1010,6 +1010,7 @@ router.patch("/service-requests/:id", requireAdmin, requireSectionPermission("re
     return res.status(403).json({ error: "لا يملك السائق صلاحية تعديل الطلب مباشرة" });
   }
   const id = parseInt(String(req.params.id), 10);
+  if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: "رقم الطلب غير صحيح" });
   const {
     clientName, phone, email, serviceType, containerSize, location,
     containerCount,
@@ -1042,6 +1043,7 @@ router.patch("/service-requests/:id", requireAdmin, requireSectionPermission("re
   if (containerRecordId !== undefined) updateData.containerRecordId = containerRecordId === null ? null : Number(containerRecordId);
   if (contractRecordId !== undefined)  updateData.contractRecordId = contractRecordId === null ? null : Number(contractRecordId);
 
+  ensureCanonicalDispatchTasks();
   let previousStatus: string | undefined;
   if (status !== undefined) {
     if (!requestStatusTransitions[status]) {
@@ -1057,22 +1059,126 @@ router.patch("/service-requests/:id", requireAdmin, requireSectionPermission("re
     }
   }
 
-  const [request] = await db.update(serviceRequestsTable)
-    .set(updateData)
-    .where(eq(serviceRequestsTable.id, id))
-    .returning();
-  if (!request) return res.status(404).json({ error: "Not found" });
-  if (previousStatus !== undefined && previousStatus !== request.status) {
-    await db.insert(containerSystemAuditTable).values({
-      recordId: id,
-      kind: "service_request",
-      action: "request_status_transition",
-      beforePayload: JSON.stringify({ status: previousStatus }),
-      afterPayload: JSON.stringify({ status: request.status, adminNotes: request.adminNotes }),
-      actorId: adminRequest.adminId,
-    });
+  const outcome = db.transaction((tx) => {
+    const current = tx.select().from(serviceRequestsTable).where(eq(serviceRequestsTable.id, id)).get();
+    if (!current) return { error: "Not found", status: 404 as const };
+    if (status !== undefined && !requestStatusTransitions[current.status]?.has(status)) {
+      return { error: `لا يمكن نقل الطلب من ${current.status} إلى ${status}`, status: 409 as const };
+    }
+
+    const linkedOrders = tx.select().from(containerSystemRecordsTable).all().filter((record) =>
+      record.kind === "work_order" &&
+      record.status !== "archived" &&
+      Number(parseContainerPayload(record.payload).legacyRequestId ?? 0) === id,
+    );
+    if (linkedOrders.length > 1 || linkedOrders.some((record) =>
+      parseContainerPayload(record.payload).reconciliationRequired === true,
+    )) {
+      return {
+        error: "طلب الخدمة مرتبط بمهمة تحتاج إلى مراجعة الإدارة قبل تعديلها",
+        status: 409 as const,
+      };
+    }
+
+    const linkedOrder = linkedOrders[0];
+    if (linkedOrder) {
+      const currentPayload = parseContainerPayload(linkedOrder.payload);
+      const assigned = Number(currentPayload.assignedDriverId ?? 0) > 0 ||
+        Number(currentPayload.assignedVehicleId ?? 0) > 0;
+      const dispatchFields: Array<[keyof UpdateFields, string]> = [
+        ["serviceType", "serviceType"],
+        ["notes", "notes"],
+        ["scheduledAt", "scheduledAt"],
+        ["duration", "duration"],
+        ["contractRecordId", "contractRecordId"],
+        ["containerRecordId", "containerRecordId"],
+      ];
+      const dispatchDetailsChanged = dispatchFields.some(([sourceKey, payloadKey]) =>
+        updateData[sourceKey] !== undefined &&
+        String(updateData[sourceKey] ?? "") !== String(currentPayload[payloadKey] ?? ""),
+      );
+      if (assigned && dispatchDetailsChanged) {
+        return {
+          error: "أزل إسناد السائق والشاحنة قبل تغيير تفاصيل المهمة التشغيلية",
+          status: 409 as const,
+        };
+      }
+    }
+
+    const request = tx.update(serviceRequestsTable)
+      .set(updateData)
+      .where(eq(serviceRequestsTable.id, id))
+      .returning().get();
+    if (!request) return { error: "Not found", status: 404 as const };
+
+    if (linkedOrder) {
+      const beforePayload = linkedOrder.payload;
+      const nextPayload: Record<string, unknown> = { ...parseContainerPayload(beforePayload) };
+      const synchronizedFields: Array<[keyof UpdateFields, string]> = [
+        ["clientName", "clientName"],
+        ["phone", "phone"],
+        ["email", "email"],
+        ["serviceType", "serviceType"],
+        ["containerSize", "containerSize"],
+        ["containerCount", "containerCount"],
+        ["location", "location"],
+        ["duration", "duration"],
+        ["notes", "notes"],
+        ["appointmentType", "appointmentType"],
+        ["scheduledAt", "scheduledAt"],
+        ["status", "status"],
+        ["adminNotes", "adminNotes"],
+        ["customerRecordId", "customerRecordId"],
+        ["containerRecordId", "containerRecordId"],
+        ["contractRecordId", "contractRecordId"],
+      ];
+      for (const [sourceKey, payloadKey] of synchronizedFields) {
+        const value = updateData[sourceKey];
+        if (value !== undefined) nextPayload[payloadKey] = value;
+      }
+      if (updateData.serviceType !== undefined || updateData.notes !== undefined) {
+        const nextOperation = classifyContainerOperation(`${nextPayload.serviceType ?? ""} ${nextPayload.notes ?? ""}`);
+        const hasContainerReference = Number(nextPayload.contractRecordId ?? 0) > 0 ||
+          Number(nextPayload.containerRecordId ?? 0) > 0;
+        if (nextOperation) {
+          nextPayload.operationType = nextOperation;
+        } else if (hasContainerReference) {
+          nextPayload.reconciliationRequired = true;
+          nextPayload.reconciliationReason = "نوع العملية غير واضح بعد تعديل الطلب؛ يلزم مراجعة الإدارة";
+        }
+      }
+      const nextPayloadText = JSON.stringify(nextPayload);
+      tx.update(containerSystemRecordsTable).set({
+        status: request.status,
+        payload: nextPayloadText,
+        updatedAt: request.updatedAt,
+      }).where(eq(containerSystemRecordsTable.id, linkedOrder.id)).run();
+      tx.insert(containerSystemAuditTable).values({
+        recordId: linkedOrder.id,
+        kind: "work_order",
+        action: "legacy_request_admin_update",
+        beforePayload,
+        afterPayload: nextPayloadText,
+        actorId: adminRequest.adminId,
+      }).run();
+    }
+
+    if (previousStatus !== undefined && previousStatus !== request.status) {
+      tx.insert(containerSystemAuditTable).values({
+        recordId: id,
+        kind: "service_request",
+        action: "request_status_transition",
+        beforePayload: JSON.stringify({ status: previousStatus }),
+        afterPayload: JSON.stringify({ status: request.status, adminNotes: request.adminNotes }),
+        actorId: adminRequest.adminId,
+      }).run();
+    }
+    return { request };
+  });
+  if ("error" in outcome && typeof outcome.error === "string") {
+    return res.status(Number(outcome.status ?? 500)).json({ error: outcome.error });
   }
-  return res.json(request);
+  return res.json(outcome.request);
 });
 
 router.patch("/service-requests/:id/assignment", requireAdmin, requireSectionPermission("work_orders"), requireRequestAssignment, async (req, res) => {
@@ -1093,6 +1199,7 @@ router.patch("/service-requests/:id/assignment", requireAdmin, requireSectionPer
   if (recordType === "service_request" || (recordType === undefined && legacyRequest && sameIdRecord?.kind !== "work_order")) {
     const canonical = db.select().from(containerSystemRecordsTable).all().find((record) =>
       record.kind === "work_order" &&
+      record.status !== "archived" &&
       Number(parseContainerPayload(record.payload).legacyRequestId ?? 0) === id,
     );
     if (!canonical) return res.status(404).json({ error: "أمر العمل المرتبط بالطلب غير موجود" });
@@ -1335,6 +1442,7 @@ router.patch("/driver/work-orders/:id", requireAdmin, requireDriver, async (req,
   if (recordType === "service_request" || (recordType === undefined && legacyRequest && sameIdRecord?.kind !== "work_order")) {
     const canonical = db.select().from(containerSystemRecordsTable).all().find((record) =>
       record.kind === "work_order" &&
+      record.status !== "archived" &&
       Number(parseContainerPayload(record.payload).legacyRequestId ?? 0) === id,
     );
     if (!canonical) return res.status(404).json({ error: "أمر العمل المرتبط بالطلب غير موجود" });
