@@ -483,10 +483,13 @@ export type ServiceRequestStatus = typeof ServiceRequestStatus[keyof typeof Serv
 
 export const ServiceRequestStatus = {
   pending: 'pending',
+  new: 'new',
+  assigned: 'assigned',
   in_progress: 'in_progress',
   completed: 'completed',
   cancelled: 'cancelled',
   rejected: 'rejected',
+  closed: 'closed',
 } as const;
 
 export type ServiceRequestDriverStatus = typeof ServiceRequestDriverStatus[keyof typeof ServiceRequestDriverStatus];
@@ -529,6 +532,21 @@ export interface ServiceRequest {
   appointmentType?: string | null;
   /** @nullable */
   scheduledAt?: string | null;
+  /** @nullable */
+  appointmentTime?: string | null;
+  /** @nullable */
+  workOrderNumber?: string | null;
+  /** @nullable */
+  contractNumber?: string | null;
+  /** @nullable */
+  containerCode?: string | null;
+  reconciliationRequired?: boolean;
+  /** @nullable */
+  reconciliationReason?: string | null;
+  /** @nullable */
+  legacyRequestId?: number | null;
+  /** @nullable */
+  appointmentRecordId?: number | null;
   status: ServiceRequestStatus;
   trackingToken?: string;
   /** @minimum 1 */
@@ -1102,6 +1120,13 @@ export const GetServiceRequestsStatus = {
 
 export type GetDriverWorkOrdersParams = {
 status?: DriverWorkOrderStatus;
+};
+
+export type GetAdminWorkOrdersParams = {
+/**
+ * Include completed work orders for schedule history and calendar views
+ */
+includeCompleted?: boolean;
 };
 
 export type SetConversationTyping200 = {

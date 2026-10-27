@@ -8,6 +8,7 @@ import { sourceForRow } from "../lib/attribution";
 import { syncCustomerFromRequest } from "../lib/customerSync";
 import { dispatchConflictMessage, findScheduledDispatchConflict, type ScheduledDispatch } from "../lib/containerDispatch";
 import { refreshPrivateUploadUrl } from "../lib/privateUploadUrl";
+import { ensureCanonicalDispatchTasks } from "../lib/dispatchCanonicalization";
 import crypto from "node:crypto";
 
 const router = Router();
@@ -59,6 +60,17 @@ function isContainerWork(request: typeof serviceRequestsTable.$inferSelect) {
 
 type ContainerOperationType = "DELIVER_CONTAINER" | "EMPTY_CONTAINER" | "PICKUP_CONTAINER";
 type WorkOrderRecordType = "service_request" | "work_order";
+type OperationalWorkOrder = typeof serviceRequestsTable.$inferSelect & {
+  recordType: "work_order";
+  appointmentTime: string | null;
+  workOrderNumber: string | null;
+  contractNumber: string | null;
+  containerCode: string | null;
+  reconciliationRequired: boolean;
+  reconciliationReason: string | null;
+  legacyRequestId: number | null;
+  appointmentRecordId: number | null;
+};
 
 function classifyContainerOperation(value: unknown): ContainerOperationType | null {
   const text = String(value ?? "");
@@ -140,7 +152,7 @@ function operationLocationsNearby(
   return overlap.length >= 2;
 }
 
-function operationalRecordAsWorkOrder(record: typeof containerSystemRecordsTable.$inferSelect) {
+function operationalRecordAsWorkOrder(record: typeof containerSystemRecordsTable.$inferSelect): OperationalWorkOrder {
   const payload = parseContainerPayload(record.payload);
   const containerRecordIds = Array.isArray(payload.containerRecordIds)
     ? [...new Set(payload.containerRecordIds.map(Number).filter(id => Number.isInteger(id) && id > 0))]
@@ -163,10 +175,16 @@ function operationalRecordAsWorkOrder(record: typeof containerSystemRecordsTable
     propertyType: null,
     areaSize: null,
     location: String(payload.location ?? "يحدد لاحقًا"),
-    duration: null,
+    duration: payload.duration ? String(payload.duration) : null,
     notes: String(payload.notes ?? ""),
-    appointmentType: "scheduled",
+    appointmentType: String(payload.appointmentType ?? "scheduled"),
     scheduledAt: payload.scheduledAt ? String(payload.scheduledAt) : null,
+    appointmentTime: payload.appointmentTime ? String(payload.appointmentTime) : null,
+    workOrderNumber: payload.workOrderNumber ? String(payload.workOrderNumber) : null,
+    contractNumber: payload.contractNumber ? String(payload.contractNumber) : null,
+    containerCode: payload.containerCode ? String(payload.containerCode) : null,
+    reconciliationRequired: payload.reconciliationRequired === true,
+    reconciliationReason: payload.reconciliationReason ? String(payload.reconciliationReason) : null,
     status: String(payload.status ?? "new"),
     adminNotes: null,
     customerRecordId: Number(payload.customerRecordId ?? 0) || null,
@@ -205,7 +223,7 @@ function operationalRecordAsWorkOrder(record: typeof containerSystemRecordsTable
     attributionGclid: "",
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
-  } as typeof serviceRequestsTable.$inferSelect;
+  } as OperationalWorkOrder;
 }
 
 function isAssetlessContractWorkOrder(order: unknown) {
@@ -1059,12 +1077,28 @@ router.patch("/service-requests/:id", requireAdmin, requireSectionPermission("re
 
 router.patch("/service-requests/:id/assignment", requireAdmin, requireSectionPermission("work_orders"), requireRequestAssignment, async (req, res) => {
   const adminRequest = req as AdminRequest;
-  const id = parseInt(String(req.params.id), 10);
+  let id = parseInt(String(req.params.id), 10);
   const rawRecordType = req.body?.recordType;
   if (rawRecordType !== undefined && rawRecordType !== "service_request" && rawRecordType !== "work_order") {
     return res.status(400).json({ error: "نوع سجل أمر العمل غير صحيح" });
   }
-  const recordType = rawRecordType as WorkOrderRecordType | undefined;
+  let recordType = rawRecordType as WorkOrderRecordType | undefined;
+  ensureCanonicalDispatchTasks();
+  const legacyRequest = recordType === "service_request" || recordType === undefined
+    ? db.select().from(serviceRequestsTable).where(eq(serviceRequestsTable.id, id)).get()
+    : undefined;
+  const sameIdRecord = recordType === undefined
+    ? db.select().from(containerSystemRecordsTable).where(eq(containerSystemRecordsTable.id, id)).get()
+    : undefined;
+  if (recordType === "service_request" || (recordType === undefined && legacyRequest && sameIdRecord?.kind !== "work_order")) {
+    const canonical = db.select().from(containerSystemRecordsTable).all().find((record) =>
+      record.kind === "work_order" &&
+      Number(parseContainerPayload(record.payload).legacyRequestId ?? 0) === id,
+    );
+    if (!canonical) return res.status(404).json({ error: "أمر العمل المرتبط بالطلب غير موجود" });
+    id = canonical.id;
+    recordType = "work_order";
+  }
   const driverId = req.body?.driverId === null || req.body?.driverId === undefined
     ? null
     : Number(req.body.driverId);
@@ -1103,7 +1137,7 @@ router.patch("/service-requests/:id/assignment", requireAdmin, requireSectionPer
     vehiclePlate = String(vehiclePayload.vehiclePlate ?? vehiclePayload.plateNumber ?? vehiclePayload.plate ?? vehicle.reference ?? "").trim();
   }
 
-  const operationalRow = recordType === "service_request" ? undefined : await db.select().from(containerSystemRecordsTable)
+  const operationalRow = await db.select().from(containerSystemRecordsTable)
     .where(eq(containerSystemRecordsTable.id, id)).get();
   const serviceRequest = recordType === "work_order" ? undefined : await db.select().from(serviceRequestsTable)
     .where(eq(serviceRequestsTable.id, id)).get();
@@ -1113,9 +1147,6 @@ router.patch("/service-requests/:id/assignment", requireAdmin, requireSectionPer
   }
   if (recordType === "work_order" && !workOrder) {
     return res.status(404).json({ error: "أمر العمل غير موجود" });
-  }
-  if (recordType === "service_request" && !serviceRequest) {
-    return res.status(404).json({ error: "الطلب غير موجود" });
   }
   if (!workOrder && !serviceRequest) {
     return res.status(404).json({ error: "الطلب أو أمر العمل غير موجود" });
@@ -1130,14 +1161,13 @@ router.patch("/service-requests/:id/assignment", requireAdmin, requireSectionPer
       if (isAssetlessContractWorkOrder(freshOrder)) {
         return { error: "عقد النظافة لا يحتاج إلى إسناد أو أمر تشغيل", status: 404 as const };
       }
+      if (freshOrder.reconciliationRequired) {
+        return { error: "هذه المهمة متعارضة وتحتاج مراجعة الإدارة قبل إسنادها", status: 409 as const };
+      }
       if (["completed", "rejected", "cancelled", "closed"].includes(freshOrder.driverStatus)) {
         return { error: "لا يمكن إعادة إسناد أمر عمل مغلق", status: 409 as const };
       }
       const existingDispatches: ScheduledDispatch[] = [
-        ...tx.select().from(serviceRequestsTable).all().map(request => ({
-          ...request,
-          source: "service_request" as const,
-        })),
         ...tx.select().from(containerSystemRecordsTable).all()
           .filter(record => record.kind === "work_order" && record.status !== "archived")
           .map(record => ({
@@ -1246,19 +1276,13 @@ router.patch("/service-requests/:id/assignment", requireAdmin, requireSectionPer
 
 router.get("/driver/work-orders", requireAdmin, requireDriver, async (req, res) => {
   const adminRequest = req as AdminRequest;
+  ensureCanonicalDispatchTasks();
   const requestedStatus = typeof req.query.status === "string" ? req.query.status : undefined;
   const allowedStatuses = new Set(["assigned", "accepted", "rejected", "started", "en_route", "arrived", "completed"]);
   if (requestedStatus && !allowedStatuses.has(requestedStatus)) {
     return res.status(400).json({ error: "حالة أمر العمل غير صحيحة" });
   }
 
-  const filters = [
-    eq(serviceRequestsTable.assignedDriverId, adminRequest.adminId),
-    ...(requestedStatus ? [eq(serviceRequestsTable.driverStatus, requestedStatus)] : []),
-  ];
-  const requests = await db.select().from(serviceRequestsTable)
-    .where(and(...filters))
-    .orderBy(desc(serviceRequestsTable.assignedAt), desc(serviceRequestsTable.createdAt));
   const operationalRows = await db.select().from(containerSystemRecordsTable);
   const operational = operationalRows
     .filter(row => row.kind === "work_order" && row.status !== "archived")
@@ -1266,48 +1290,20 @@ router.get("/driver/work-orders", requireAdmin, requireDriver, async (req, res) 
     .filter(order => !isAssetlessContractWorkOrder(order) &&
       order.assignedDriverId === adminRequest.adminId &&
       (!requestedStatus || order.driverStatus === requestedStatus));
-  const supersededLegacyIds = new Set(operational
-    .map(order => Number((order as typeof order & { legacyRequestId?: number | null }).legacyRequestId ?? 0))
-    .filter(id => id > 0));
-  return res.json([
-    ...requests
-      .filter(request => !isCleaningContractRequest(request))
-      .filter(request => !supersededLegacyIds.has(request.id))
-        .map(request => ({
-          ...request,
-          recordType: "service_request" as const,
-          driverProofPhotoUrl: refreshPrivateUploadUrl(request.driverProofPhotoUrl),
-        })),
-    ...operational,
-  ]);
+  return res.json(operational);
 });
 
-router.get("/admin/work-orders", requireAdmin, requireSectionPermission("work_orders"), requireManagerOrAdmin, async (_req, res) => {
-  const requests = await db.select().from(serviceRequestsTable)
-    .where(and(
-      inArray(serviceRequestsTable.driverStatus, ["unassigned", "assigned", "accepted", "started", "en_route", "arrived"]),
-    ))
-    .orderBy(desc(serviceRequestsTable.assignedAt), desc(serviceRequestsTable.createdAt));
+router.get("/admin/work-orders", requireAdmin, requireSectionPermission("work_orders"), requireManagerOrAdmin, async (req, res) => {
+  ensureCanonicalDispatchTasks();
+  const includeCompleted = String(req.query.includeCompleted ?? "").toLowerCase() === "true";
+  const activeStatuses = ["unassigned", "assigned", "accepted", "started", "en_route", "arrived"];
   const operationalRows = await db.select().from(containerSystemRecordsTable);
   const operational = operationalRows
     .filter(row => row.kind === "work_order" && row.status !== "archived")
     .map(operationalRecordAsWorkOrder)
     .filter(order => !isAssetlessContractWorkOrder(order) &&
-      ["unassigned", "assigned", "accepted", "started", "en_route", "arrived"].includes(order.driverStatus));
-  const supersededLegacyIds = new Set(operational
-    .map(order => Number((order as typeof order & { legacyRequestId?: number | null }).legacyRequestId ?? 0))
-    .filter(id => id > 0));
-  const allOrders = [
-    ...requests
-      .filter(request => !isCleaningContractRequest(request))
-      .filter(request => !supersededLegacyIds.has(request.id))
-      .map(request => ({
-        ...request,
-        recordType: "service_request" as const,
-        driverProofPhotoUrl: refreshPrivateUploadUrl(request.driverProofPhotoUrl),
-      })),
-    ...operational,
-  ];
+      (includeCompleted || activeStatuses.includes(order.driverStatus)));
+  const allOrders = operational;
   const driverIds = [...new Set(allOrders.map(request => request.assignedDriverId).filter((id): id is number => id !== null))];
   const drivers = driverIds.length > 0
     ? await db.select({ id: adminsTable.id, name: adminsTable.name })
@@ -1323,12 +1319,28 @@ router.get("/admin/work-orders", requireAdmin, requireSectionPermission("work_or
 
 router.patch("/driver/work-orders/:id", requireAdmin, requireDriver, async (req, res) => {
   const adminRequest = req as AdminRequest;
-  const id = parseInt(String(req.params.id), 10);
+  let id = parseInt(String(req.params.id), 10);
   const rawRecordType = req.body?.recordType;
   if (rawRecordType !== undefined && rawRecordType !== "service_request" && rawRecordType !== "work_order") {
     return res.status(400).json({ error: "نوع سجل أمر العمل غير صحيح" });
   }
-  const recordType = rawRecordType as WorkOrderRecordType | undefined;
+  let recordType = rawRecordType as WorkOrderRecordType | undefined;
+  ensureCanonicalDispatchTasks();
+  const legacyRequest = recordType === "service_request" || recordType === undefined
+    ? db.select().from(serviceRequestsTable).where(eq(serviceRequestsTable.id, id)).get()
+    : undefined;
+  const sameIdRecord = recordType === undefined
+    ? db.select().from(containerSystemRecordsTable).where(eq(containerSystemRecordsTable.id, id)).get()
+    : undefined;
+  if (recordType === "service_request" || (recordType === undefined && legacyRequest && sameIdRecord?.kind !== "work_order")) {
+    const canonical = db.select().from(containerSystemRecordsTable).all().find((record) =>
+      record.kind === "work_order" &&
+      Number(parseContainerPayload(record.payload).legacyRequestId ?? 0) === id,
+    );
+    if (!canonical) return res.status(404).json({ error: "أمر العمل المرتبط بالطلب غير موجود" });
+    id = canonical.id;
+    recordType = "work_order";
+  }
   const nextStatus = String(req.body?.status ?? "");
   const operationKey = String(req.get("Idempotency-Key") ?? req.body?.operationKey ?? "").trim();
   const notes = req.body?.notes === undefined ? undefined : String(req.body.notes ?? "").trim();
@@ -1351,7 +1363,7 @@ router.patch("/driver/work-orders/:id", requireAdmin, requireDriver, async (req,
     return res.status(422).json({ error: "مفتاح العملية غير صالح" });
   }
 
-  const operationalRow = recordType === "service_request" ? undefined : await db.select().from(containerSystemRecordsTable)
+  const operationalRow = await db.select().from(containerSystemRecordsTable)
     .where(eq(containerSystemRecordsTable.id, id)).get();
   const serviceRequestRecord = recordType === "work_order" ? undefined : await db.select().from(serviceRequestsTable)
     .where(eq(serviceRequestsTable.id, id)).get();
@@ -1362,14 +1374,14 @@ router.patch("/driver/work-orders/:id", requireAdmin, requireDriver, async (req,
   if (recordType === "work_order" && !workOrder) {
     return res.status(404).json({ error: "أمر العمل غير موجود" });
   }
-  if (recordType === "service_request" && !serviceRequestRecord) {
-    return res.status(404).json({ error: "أمر العمل غير موجود" });
-  }
   if (!workOrder && !serviceRequestRecord) {
     return res.status(404).json({ error: "أمر العمل غير موجود" });
   }
   if (workOrder) {
     const current = operationalRecordAsWorkOrder(workOrder);
+    if (current.reconciliationRequired) {
+      return res.status(409).json({ error: "هذه المهمة متعارضة وتحتاج مراجعة الإدارة قبل تنفيذها" });
+    }
     if (isAssetlessContractWorkOrder(current)) {
       return res.status(404).json({ error: "عقد النظافة لا يحتاج إلى إسناد أو أمر تشغيل" });
     }

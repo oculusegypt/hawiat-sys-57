@@ -27,6 +27,21 @@ export interface ServiceRequest {
   appointmentType?: string | null;
   /** @nullable */
   scheduledAt?: string | null;
+  /** @nullable */
+  appointmentTime?: string | null;
+  /** @nullable */
+  workOrderNumber?: string | null;
+  /** @nullable */
+  contractNumber?: string | null;
+  /** @nullable */
+  containerCode?: string | null;
+  reconciliationRequired?: boolean;
+  /** @nullable */
+  reconciliationReason?: string | null;
+  /** @nullable */
+  legacyRequestId?: number | null;
+  /** @nullable */
+  appointmentRecordId?: number | null;
   status: ServiceRequestStatus;
   trackingToken?: string;
   /** @minimum 1 */

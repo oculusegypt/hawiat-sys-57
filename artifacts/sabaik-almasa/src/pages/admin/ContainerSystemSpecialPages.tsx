@@ -715,24 +715,6 @@ function displayDate(value: string) {
   return new Date(`${value}T12:00:00`).toLocaleDateString("ar-SA", { weekday: "long", day: "numeric", month: "long" })
 }
 
-function appointmentPayload(record: ContainerSystemRecord) {
-  return record.payload as Record<string, unknown>
-}
-
-function workOrderFor(appointment: ContainerSystemRecord, workOrders: ServiceRequest[]) {
-  const payload = appointmentPayload(appointment)
-  const contractId = String(payload.contractRecordId ?? "")
-  const requestId = String(payload.requestId ?? "")
-  const containerId = String(payload.containerRecordId ?? "")
-  return workOrders.find(order => {
-    const item = order as ServiceRequest & { contractRecordId?: number | null; containerRecordId?: number | null; customerRecordId?: number | null }
-    return (requestId && String(order.id) === requestId)
-      || (contractId && String(item.contractRecordId ?? "") === contractId)
-      || (containerId && String(item.containerRecordId ?? "") === containerId)
-      || (String(order.scheduledAt ?? "") === String(payload.scheduledAt ?? ""))
-  })
-}
-
 function DispatchAssignment({ order, drivers, vehicles, allOrders, onSaved }: DispatchAssignmentProps) {
   const { toast } = useToast()
   const [driverId, setDriverId] = useState(order.assignedDriverId ? String(order.assignedDriverId) : "")
@@ -758,7 +740,7 @@ function DispatchAssignment({ order, drivers, vehicles, allOrders, onSaved }: Di
       toast({ title: vehicleConflict ? "الشاحنة مسندة إلى أمر آخر في نفس اليوم" : "السائق مسند إلى أمر آخر في نفس اليوم", variant: "destructive" })
       return
     }
-    assignMutation.mutate({ id: order.id, data: { driverId: driverId ? Number(driverId) : null, vehicleId: selectedVehicle } }, {
+    assignMutation.mutate({ id: order.id, data: { recordType: "work_order", driverId: driverId ? Number(driverId) : null, vehicleId: selectedVehicle } }, {
       onSuccess: () => {
         toast({ title: "تم حفظ إسناد السائق والشاحنة" })
         onSaved()
@@ -788,11 +770,10 @@ function DispatchAssignment({ order, drivers, vehicles, allOrders, onSaved }: Di
 }
 
 export function DispatchCalendar({ records, onOpenAppointment }: DispatchCalendarProps) {
-  const workOrdersQuery = useGetAdminWorkOrders({ query: { queryKey: getGetAdminWorkOrdersQueryKey(), staleTime: 30_000 } })
+  const workOrdersQuery = useGetAdminWorkOrders({ includeCompleted: true }, { query: { queryKey: getGetAdminWorkOrdersQueryKey({ includeCompleted: true }), staleTime: 30_000 } })
   const [selectedDate, setSelectedDate] = useState(() => dateKey(new Date().toISOString()))
   const [mode, setMode] = useState<"day" | "week">("day")
   const [drivers, setDrivers] = useState<{ id: number; name: string }[]>([])
-  const appointments = useMemo(() => records.filter(record => record.kind === "appointment" && record.status !== "archived"), [records])
   const workOrders = workOrdersQuery.data ?? []
   const vehicles = useMemo(() => records
     .filter(record => record.kind === "vehicle" && record.status !== "archived")
@@ -817,10 +798,10 @@ export function DispatchCalendar({ records, onOpenAppointment }: DispatchCalenda
   }), [mode, selectedDate])
   const events = useMemo(() => dates.map(date => ({
     date,
-    items: appointments
-      .filter(record => dateKey(appointmentPayload(record).scheduledAt ?? appointmentPayload(record).appointmentDate) === date)
-      .sort((a, b) => String(appointmentPayload(a).appointmentTime ?? "").localeCompare(String(appointmentPayload(b).appointmentTime ?? ""))),
-  })), [appointments, dates])
+    items: workOrders
+      .filter(order => dateKey(order.scheduledAt) === date)
+      .sort((a, b) => String(a.scheduledAt ?? "").localeCompare(String(b.scheduledAt ?? ""))),
+  })), [workOrders, dates])
   const allDayCount = events.reduce((sum, group) => sum + group.items.length, 0)
 
   const moveDate = (days: number) => {
@@ -853,7 +834,7 @@ export function DispatchCalendar({ records, onOpenAppointment }: DispatchCalenda
             <Button variant="ghost" size="icon" onClick={() => moveDate(mode === "day" ? -1 : -7)} aria-label="الفترة السابقة"><ChevronRight size={18} /></Button>
             <div className="text-center">
               <p className="text-sm font-black text-slate-900">{mode === "day" ? displayDate(selectedDate) : `أسبوع يبدأ ${displayDate(dates[0])}`}</p>
-              <p className="mt-1 text-[11px] text-slate-400">{allDayCount} موعداً في الفترة المحددة</p>
+              <p className="mt-1 text-[11px] text-slate-400">{allDayCount} مهمة في الفترة المحددة</p>
             </div>
             <Button variant="ghost" size="icon" onClick={() => moveDate(mode === "day" ? 1 : 7)} aria-label="الفترة التالية"><ChevronLeft size={18} /></Button>
           </div>
@@ -870,31 +851,44 @@ export function DispatchCalendar({ records, onOpenAppointment }: DispatchCalenda
             <div className="space-y-5">
               {events.map(group => (
                 <section key={group.date} data-testid={`dispatch-day-${group.date}`}>
-                  {mode === "week" && <div className="mb-2 flex items-center gap-2"><span className="h-2 w-2 rounded-full bg-cyan-600" /><h3 className="text-sm font-black text-slate-800">{displayDate(group.date)}</h3><span className="text-[11px] text-slate-400">{group.items.length} موعد</span></div>}
+                  {mode === "week" && <div className="mb-2 flex items-center gap-2"><span className="h-2 w-2 rounded-full bg-cyan-600" /><h3 className="text-sm font-black text-slate-800">{displayDate(group.date)}</h3><span className="text-[11px] text-slate-400">{group.items.length} مهمة</span></div>}
                   <div className="space-y-3">
-                    {group.items.map(appointment => {
-                      const payload = appointmentPayload(appointment)
-                      const order = workOrderFor(appointment, workOrders)
-                      const status = dispatchStatus[order?.driverStatus ?? appointment.status] ?? { label: appointment.status, className: "border-slate-200 bg-slate-50 text-slate-700" }
+                    {group.items.map(order => {
+                      const status = dispatchStatus[order.driverStatus] ?? { label: order.status, className: "border-slate-200 bg-slate-50 text-slate-700" }
+                      const scheduledDate = order.scheduledAt ? new Date(order.scheduledAt) : null
+                      const timeLabel = order.appointmentTime || (scheduledDate && Number.isFinite(scheduledDate.getTime())
+                        ? scheduledDate.toLocaleTimeString("ar-SA", { hour: "2-digit", minute: "2-digit" })
+                        : "—")
+                      const detailRecord = {
+                        id: order.id,
+                        kind: "work_order",
+                        status: order.status,
+                        reference: order.workOrderNumber ?? `WO-${order.id}`,
+                        payload: order as unknown as Record<string, unknown>,
+                        createdBy: null,
+                        createdAt: order.createdAt,
+                        updatedAt: order.updatedAt,
+                      } as ContainerSystemRecord
                       return (
-                        <article key={appointment.id} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:border-cyan-200 hover:shadow-md" data-testid={`dispatch-event-${appointment.id}`}>
+                        <article key={order.id} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:border-cyan-200 hover:shadow-md" data-testid={`dispatch-event-${order.id}`}>
                           <div className="flex flex-col gap-4 xl:flex-row xl:items-center">
                             <div className="flex shrink-0 items-center gap-3 xl:w-36 xl:border-l xl:border-slate-100 xl:pl-4">
                               <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-cyan-50 text-cyan-800"><CalendarClock size={19} /></div>
-                              <div><p className="text-lg font-black text-slate-900" dir="ltr">{String(payload.appointmentTime ?? "—")}</p><p className="text-[10px] text-slate-400">{String(payload.appointmentType ?? "موعد تشغيل")}</p></div>
+                              <div><p className="text-lg font-black text-slate-900" dir="ltr">{timeLabel}</p><p className="text-[10px] text-slate-400">{String(order.appointmentType ?? "موعد تشغيل")}</p></div>
                             </div>
                             <div className="min-w-0 flex-1">
-                              <div className="flex flex-wrap items-center gap-2"><h3 className="font-black text-slate-900">{String(payload.customerName ?? "عميل غير محدد")}</h3><Badge variant="outline" className={status.className}>{status.label}</Badge></div>
+                              <div className="flex flex-wrap items-center gap-2"><h3 className="font-black text-slate-900">{String(order.clientName || "عميل غير محدد")}</h3><Badge variant="outline" className={status.className}>{status.label}</Badge>{order.reconciliationRequired && <Badge variant="outline" className="border-rose-200 bg-rose-50 text-rose-800">مراجعة مطلوبة</Badge>}</div>
                               <div className="mt-2 grid gap-2 text-xs text-slate-500 sm:grid-cols-2 xl:grid-cols-4">
-                                <span className="flex min-w-0 items-center gap-1.5"><MapPin size={14} className="shrink-0 text-slate-400" /><span className="truncate">{String(payload.location ?? "الموقع غير محدد")}</span></span>
-                                <span className="flex items-center gap-1.5"><ClipboardList size={14} className="shrink-0 text-slate-400" /> العقد {String(payload.contractNumber ?? "—")}</span>
-                                <span className="flex items-center gap-1.5"><Truck size={14} className="shrink-0 text-slate-400" /> الحاوية {String(payload.containerCode ?? "—")}</span>
-                                <span className="flex items-center gap-1.5"><UserRound size={14} className="shrink-0 text-slate-400" /> {order?.assignedDriverName ?? "لم يُسند سائق"}</span>
+                                <span className="flex min-w-0 items-center gap-1.5"><MapPin size={14} className="shrink-0 text-slate-400" /><span className="truncate">{String(order.location ?? "الموقع غير محدد")}</span></span>
+                                <span className="flex items-center gap-1.5"><ClipboardList size={14} className="shrink-0 text-slate-400" /> العقد {String(order.contractNumber ?? "—")}</span>
+                                <span className="flex items-center gap-1.5"><Truck size={14} className="shrink-0 text-slate-400" /> الحاوية {String(order.containerCode ?? "—")}</span>
+                                <span className="flex items-center gap-1.5"><UserRound size={14} className="shrink-0 text-slate-400" /> {order.assignedDriverName ?? "لم يُسند سائق"}</span>
                               </div>
-                              {order && <DispatchAssignment order={order} drivers={drivers} vehicles={vehicles} allOrders={workOrders} onSaved={() => void workOrdersQuery.refetch()} />}
+                              {order.reconciliationRequired && <p className="mt-2 text-xs font-bold text-rose-700">{order.reconciliationReason ?? "راجع مصدر المهمة وحالتها قبل التنفيذ."}</p>}
+                              {!order.reconciliationRequired && <DispatchAssignment order={order} drivers={drivers} vehicles={vehicles} allOrders={workOrders} onSaved={() => void workOrdersQuery.refetch()} />}
                             </div>
                             <div className="flex shrink-0 gap-2">
-                              <Button variant="outline" size="sm" onClick={() => onOpenAppointment(appointment)} className="gap-1.5 text-cyan-800">تفاصيل الموعد <ArrowLeft size={14} /></Button>
+                              <Button variant="outline" size="sm" onClick={() => onOpenAppointment(detailRecord)} className="gap-1.5 text-cyan-800">تفاصيل المهمة <ArrowLeft size={14} /></Button>
                               <Link href="/admin/work-orders" className="inline-flex h-9 items-center gap-1.5 rounded-md border border-slate-200 px-3 text-xs font-bold text-slate-700 hover:bg-slate-50"><ClipboardList size={14} /> أوامر العمل</Link>
                             </div>
                           </div>

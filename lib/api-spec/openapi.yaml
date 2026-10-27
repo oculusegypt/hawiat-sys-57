@@ -623,6 +623,12 @@ paths:
       operationId: getAdminWorkOrders
       tags: [admin]
       summary: List current work orders for managers
+      parameters:
+        - name: includeCompleted
+          in: query
+          description: Include completed work orders for schedule history and calendar views
+          schema:
+            type: boolean
       responses:
         "200":
           description: Current work orders assigned to drivers
@@ -1921,9 +1927,17 @@ components:
         notes: { type: ["string", "null"] }
         appointmentType: { type: ["string", "null"] }
         scheduledAt: { type: ["string", "null"] }
+        appointmentTime: { type: ["string", "null"] }
+        workOrderNumber: { type: ["string", "null"] }
+        contractNumber: { type: ["string", "null"] }
+        containerCode: { type: ["string", "null"] }
+        reconciliationRequired: { type: boolean }
+        reconciliationReason: { type: ["string", "null"] }
+        legacyRequestId: { type: ["integer", "null"] }
+        appointmentRecordId: { type: ["integer", "null"] }
         status:
           type: string
-          enum: [pending, in_progress, completed, cancelled, rejected]
+          enum: [pending, new, assigned, in_progress, completed, cancelled, rejected, closed]
         trackingToken: { type: string }
         containerCount: { type: integer, minimum: 1 }
         adminNotes: { type: ["string", "null"] }

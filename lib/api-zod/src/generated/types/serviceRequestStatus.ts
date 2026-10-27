@@ -11,8 +11,11 @@ export type ServiceRequestStatus = typeof ServiceRequestStatus[keyof typeof Serv
 
 export const ServiceRequestStatus = {
   pending: 'pending',
+  new: 'new',
+  assigned: 'assigned',
   in_progress: 'in_progress',
   completed: 'completed',
   cancelled: 'cancelled',
   rejected: 'rejected',
+  closed: 'closed',
 } as const;

@@ -823,6 +823,7 @@ function WorkOrderCard({
   const isHistory =
     order.driverStatus === DriverWorkOrderStatus.rejected ||
     order.driverStatus === DriverWorkOrderStatus.completed;
+  const needsReview = order.reconciliationRequired === true;
   const conflict = hasDriverConflict(order, allOrders);
   const overdue = isOverdue(order);
   const canCombine = canCombineContainerWork(order);
@@ -844,6 +845,11 @@ function WorkOrderCard({
               <span className={`h-1.5 w-1.5 rounded-full ${info.dot}`} />{" "}
               {info.label}
             </span>
+            {needsReview && (
+              <span className="inline-flex items-center rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-[11px] font-bold text-rose-800">
+                مراجعة مطلوبة
+              </span>
+            )}
           </div>
           <h3 className="mt-3 truncate text-lg font-extrabold text-slate-900">
             {order.serviceType}
@@ -874,6 +880,13 @@ function WorkOrderCard({
           <ClipboardList size={20} />
         </div>
       </div>
+
+      {needsReview && (
+        <div className="mt-3 flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-bold text-rose-800">
+          <AlertTriangle size={15} className="mt-0.5 shrink-0" />
+          <span>{order.reconciliationReason || "تعارضت بيانات المهمة مع سجل آخر. أوقفنا الإسناد والتنفيذ حتى تراجع الإدارة المصدر والحالة."}</span>
+        </div>
+      )}
 
       {!isDriver && canCombine && nearbyCandidates.length > 0 && (
         <div className="mt-3 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-900" data-testid={`nearby-emptying-warning-${order.id}`}>
@@ -922,7 +935,12 @@ function WorkOrderCard({
             <Plus size={16} /> إضافة حاوية
           </Button>
         )}
-        {isDriver && !isHistory && (
+        {isDriver && needsReview && (
+          <p className="flex-1 rounded-lg bg-rose-50 px-3 py-3 text-center text-xs font-bold text-rose-800">
+            أوقفت هذه المهمة مؤقتًا حتى مراجعة الإدارة.
+          </p>
+        )}
+        {isDriver && !isHistory && !needsReview && (
           <>
             {order.driverStatus === DriverWorkOrderStatus.assigned && (
               <>
@@ -1596,7 +1614,11 @@ export default function WorkOrders() {
                   pending={isPending || assigning}
                   isDriver={isDriver}
                 />
-                {isManager && (
+                {isManager && order.reconciliationRequired ? (
+                  <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-bold text-rose-800">
+                    يلزم حسم تعارض السجل قبل إعادة الإسناد.
+                  </div>
+                ) : isManager && (
                   <div className="rounded-xl border border-slate-200 bg-white px-3 py-2">
                     <label
                       className="mb-1 block text-[11px] font-bold text-slate-500"

@@ -51,6 +51,7 @@ import type {
   DashboardStats,
   DriverWorkOrderUpdate,
   FinancialTruthResponse,
+  GetAdminWorkOrdersParams,
   GetContainerContractLedgersParams,
   GetContainerSystemRecordsParams,
   GetDriverWorkOrdersParams,
@@ -2557,20 +2558,27 @@ export const useUpdateDriverWorkOrder = <TError = ErrorType<unknown>,
       return useMutation(getUpdateDriverWorkOrderMutationOptions(options));
     }
 
-export const getGetAdminWorkOrdersUrl = () => {
+export const getGetAdminWorkOrdersUrl = (params?: GetAdminWorkOrdersParams,) => {
+  const normalizedParams = new URLSearchParams();
 
+  Object.entries(params || {}).forEach(([key, value]) => {
 
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
 
+  const stringifiedParams = normalizedParams.toString();
 
-  return `/api/admin/work-orders`
+  return stringifiedParams.length > 0 ? `/api/admin/work-orders?${stringifiedParams}` : `/api/admin/work-orders`
 }
 
 /**
  * @summary List current work orders for managers
  */
-export const getAdminWorkOrders = async ( options?: RequestInit): Promise<ServiceRequest[]> => {
+export const getAdminWorkOrders = async (params?: GetAdminWorkOrdersParams, options?: RequestInit): Promise<ServiceRequest[]> => {
 
-  return customFetch<ServiceRequest[]>(getGetAdminWorkOrdersUrl(),
+  return customFetch<ServiceRequest[]>(getGetAdminWorkOrdersUrl(params),
   {
     ...options,
     method: 'GET'
@@ -2583,23 +2591,23 @@ export const getAdminWorkOrders = async ( options?: RequestInit): Promise<Servic
 
 
 
-export const getGetAdminWorkOrdersQueryKey = () => {
+export const getGetAdminWorkOrdersQueryKey = (params?: GetAdminWorkOrdersParams,) => {
     return [
-    `/api/admin/work-orders`
+    `/api/admin/work-orders`, ...(params ? [params] : [])
     ] as const;
     }
 
 
-export const getGetAdminWorkOrdersQueryOptions = <TData = Awaited<ReturnType<typeof getAdminWorkOrders>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAdminWorkOrders>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+export const getGetAdminWorkOrdersQueryOptions = <TData = Awaited<ReturnType<typeof getAdminWorkOrders>>, TError = ErrorType<unknown>>(params?: GetAdminWorkOrdersParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAdminWorkOrders>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 ) => {
 
 const {query: queryOptions, request: requestOptions} = options ?? {};
 
-  const queryKey =  queryOptions?.queryKey ?? getGetAdminWorkOrdersQueryKey();
+  const queryKey =  queryOptions?.queryKey ?? getGetAdminWorkOrdersQueryKey(params);
 
 
 
-    const queryFn: QueryFunction<Awaited<ReturnType<typeof getAdminWorkOrders>>> = ({ signal }) => getAdminWorkOrders({ signal, ...requestOptions });
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getAdminWorkOrders>>> = ({ signal }) => getAdminWorkOrders(params, { signal, ...requestOptions });
 
 
 
@@ -2617,11 +2625,11 @@ export type GetAdminWorkOrdersQueryError = ErrorType<unknown>
  */
 
 export function useGetAdminWorkOrders<TData = Awaited<ReturnType<typeof getAdminWorkOrders>>, TError = ErrorType<unknown>>(
-  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAdminWorkOrders>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+ params?: GetAdminWorkOrdersParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAdminWorkOrders>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
-  const queryOptions = getGetAdminWorkOrdersQueryOptions(options)
+  const queryOptions = getGetAdminWorkOrdersQueryOptions(params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 
