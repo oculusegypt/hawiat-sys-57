@@ -483,6 +483,11 @@ export default function AdminLayout({
 
   useEffect(() => {
     const token = localStorage.getItem("admin_token");
+    if (!token && !localStorage.getItem("admin_role")) {
+      setAuthLoading(false);
+      setLocation("/admin/login");
+      return;
+    }
     const clearLocalSession = () => {
       localStorage.removeItem("admin_token");
       localStorage.removeItem("admin_role");
@@ -502,8 +507,12 @@ export default function AdminLayout({
         setUserRole(cachedRole);
         setUserName(cachedName);
         setPermissions(cachedPermissions);
+        setAuthLoading(false);
+      } else {
+        clearLocalSession();
+        setAuthLoading(false);
+        setLocation("/admin/login");
       }
-      setAuthLoading(false);
     };
     const verifySession = async () => {
       const request = (includeToken: boolean) => fetch(`${API_BASE}/api/auth/me?session_check=${Date.now()}`, {

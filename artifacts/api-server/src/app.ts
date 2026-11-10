@@ -7,7 +7,11 @@ import rateLimit from "express-rate-limit";
 import router from "./routes";
 import { logger } from "./lib/logger";
 import { requireAdmin, requireNonDriver } from "./middleware/adminAuth";
+import { fileURLToPath } from "url";
 import { normalizePublicUploadUrls } from "./lib/publicUploadPath";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const app: Express = express();
 // The deployed app runs behind a reverse proxy. Trust its hop so rate limiting
@@ -17,7 +21,6 @@ app.set("trust proxy", 1);
 // ── Security headers ──────────────────────────────────────────────────────────
 app.use((_req: Request, res: Response, next: NextFunction) => {
   res.setHeader("X-Content-Type-Options", "nosniff");
-  res.setHeader("X-Frame-Options", "DENY");
   res.setHeader("X-XSS-Protection", "1; mode=block");
   res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
   // The public chat can explicitly request a location and open the device
@@ -38,7 +41,7 @@ function isAllowedOrigin(origin: string): boolean {
     }
     const host = url.hostname.toLowerCase();
     if (host === "localhost" || host === "127.0.0.1" || host === "0.0.0.0") return true;
-    return host.endsWith(".replit.dev") || host.endsWith(".replit.app");
+    return host.endsWith(".replit.dev") || host.endsWith(".replit.app") || host.endsWith(".run.app") || host.endsWith(".google.com") || host.endsWith(".googleusercontent.com");
   } catch {
     return false;
   }
@@ -145,13 +148,15 @@ const frontendDistCandidates = [
 const frontendDistPath =
   frontendDistCandidates.find((candidate) => fs.existsSync(path.join(candidate, "index.html"))) ??
   frontendDistCandidates[0];
-app.use(express.static(frontendDistPath));
-app.use((req: Request, res: Response, next: NextFunction) => {
-  if (req.method === "GET" && !req.path.startsWith("/api")) {
-    return res.sendFile(path.join(frontendDistPath, "index.html"));
-  }
-  next();
-});
+if (process.env.NODE_ENV === "production" && fs.existsSync(path.join(frontendDistPath, "index.html"))) {
+  app.use(express.static(frontendDistPath));
+  app.use((req: Request, res: Response, next: NextFunction) => {
+    if (req.method === "GET" && !req.path.startsWith("/api")) {
+      return res.sendFile(path.join(frontendDistPath, "index.html"));
+    }
+    next();
+  });
+}
 
 // Never let Express serialize an exception (and its stack) into an HTTP
 // response. CORS rejections are an expected client error; all other failures

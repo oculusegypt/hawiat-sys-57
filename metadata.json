@@ -1,0 +1,6 @@
+{
+  "name": "CleanFlow - نظام إدارة وتأجير الحاويات",
+  "description": "نظام رقمي متكامل لخدمات تأجير الحاويات ونقل مخلفات البناء والأنقاض بالرياض مع لوحة تحكم إدارية وموقع للعملاء.",
+  "requestFramePermissions": ["geolocation"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

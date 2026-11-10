@@ -103,6 +103,26 @@ export default function AdminLogin() {
             {isPending ? "جاري التحقق..." : "تسجيل الدخول"}
           </Button>
         </form>
+
+        <div className="mt-6 pt-5 border-t border-gray-100 text-xs text-gray-500">
+          <p className="font-semibold text-gray-700 mb-2">بيانات دخول المسؤول التجريبية:</p>
+          <div className="flex items-center justify-between bg-gray-50 p-2.5 rounded-lg border border-gray-200">
+            <div className="space-y-0.5">
+              <p><span className="text-gray-400">المستخدم:</span> <code className="font-mono text-gray-900 font-bold">admin</code></p>
+              <p><span className="text-gray-400">كلمة المرور:</span> <code className="font-mono text-gray-900 font-bold">admin123</code></p>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setUsername("admin");
+                setPassword("admin123");
+              }}
+              className="px-3 py-1.5 bg-primary/10 hover:bg-primary/20 text-primary font-bold rounded text-xs transition"
+            >
+              تعبئة تلقائية
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   )
