@@ -9,6 +9,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { reverseGeocode } from "@/lib/reverseGeocode"
+import { MAP_TILE_ATTRIBUTION, MAP_TILE_URL } from "@/lib/mapTiles"
 
 type ContractWizardProps = {
   open: boolean
@@ -291,8 +292,8 @@ function MapPicker({ initialCoordinates, onSelect }: { initialCoordinates: strin
     const [initialLat, initialLng] = initialCoordinates.split(",").map(Number)
     const hasInitial = Number.isFinite(initialLat) && Number.isFinite(initialLng)
     const map = L.map(mapElement.current).setView(hasInitial ? [initialLat, initialLng] : [24.7136, 46.6753], hasInitial ? 16 : 11)
-    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      attribution: "&copy; OpenStreetMap contributors",
+    L.tileLayer(MAP_TILE_URL, {
+      attribution: MAP_TILE_ATTRIBUTION,
       maxZoom: 19,
     }).addTo(map)
     mapRef.current = map
@@ -733,7 +734,11 @@ export function ContractWizard({ open, records, initialCustomerId = null, initia
               </div>
               <button type="button" onClick={onClose} className="text-2xl leading-none text-cyan-100/70 hover:text-white" aria-label="إغلاق">×</button>
             </div>
-            <div className="mt-6 grid grid-cols-5 gap-2">
+            <div className="mt-6 sm:hidden">
+              <div className="flex items-center justify-between gap-3 text-xs"><span className="font-bold text-cyan-100/70">الخطوة {step + 1} من {steps.length}</span><b className="truncate text-white">{steps[step]}</b></div>
+              <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/15"><div className="h-full rounded-full bg-amber-400 transition-all" style={{ width: `${((step + 1) / steps.length) * 100}%` }} /></div>
+            </div>
+            <div className="mt-6 hidden grid-cols-5 gap-2 sm:grid">
               {steps.map((title, index) => <div key={title} className="flex items-center gap-2 text-[11px] font-bold"><span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full ${index <= step ? "bg-amber-400 text-slate-900" : "bg-white/15 text-cyan-100"}`}>{index < step ? <CheckCircle2 size={15} /> : index + 1}</span><span className={index === step ? "text-white" : "text-cyan-100/60"}>{title}</span></div>)}
             </div>
           </div>

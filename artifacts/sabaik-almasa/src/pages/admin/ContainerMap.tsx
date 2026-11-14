@@ -36,6 +36,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts"
+import { MAP_TILE_ATTRIBUTION, MAP_TILE_URL } from "@/lib/mapTiles"
 
 type StatusFilter = "all" | ServiceRequestStatus
 type Category = "debris" | "waste" | "contracts"
@@ -420,9 +421,9 @@ export default function ContainerMap() {
       11,
     )
     L.control.zoom({ position: "bottomright" }).addTo(map)
-    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    L.tileLayer(MAP_TILE_URL, {
       maxZoom: 19,
-      attribution: "&copy; OpenStreetMap",
+      attribution: MAP_TILE_ATTRIBUTION,
     }).addTo(map)
     markersRef.current = L.layerGroup().addTo(map)
     mapRef.current = map
@@ -619,7 +620,7 @@ export default function ContainerMap() {
               ))}
             </div>
           </div>
-          <div className="relative h-[420px] w-full bg-slate-100">
+          <div className="relative h-[min(55vh,420px)] min-h-[300px] w-full bg-slate-100 sm:h-[420px]">
             <div ref={mapElement} className="absolute inset-0 z-0" />
             {hasError && (
               <div className="absolute inset-0 z-[500] flex items-center justify-center bg-white/90 p-6 text-center">

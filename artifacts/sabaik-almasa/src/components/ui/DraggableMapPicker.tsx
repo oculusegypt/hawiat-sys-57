@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from "react"
 import "leaflet/dist/leaflet.css"
 import type { Map as LeafletMap, Marker } from "leaflet"
 import { reverseGeocode } from "@/lib/reverseGeocode"
+import { MAP_TILE_ATTRIBUTION, MAP_TILE_URL } from "@/lib/mapTiles"
 import { Loader2, CheckCircle, MapPin } from "lucide-react"
 
 interface Props {
@@ -70,11 +71,12 @@ export function DraggableMapPicker({ initialLat, initialLng, onConfirm, onSelect
         center: [initialLat, initialLng],
         zoom: 18,
         zoomControl: true,
-        attributionControl: false,
+        attributionControl: true,
       })
 
-      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      L.tileLayer(MAP_TILE_URL, {
         maxZoom: 19,
+        attribution: MAP_TILE_ATTRIBUTION,
       }).addTo(map)
 
       const marker = L.marker([initialLat, initialLng], {

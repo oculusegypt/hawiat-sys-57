@@ -45,13 +45,13 @@ export function ContainerAssignmentWizard({ open, records, initialContainerId = 
     onSubmit({ contractRecordId: contract.id, siteRecordId: Number(siteRecordId), containerRecordId: Number(containerRecordId), assignmentStatus: "reserved", startDate: new Date().toISOString().slice(0, 10), notes: "تم التخصيص من المسار السياقي" })
   }
   return <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-3 sm:p-6" dir="rtl">
-    <Card className="w-full max-w-2xl overflow-hidden border-cyan-100 shadow-2xl">
+    <Card className="max-h-[calc(100dvh-1.5rem)] w-full max-w-2xl overflow-y-auto border-cyan-100 shadow-2xl">
       <CardContent className="p-0">
-        <header className="flex items-start justify-between bg-[#123d4e] p-6 text-white">
+        <header className="flex items-start justify-between gap-3 bg-[#123d4e] p-4 text-white sm:p-6">
           <div className="flex items-center gap-3"><div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-amber-400 text-slate-900"><Link2 size={20} /></div><div><h2 className="text-xl font-black">تخصيص أصل لحاوية</h2><p className="mt-1 text-xs text-cyan-100/75">اختر العلاقات من سياقها؛ لا حاجة لإدخال المعرّفات يدوياً.</p></div></div>
           <button type="button" onClick={onClose} className="text-2xl text-cyan-100/70 hover:text-white" aria-label="إغلاق"><X /></button>
         </header>
-        <div className="space-y-5 p-6">
+        <div className="space-y-5 p-4 sm:p-6">
           <div><Label htmlFor="assignment-contract">العقد</Label><select id="assignment-contract" value={contractRecordId} onChange={event => { setContractRecordId(event.target.value); setSiteRecordId(""); setError("") }} className="mt-2 h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm"><option value="">اختر العقد</option>{contracts.map(record => <option key={record.id} value={record.id}>{labelOf(record)} · {String(payloadOf(record).customerName ?? "عميل غير محدد")}</option>)}</select></div>
           <div><Label htmlFor="assignment-site">موقع العميل</Label><select id="assignment-site" value={siteRecordId} onChange={event => { setSiteRecordId(event.target.value); setError("") }} disabled={!contract} className="mt-2 h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm disabled:bg-slate-50"><option value="">{contract ? (sites.length ? "اختر موقعاً تابعاً للعميل" : "لا توجد مواقع لهذا العميل") : "اختر العقد أولاً"}</option>{sites.map(record => <option key={record.id} value={record.id}>{labelOf(record)} · {String(payloadOf(record).address ?? "")}</option>)}</select></div>
           <div><Label htmlFor="assignment-container">أصل الحاوية المتاح</Label><select id="assignment-container" value={containerRecordId} onChange={event => { setContainerRecordId(event.target.value); setError("") }} className="mt-2 h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm"><option value="">اختر الأصل</option>{containers.map(record => <option key={record.id} value={record.id}>{labelOf(record)} · {String(payloadOf(record).typeName ?? "نوع غير محدد")}</option>)}</select></div>

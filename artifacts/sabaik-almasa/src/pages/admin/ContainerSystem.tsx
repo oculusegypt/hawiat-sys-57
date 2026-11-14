@@ -418,7 +418,7 @@ function RecordRow({ record, kind, records, serviceRequests = [], onDetails, onE
     )
   }
   return (
-    <div className="group grid grid-cols-[minmax(0,1.4fr)_minmax(0,2fr)_auto] items-center gap-4 border-b border-slate-100 px-4 py-4 last:border-0 hover:bg-cyan-50/30 sm:grid-cols-[minmax(0,1.2fr)_minmax(0,2fr)_minmax(0,1fr)_auto]" data-testid={`row-record-${record.id}`}>
+    <div className="group grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-b border-slate-100 px-3 py-3 last:border-0 hover:bg-cyan-50/30 sm:grid-cols-[minmax(0,1.2fr)_minmax(0,2fr)_minmax(0,1fr)_auto] sm:gap-4 sm:px-4 sm:py-4" data-testid={`row-record-${record.id}`}>
        <div className="min-w-0">
          {["container", "container_asset"].includes(record.kind) ? (
            <div className="flex items-center gap-3">
@@ -434,6 +434,10 @@ function RecordRow({ record, kind, records, serviceRequests = [], onDetails, onE
            </div>
          ) : <button type="button" onClick={onDetails} className={`truncate text-right font-bold ${kind === "customer" ? "text-cyan-900 hover:underline" : "text-slate-800"}`} data-testid={`text-record-primary-${record.id}`}>{primary}</button>}
          <p className="mt-0.5 text-[11px] font-mono text-slate-400" dir="ltr">{record.reference || `#${record.id}`}</p>
+         <div className="mt-2 flex flex-wrap items-center gap-2 sm:hidden"><RecordStatus status={record.status} /><span className="text-[10px] text-slate-400">آخر تحديث {formatRecordDate(record.updatedAt)}</span></div>
+         <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-2 sm:hidden">
+           {fields.slice(1, 3).map(field => <div key={field.key} className="min-w-0"><p className="text-[10px] text-slate-400">{field.label}</p><p className="truncate text-[11px] text-slate-700">{kind === "contract" && ["customerRecordId", "siteRecordId", "containerRecordId"].includes(field.key) ? relatedLabel(field.key) : String(record.payload[field.key] ?? "—")}</p></div>)}
+         </div>
          {proofPhotoUrl && <a href={proofPhotoUrl} target="_blank" rel="noopener noreferrer" onClick={event => event.stopPropagation()} className="mt-2 inline-flex w-fit items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-black text-emerald-800 hover:bg-emerald-100" data-testid={`link-proof-photo-${record.id}`}><FileCheck2 size={13} /> عرض صورة الإثبات</a>}
       </div>
       <div className="hidden min-w-0 gap-2 sm:grid sm:grid-cols-2">
@@ -441,9 +445,9 @@ function RecordRow({ record, kind, records, serviceRequests = [], onDetails, onE
       </div>
       <div className="hidden sm:block"><RecordStatus status={record.status} /><p className="mt-1 text-[10px] text-slate-400">{formatRecordDate(record.updatedAt)}</p></div>
       <div className="flex items-center justify-end gap-1">
-        <Button variant="ghost" size="sm" onClick={onDetails} className="h-8 gap-1 text-xs text-cyan-800 hover:bg-cyan-50" data-testid={`button-details-record-${record.id}`}><FileText size={14} /> <span className="hidden md:inline">التفاصيل</span></Button>
-        {kind !== "container_movement" && <Button variant="ghost" size="sm" onClick={onEdit} className="h-8 gap-1 text-xs text-slate-500 hover:bg-cyan-50 hover:text-cyan-800" data-testid={`button-edit-record-${record.id}`}><FilePenLine size={14} /> <span className="hidden md:inline">تعديل</span></Button>}
-        <Button variant="ghost" size="icon" onClick={onArchive} className="h-8 w-8 text-slate-400 hover:bg-rose-50 hover:text-rose-600" title="أرشفة السجل" data-testid={`button-archive-record-${record.id}`}><Archive size={14} /></Button>
+        <Button variant="ghost" size="sm" onClick={onDetails} className="h-10 gap-1 px-2 text-xs text-cyan-800 hover:bg-cyan-50 sm:h-8 sm:px-3" aria-label="عرض تفاصيل السجل" data-testid={`button-details-record-${record.id}`}><FileText size={14} /> <span className="hidden md:inline">التفاصيل</span></Button>
+        {kind !== "container_movement" && <Button variant="ghost" size="sm" onClick={onEdit} className="h-10 gap-1 px-2 text-xs text-slate-500 hover:bg-cyan-50 hover:text-cyan-800 sm:h-8 sm:px-3" aria-label="تعديل السجل" data-testid={`button-edit-record-${record.id}`}><FilePenLine size={14} /> <span className="hidden md:inline">تعديل</span></Button>}
+        <Button variant="ghost" size="icon" onClick={onArchive} className="h-10 w-10 text-slate-400 hover:bg-rose-50 hover:text-rose-600 sm:h-8 sm:w-8" title="أرشفة السجل" aria-label="أرشفة السجل" data-testid={`button-archive-record-${record.id}`}><Archive size={14} /></Button>
       </div>
     </div>
   )
@@ -1119,7 +1123,30 @@ function InvoiceWorkspace({ records, onAdd, onDetails, onEdit, onArchive }: { re
               <Button onClick={onAdd} variant="outline" className="mt-4 gap-2 border-cyan-200 text-cyan-800"><Plus size={15} /> إنشاء أول فاتورة</Button>
             </div>
           ) : (
-            <div className="overflow-x-auto">
+            <>
+              <div className="space-y-3 p-3 xl:hidden">
+                {visibleRecords.map(({ record, payload, number, paid, total, remaining, status, dueDate }) => (
+                  <article key={`mobile-${record.id}`} className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm" data-testid={`card-invoice-${record.id}`}>
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0"><button type="button" onClick={() => onDetails(record)} className="max-w-full truncate text-right font-black text-cyan-800" dir="ltr">{number || `#${record.id}`}</button><p className="mt-1 truncate text-xs font-bold text-slate-700">{String(payload.customerName ?? "عميل غير محدد")}</p></div>
+                      <Badge variant="outline" className={`shrink-0 text-[10px] ${statusClass[status]}`}>{statusText[status]}</Badge>
+                    </div>
+                    <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                      <div className="min-w-0 rounded-xl bg-slate-50 p-2.5"><p className="text-[10px] font-bold text-slate-400">البيان / العقد</p><p className="mt-1 break-words text-slate-700">{String(payload.contractNumber ?? payload.containerCode ?? payload.description ?? "خدمات الحاوية")}</p></div>
+                      <div className="rounded-xl bg-slate-50 p-2.5"><p className="text-[10px] font-bold text-slate-400">تاريخ الإصدار</p><p className="mt-1 text-slate-700">{String(payload.date ?? "غير محدد")}</p></div>
+                      <div className="rounded-xl bg-cyan-50 p-2.5"><p className="text-[10px] font-bold text-cyan-700">الإجمالي</p><p className="mt-1 font-black text-slate-900">{money(total)}</p></div>
+                      <div className="rounded-xl bg-amber-50 p-2.5"><p className="text-[10px] font-bold text-amber-700">المتبقي</p><p className="mt-1 font-black text-amber-900">{money(remaining)}</p></div>
+                    </div>
+                    <p className="mt-2 text-[10px] text-slate-400">مدفوع {money(paid)} · {String(payload.billingPeriod ?? dueDate ?? "—")}</p>
+                    <div className="mt-3 flex flex-wrap justify-end gap-2 border-t border-slate-100 pt-2">
+                      <Link href={`/admin/container-system/invoice/${record.id}/details`} className="inline-flex h-10 items-center gap-1.5 rounded-lg border border-slate-200 px-3 text-xs font-bold text-slate-600" aria-label="تفاصيل الفاتورة"><FileDown size={15} /> التفاصيل</Link>
+                      <Button variant="outline" size="sm" onClick={() => onEdit(record)} className="h-10 gap-1.5 text-xs"><FilePenLine size={14} /> تعديل</Button>
+                      <Button variant="ghost" size="icon" onClick={() => onArchive(record)} className="h-10 w-10 text-rose-600" title="أرشفة الفاتورة" aria-label="أرشفة الفاتورة"><Archive size={15} /></Button>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            <div className="hidden overflow-x-auto xl:block">
               <div className="min-w-[820px]">
                 <div className="grid grid-cols-[1.1fr_1.4fr_1.2fr_1fr_1fr_auto] gap-3 bg-slate-50 px-5 py-3 text-[10px] font-black text-slate-400">
                   <span>رقم الفاتورة</span><span>العميل</span><span>البيان</span><span>تاريخ الإصدار</span><span>الإجمالي</span><span>الحالة</span>
@@ -1152,6 +1179,7 @@ function InvoiceWorkspace({ records, onAdd, onDetails, onEdit, onArchive }: { re
                 })}
               </div>
             </div>
+            </>
           )}
         </CardContent>
       </Card>
@@ -1213,7 +1241,7 @@ function ContainerPOS({ records, onDetails, onEdit, onDelete, onAdd }: { records
   return (
     <Card className="border-slate-200/80 shadow-[0_8px_28px_rgba(15,44,58,.05)]">
       <CardHeader className="border-b border-slate-100 px-4 py-4 sm:px-5">
-        <div className="flex items-center justify-between gap-3"><div><CardTitle className="text-base">مخزون الحاويات الفعلية</CardTitle><p className="mt-1 text-xs text-slate-500">عرض تشغيلي سريع لكل أصل وموقعه وحالته الحالية</p></div><Button onClick={onAdd} className="gap-2 bg-cyan-800 hover:bg-cyan-900"><Plus size={16} /> حاوية جديدة</Button></div>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><CardTitle className="text-base">مخزون الحاويات الفعلية</CardTitle><p className="mt-1 text-xs text-slate-500">عرض تشغيلي سريع لكل أصل وموقعه وحالته الحالية</p></div><Button onClick={onAdd} className="w-full gap-2 bg-cyan-800 hover:bg-cyan-900 sm:w-auto"><Plus size={16} /> حاوية جديدة</Button></div>
         <div className="flex flex-wrap gap-2 pt-3" role="tablist" aria-label="فئات مخزون الأصول">
           {ASSET_CATEGORY_TABS.map(tab => {
             const count = tab.key === "all" ? records.length : records.filter(record => assetCategoryOf(record) === tab.key).length
@@ -2132,7 +2160,30 @@ function ContainerSearchPanel({ records, loading, onDetails, onEdit, onDelete }:
             <p className="mt-1 max-w-sm text-xs leading-6 text-slate-500">جرّب رقم حاوية أو اسم عميل مختلفًا. ستظهر النتائج من السجلات المحفوظة فقط.</p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
+          <>
+          <div className="space-y-2 p-3 xl:hidden">
+            {searchableRecords.map(record => {
+              const payload = record.payload as Record<string, unknown>
+              const code = String(payload.containerCode ?? payload.assetCode ?? payload.code ?? record.reference ?? `#${record.id}`)
+              const isAsset = ["container", "container_asset"].includes(record.kind)
+              const status = isAsset ? getContainerOperationalStatus(record.status, record.payload) : String(payload.status ?? record.status)
+              return <article key={`mobile-${record.id}`} className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm" data-testid={`card-container-search-${record.id}`}>
+                <div className="flex items-start justify-between gap-2"><button type="button" onClick={() => onDetails(record)} className="min-w-0 truncate text-right font-black text-cyan-900" dir="ltr">{code}</button><RecordStatus status={status} /></div>
+                <p className="mt-2 truncate text-sm font-bold text-slate-700">{String(payload.customerName ?? payload.name ?? "—")}</p>
+                <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                  <div className="rounded-xl bg-slate-50 p-2.5"><p className="text-[10px] font-bold text-slate-400">الهاتف</p><p className="mt-1 truncate text-slate-600" dir="ltr">{String(payload.customerPhone ?? payload.phone ?? "—")}</p></div>
+                  <div className="rounded-xl bg-slate-50 p-2.5"><p className="text-[10px] font-bold text-slate-400">بداية الإيجار</p><p className="mt-1 text-slate-600">{String(payload.startDate ?? payload.rentalStartDate ?? "—")}</p></div>
+                  <div className="rounded-xl bg-slate-50 p-2.5"><p className="text-[10px] font-bold text-slate-400">نهاية الإيجار</p><p className="mt-1 text-slate-600">{String(payload.endDate ?? payload.rentalEndDate ?? "—")}</p></div>
+                </div>
+                <div className="mt-3 flex flex-wrap justify-end gap-2 border-t border-slate-100 pt-2">
+                  <Button type="button" variant="outline" size="sm" onClick={() => onDetails(record)} className="h-10 gap-1.5 text-xs"><FileText size={14} /> التفاصيل</Button>
+                  {record.kind !== "container_movement" && <Button type="button" variant="ghost" size="icon" onClick={() => onEdit(record)} className="h-10 w-10 text-slate-500" title="تعديل السجل" aria-label="تعديل السجل"><FilePenLine size={15} /></Button>}
+                  {isAsset && <Button type="button" variant="ghost" size="icon" onClick={() => onDelete(record)} className="h-10 w-10 text-rose-600" title="حذف الحاوية" aria-label="حذف الحاوية"><Trash2 size={15} /></Button>}
+                </div>
+              </article>
+            })}
+          </div>
+          <div className="hidden overflow-x-auto xl:block">
             <div className="min-w-[720px]">
               <div className="grid grid-cols-[1.1fr_1.2fr_1.2fr_1fr_1fr_auto] gap-3 bg-slate-50 px-4 py-3 text-[10px] font-black text-slate-400">
                 <span>رقم الحاوية</span><span>العميل</span><span>الهاتف</span><span>بداية الإيجار</span><span>نهاية الإيجار</span><span>الحالة</span>
@@ -2151,6 +2202,7 @@ function ContainerSearchPanel({ records, loading, onDetails, onEdit, onDelete }:
               })}
             </div>
           </div>
+          </>
         )}
       </CardContent>
     </Card>
