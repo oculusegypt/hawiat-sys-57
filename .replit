@@ -25,6 +25,10 @@ args = "Sabaik Almasa Preview"
 task = "workflow.run"
 args = "Sabaik Platform Preview"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Sabaik API Server"
+
 [[workflows.workflow]]
 name = "Sabaik Almasa Preview"
 author = "agent"
@@ -48,6 +52,15 @@ waitForPort = 5001
 
 [workflows.workflow.metadata]
 outputType = "webview"
+
+[[workflows.workflow]]
+name = "Sabaik API Server"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "PORT=8080 pnpm --filter @workspace/api-server run dev"
+waitForPort = 8080
 
 [agent]
 stack = "PNPM_WORKSPACE"

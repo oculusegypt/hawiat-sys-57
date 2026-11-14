@@ -44,8 +44,11 @@ export function findOpenContainerOperation(
 ): ContainerOperationState | null {
   const request = serviceRequests.find(item => {
     const row = item as ServiceRequest & { contractRecordId?: number | null; containerRecordId?: number | null }
-    const matches = Number(row.contractRecordId ?? 0) === Number(contractId ?? 0) ||
-      Number(row.containerRecordId ?? 0) === Number(containerId ?? 0)
+    const matchesContract = contractId != null && Number(contractId) > 0 &&
+      Number(row.contractRecordId ?? 0) === Number(contractId)
+    const matchesContainer = containerId != null && Number(containerId) > 0 &&
+      Number(row.containerRecordId ?? 0) === Number(containerId)
+    const matches = matchesContract || matchesContainer
     return matches &&
       (!operationKind || operationKindOf(row.serviceType) === operationKind) &&
       !TERMINAL_STATUSES.has(String(row.status).toLowerCase()) &&
@@ -67,8 +70,11 @@ export function findOpenContainerOperation(
   const workOrder = records.find(record => {
     if (record.kind !== "work_order" || record.status === "archived") return false
     const payload = payloadOf(record)
-    const matches = Number(payload.contractRecordId ?? 0) === Number(contractId ?? 0) ||
-      Number(payload.containerRecordId ?? 0) === Number(containerId ?? 0)
+    const matchesContract = contractId != null && Number(contractId) > 0 &&
+      Number(payload.contractRecordId ?? 0) === Number(contractId)
+    const matchesContainer = containerId != null && Number(containerId) > 0 &&
+      Number(payload.containerRecordId ?? 0) === Number(containerId)
+    const matches = matchesContract || matchesContainer
     const status = String(payload.driverStatus ?? payload.status ?? record.status).toLowerCase()
     return matches &&
       (!operationKind || operationKindOf(payload.serviceType ?? payload.operationType) === operationKind) &&

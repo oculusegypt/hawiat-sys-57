@@ -2250,6 +2250,13 @@ function matchContractForSettlement(row: typeof containerSystemRecordsTable.$inf
   return String(invoice ? parsePayload(invoice.payload).contractNumber ?? "" : "").trim();
 }
 
+class ContainerLifecycleRuleError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ContainerLifecycleRuleError";
+  }
+}
+
 router.post("/admin/container-system/contracts/:id/lifecycle", requireContainerPermission("contract"), async (req, res) => {
   const adminReq = req as unknown as AdminRequest;
   const contractId = Number(String(req.params.id));
@@ -2264,26 +2271,27 @@ router.post("/admin/container-system/contracts/:id/lifecycle", requireContainerP
     return res.status(403).json({ error: "ليس لديك صلاحية لتنفيذ دورة العقد" });
   }
 
+  if (["approve", "reject"].includes(action) && !["admin", "manager"].includes(adminReq.adminRole)) {
+    return res.status(403).json({ error: "اعتماد العقد متاح للمدير أو المدير الرئيسي فقط" });
+  }
+
   try {
     const result = db.transaction((tx) => {
       const contract = tx.select().from(containerSystemRecordsTable)
         .where(eq(containerSystemRecordsTable.id, contractId)).get();
       if (!contract || contract.kind !== "contract" || contract.status === "archived") {
-        throw new Error("العقد غير موجود أو مؤرشف");
+        throw new ContainerLifecycleRuleError("العقد غير موجود أو مؤرشف");
       }
       const contractPayload = parsePayload(contract.payload);
       if (action === "deliver" && !["active", "approved", "issued", "scheduled"].includes(contract.status)) {
-        throw new Error("لا يمكن تسليم العقد من حالته الحالية");
+        throw new ContainerLifecycleRuleError("لا يمكن تسليم العقد من حالته الحالية");
       }
       if (action === "return" && contract.status !== "delivered") {
-        throw new Error("لا يمكن استرجاع الحاوية قبل تسجيل تسليمها");
+        throw new ContainerLifecycleRuleError("لا يمكن استرجاع الحاوية قبل تسجيل تسليمها");
       }
       if (action === "approve" || action === "reject") {
-        if (adminReq.adminRole !== "admin" && adminReq.adminRole !== "manager") {
-          throw new Error("اعتماد العقد متاح للمدير أو المدير الرئيسي فقط");
-        }
         if (!["draft", "pending_approval", "issued"].includes(contract.status)) {
-          throw new Error("لا يمكن اعتماد العقد من حالته الحالية");
+          throw new ContainerLifecycleRuleError("لا يمكن اعتماد العقد من حالته الحالية");
         }
         const now = new Date().toISOString();
         const nextStatus = action === "approve" ? "approved" : "rejected";
@@ -2313,17 +2321,17 @@ router.post("/admin/container-system/contracts/:id/lifecycle", requireContainerP
       const containerId = Number(contractPayload.containerRecordId ?? 0) || undefined;
       const openDeliveryOperation = findOpenContainerOperation(allRows, linkedRequests, contractId, containerId, "delivery");
       if (action === "deliver" && openDeliveryOperation) {
-        throw new Error(`لا يمكن تسجيل التسليم؛ يوجد أمر إرسال قائم رقم ${openDeliveryOperation.id}`);
+        throw new ContainerLifecycleRuleError(`لا يمكن تسجيل التسليم؛ يوجد أمر إرسال قائم رقم ${openDeliveryOperation.id}`);
       }
       if (["return", "close"].includes(action)) {
         const openOperation = findOpenContainerOperation(allRows, linkedRequests, contractId, containerId);
         if (openOperation) {
-          throw new Error(`لا يمكن تنفيذ الإجراء؛ يوجد أمر تشغيل ${openOperation.id} حالته ${openOperation.status} ومكلف بالسائق ${openOperation.assignedDriverId ? "ومسند" : "غير مسند"}`);
+          throw new ContainerLifecycleRuleError(`لا يمكن تنفيذ الإجراء؛ يوجد أمر تشغيل ${openOperation.id} حالته ${openOperation.status} ومكلف بالسائق ${openOperation.assignedDriverId ? "ومسند" : "غير مسند"}`);
         }
       }
       if (action === "close") {
         if (contract.status !== "returned") {
-          throw new Error("لا يمكن إغلاق العقد قبل استرجاع الحاوية وتسجيل التفريغ أو الإكمال التشغيلي");
+          throw new ContainerLifecycleRuleError("لا يمكن إغلاق العقد قبل استرجاع الحاوية وتسجيل التفريغ أو الإكمال التشغيلي");
         }
         const contractNumber = String(contractPayload.contractNumber ?? contract.reference).trim();
         const collected = postedCollections(allRows)
@@ -2351,7 +2359,7 @@ router.post("/admin/container-system/contracts/:id/lifecycle", requireContainerP
           .reduce((sum, row) => sum + Number(parsePayload(row.payload).amount ?? 0), 0);
         const total = Number(contractPayload.total ?? contractPayload.amount ?? 0);
         if (Math.max(total - collected + returned, 0) > 0.01) {
-          throw new Error(`لا يمكن إغلاق العقد قبل اكتمال التسوية المالية؛ المتبقي ${Math.max(total - collected + returned, 0).toFixed(2)} ر.س`);
+          throw new ContainerLifecycleRuleError(`لا يمكن إغلاق العقد قبل اكتمال التسوية المالية؛ المتبقي ${Math.max(total - collected + returned, 0).toFixed(2)} ر.س`);
         }
         const linkedInvoices = allRows.filter(row => {
           if (row.kind !== "invoice" || row.status === "archived") return false;
@@ -2368,7 +2376,7 @@ router.post("/admin/container-system/contracts/:id/lifecycle", requireContainerP
             "SELECT id FROM financial_transactions WHERE source_kind = 'invoice' AND source_id = ? AND status = 'posted' LIMIT 1",
           ).get(invoice.id) as { id: number } | undefined;
           if (invoice.status !== "paid" || !Number.isFinite(invoiceRemaining) || invoiceRemaining > 0.01 || !invoicePosting) {
-            throw new Error("لا يمكن إغلاق العقد قبل ترحيل جميع فواتيره وتسويتها بالكامل");
+            throw new ContainerLifecycleRuleError("لا يمكن إغلاق العقد قبل ترحيل جميع فواتيره وتسويتها بالكامل");
           }
         }
         const now = new Date().toISOString();
@@ -2462,20 +2470,20 @@ router.post("/admin/container-system/contracts/:id/lifecycle", requireContainerP
       }
 
       const containerCode = String(contractPayload.containerCode ?? "").trim();
-      if (!containerCode) throw new Error("العقد لا يحتوي على رقم حاوية");
+      if (!containerCode) throw new ContainerLifecycleRuleError("العقد لا يحتوي على رقم حاوية");
       const asset = tx.select().from(containerSystemRecordsTable).all().find(row =>
         ["container", "container_asset"].includes(row.kind) &&
         row.status !== "archived" &&
         assetCodeOf(parsePayload(row.payload)) === containerCode,
       );
-      if (!asset) throw new Error("الحاوية المرتبطة بالعقد غير موجودة");
+      if (!asset) throw new ContainerLifecycleRuleError("الحاوية المرتبطة بالعقد غير موجودة");
       const linkedRequest = tx.select().from(serviceRequestsTable)
         .where(eq(serviceRequestsTable.contractRecordId, contractId)).get();
       if (linkedRequest && linkedRequest.containerRecordId !== asset.id) {
-        throw new Error("الطلب المرتبط لا يطابق أصل الحاوية في العقد");
+        throw new ContainerLifecycleRuleError("الطلب المرتبط لا يطابق أصل الحاوية في العقد");
       }
       if (!movementTransitionAllowed(asset.status, action)) {
-        throw new Error(`لا يمكن تنفيذ ${action === "deliver" ? "التسليم" : "الاسترجاع"} على حاوية حالتها الحالية ${asset.status}`);
+        throw new ContainerLifecycleRuleError(`لا يمكن تنفيذ ${action === "deliver" ? "التسليم" : "الاسترجاع"} على حاوية حالتها الحالية ${asset.status}`);
       }
 
       const now = new Date().toISOString();
@@ -2558,6 +2566,9 @@ router.post("/admin/container-system/contracts/:id/lifecycle", requireContainerP
       idempotent: result.idempotent,
     });
   } catch (error) {
+    if (error instanceof ContainerLifecycleRuleError) {
+      return res.status(422).json({ error: error.message });
+    }
     return res.status(422).json({ error: "تعذر تنفيذ دورة العقد بشكل ذري" });
   }
 });

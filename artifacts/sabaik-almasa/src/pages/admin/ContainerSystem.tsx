@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { useQueryClient } from "@tanstack/react-query"
-import { Link, useLocation } from "wouter"
+import { useLocation } from "wouter"
 import AdminPackages from "./Packages"
 import CustomerIdentityReview from "./CustomerIdentityReview"
 import {
@@ -43,6 +43,7 @@ import { ContractWizard } from "./ContractWizard"
 import type { ServiceRequest } from "@workspace/api-client-react"
 import { ContainerAssignmentWizard } from "./ContainerAssignmentWizard"
 import { FinancialCycleWorkspace } from "./FinancialCycleWorkspace"
+import { ContainerSidebar, viewLabel, type ViewKey, type WorkspaceAttention } from "./ContainerSystemNavigation"
 import { findOpenContainerOperation } from "@/lib/containerOperationState"
 
 const API_BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") || ""
@@ -104,109 +105,6 @@ function invoicePayloadFromRequest(
   }
 }
 
-type ViewKey =
-  | "overview" | "financial_center" | RecordKind | "reports" | "audit" | "container_search"
-  | "rental" | "vouchers" | "operations" | "customer_payments" | "bookings"
-  | "expenses" | "payroll" | "fleet" | "warehouses" | "system_settings" | "contracts_list"
-  | "settlements" | "container_types"
-  | "financial_cycle" | "identity_review"
-type NavItem = { key?: ViewKey; href?: string; label: string; icon: typeof LayoutDashboard }
-
-const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
-  {
-    label: "مركز التشغيل",
-    items: [
-      { key: "overview" as ViewKey, label: "الرئيسية", icon: LayoutDashboard },
-      { key: "alert" as ViewKey, label: "التنبيهات اليومية", icon: BellRing },
-      { key: "container_search" as ViewKey, label: "البحث عن حاوية", icon: FolderSearch },
-    ],
-  },
-  {
-    label: "العملاء والتعاقدات",
-    items: [
-      { key: "customer" as ViewKey, label: "العملاء", icon: Users },
-      { key: "identity_review" as ViewKey, label: "مراجعة هويات العملاء", icon: ShieldCheck },
-      { key: "customer_site" as ViewKey, label: "مواقع العملاء", icon: MapPin },
-      { key: "contract" as ViewKey, label: "إنشاء عقد", icon: FileCheck2 },
-      { key: "contracts_list" as ViewKey, label: "العقود", icon: FileText },
-      { key: "rental" as ViewKey, label: "بنود الإيجار", icon: ReceiptText },
-    ],
-  },
-  {
-    label: "الأصول والأسطول",
-    items: [
-      { key: "container" as ViewKey, label: "أصول الحاويات", icon: Box },
-      { key: "container_types" as ViewKey, label: "أنواع الحاويات", icon: SlidersHorizontal },
-      { key: "container_assignment" as ViewKey, label: "تخصيص الحاويات", icon: Link2 },
-      { key: "operations" as ViewKey, label: "الحركات التشغيلية", icon: ArrowLeftRight },
-      { key: "vehicle" as ViewKey, label: "الشاحنات", icon: CarFront },
-      { key: "maintenance" as ViewKey, label: "الصيانة", icon: Wrench },
-      { key: "permit" as ViewKey, label: "التصاريح", icon: FileCheck2 },
-      { key: "oil_change" as ViewKey, label: "غيار الزيت والعدادات", icon: Gauge },
-      { key: "driver" as ViewKey, label: "السائقون", icon: UserRound },
-    ],
-  },
-  {
-    label: "المواعيد وأوامر العمل",
-    items: [
-      { key: "bookings" as ViewKey, label: "المواعيد والحجوزات", icon: CalendarDays },
-      { href: "/admin/work-orders", label: "أوامر العمل الميدانية", icon: ClipboardList },
-    ],
-  },
-  {
-    label: "المالية والتحصيل",
-    items: [
-      { key: "financial_center" as ViewKey, label: "المركز المالي", icon: WalletCards },
-      { key: "receipt" as ViewKey, label: "سندات القبض", icon: HandCoins },
-      { key: "expense" as ViewKey, label: "سندات الصرف", icon: ArrowDownLeft },
-      { key: "deposit" as ViewKey, label: "الإيداعات البنكية", icon: Landmark },
-      { key: "treasury" as ViewKey, label: "الخزائن", icon: Landmark },
-      { key: "transfer" as ViewKey, label: "التحويل بين الخزائن", icon: ArrowUpRight },
-      { key: "customer_payments" as ViewKey, label: "سداد العملاء", icon: Coins },
-      { key: "settlements" as ViewKey, label: "تسوية العقود وكشف الحساب", icon: FileText },
-      { key: "financial_cycle" as ViewKey, label: "دورة الإقفال والمطابقة", icon: ClipboardList },
-      { key: "ledger_entry" as ViewKey, label: "كشف مديونية العملاء", icon: FileText },
-      { key: "invoice" as ViewKey, label: "الفواتير", icon: FileText },
-      { key: "daily_expense" as ViewKey, label: "المصروفات العامة", icon: ArrowDownLeft },
-      { key: "fuel_expense" as ViewKey, label: "مصروفات الشاحنات", icon: CarFront },
-      { key: "salary_advance" as ViewKey, label: "السلف", icon: Coins },
-      { key: "salary_payment" as ViewKey, label: "الرواتب", icon: Coins },
-    ],
-  },
-  {
-    label: "الموظفون والصلاحيات",
-    items: [
-      { key: "employee" as ViewKey, label: "الموظفون", icon: Users },
-      { key: "commission" as ViewKey, label: "العمولات", icon: Coins },
-      { href: "/admin/employees", label: "المستخدمون والصلاحيات", icon: UserCog },
-    ],
-  },
-  {
-    label: "المخزون والمستودعات",
-    items: [
-      { key: "warehouse" as ViewKey, label: "إدارة المخازن", icon: Box },
-      { key: "category" as ViewKey, label: "الأصناف", icon: SlidersHorizontal },
-      { key: "category_size" as ViewKey, label: "أحجام الأصناف", icon: SlidersHorizontal },
-    ],
-  },
-  {
-    label: "التقارير والتدقيق",
-    items: [
-      { key: "reports" as ViewKey, label: "التقارير الشاملة", icon: ArrowUpRight },
-      { key: "audit" as ViewKey, label: "سجل التدقيق", icon: BookOpenCheck },
-    ],
-  },
-  {
-    label: "الإعدادات",
-    items: [
-      { key: "system_settings" as ViewKey, label: "إعدادات المؤسسة والتشغيل", icon: Settings2 },
-      { key: "branch" as ViewKey, label: "الفروع", icon: Landmark },
-      { key: "tax" as ViewKey, label: "الضرائب", icon: FileCheck2 },
-      { key: "invoice_return" as ViewKey, label: "مرتجعات الفواتير", icon: Archive },
-    ],
-  },
-]
-
 const allKinds = Object.keys(KIND_LABELS) as RecordKind[]
 const viewKind: Partial<Record<ViewKey, RecordKind>> = {
   rental: "contract_line",
@@ -221,69 +119,12 @@ const viewKind: Partial<Record<ViewKey, RecordKind>> = {
   system_settings: "setting",
   contracts_list: "contract",
 }
-const viewLabel = (view: ViewKey) =>
-  view === "overview" ? "الرئيسية"
-  : view === "financial_center" ? "المركز المالي"
-  : view === "container_search" ? "البحث عن حاوية"
-  : view === "container_types" ? "أنواع الحاويات"
-  : view === "reports" ? "التقارير الشاملة"
-  : view === "audit" ? "سجل التدقيق"
-  : view === "rental" ? "تسجيل إيجار حاوية"
-  : view === "vouchers" ? "سندات القبض والصرف"
-  : view === "operations" ? "سجل الحركات التشغيلية"
-  : view === "customer_payments" ? "سداد العملاء"
-  : view === "settlements" ? "تسوية العقود وكشف الحساب"
-  : view === "bookings" ? "المواعيد والحجوزات"
-  : view === "expenses" ? "الإيرادات والمصروفات"
-  : view === "payroll" ? "الرواتب والسلف"
-  : view === "fleet" ? "أسطول الشاحنات"
-  : view === "warehouses" ? "المستودعات والمخازن"
-  : view === "system_settings" ? "إعدادات النظام والتشغيل"
-  : view === "contracts_list" ? "العقود"
-  : view === "identity_review" ? "مراجعة هويات العملاء"
-  : KIND_LABELS[view as RecordKind]
-
-function ContainerSidebar({ view, onSelect }: { view: ViewKey; onSelect: (view: ViewKey) => void }) {
-  const [expanded, setExpanded] = useState<Record<string, boolean>>(
-    Object.fromEntries(NAV_GROUPS.map(group => [group.label, ["مركز التشغيل", "العملاء والتعاقدات", "المالية والتحصيل"].includes(group.label)])),
-  )
-  return (
-    <Card className="sticky top-20 border-slate-200/80 bg-white/90 shadow-sm">
-      <CardContent className="p-2.5">
-        {NAV_GROUPS.map(group => {
-          const isOpen = expanded[group.label]
-          const hasActive = group.items.some(item => item.key === view)
-          return (
-            <div key={group.label} className="mb-2 last:mb-0">
-              <button
-                type="button"
-                onClick={() => setExpanded(current => ({ ...current, [group.label]: !current[group.label] }))}
-                className={`flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-right text-[11px] font-black transition ${hasActive ? "bg-cyan-50 text-cyan-900" : "text-slate-500 hover:bg-slate-50"}`}
-                data-testid={`button-toggle-container-group-${group.label}`}
-              >
-                <span>{group.label}</span>
-                <ChevronDown size={15} className={`transition-transform ${isOpen ? "rotate-180 text-cyan-700" : "text-slate-400"}`} />
-              </button>
-              {isOpen && (
-                <div className="mt-1 space-y-0.5 border-r border-slate-100 pr-1">
-                  {group.items.map(item => {
-                    const Icon = item.icon
-                    const active = Boolean(item.key && view === item.key)
-                    const className = `flex w-full items-center gap-2 rounded-lg px-3 py-2 text-right text-xs font-bold transition-all ${active ? "bg-cyan-100/70 text-cyan-950" : "text-slate-500 hover:bg-slate-50 hover:text-slate-800"}`
-                    const testId = item.key ?? item.href?.replace("/admin/", "admin-") ?? item.label
-                    return item.href
-                      ? <Link key={testId} href={item.href} className={className} data-testid={`nav-container-${testId}`}><Icon size={15} className="text-slate-400" /><span>{item.label}</span></Link>
-                      : <button key={testId} type="button" onClick={() => item.key && onSelect(item.key)} className={className} data-testid={`nav-container-${testId}`}><Icon size={15} className={active ? "text-cyan-700" : "text-slate-400"} /><span>{item.label}</span>{active && <span className="mr-auto h-1.5 w-1.5 rounded-full bg-amber-400" />}</button>
-                  })}
-                </div>
-              )}
-            </div>
-          )
-        })}
-      </CardContent>
-    </Card>
-  )
-}
+const standaloneViews: ViewKey[] = [
+  "overview", "financial_center", "container_search", "contracts_list", "settlements",
+  "financial_cycle", "identity_review", "container_types", "reports", "audit",
+]
+const isViewKey = (value: string): value is ViewKey =>
+  allKinds.includes(value as RecordKind) || Object.hasOwn(viewKind, value) || standaloneViews.includes(value as ViewKey)
 
 function numericSummary(summary: Record<string, unknown> | undefined, keys: string[], fallback: number) {
   for (const key of keys) {
@@ -1767,6 +1608,10 @@ function ContractRecordDetails({
   const openDeliveryOperation = findOpenContainerOperation(allRecords, serviceRequests, record.id, containerId || null, "delivery")
   const delivered = record.status === "delivered" || Boolean(payload.deliverAt)
   const returned = record.status === "returned" || Boolean(payload.returnAt)
+  const contractTerminal = ["rejected", "cancelled", "closed", "expired"].includes(record.status)
+  const hasContainerLifecycle = Boolean(containerId || String(payload.containerCode ?? "").trim())
+  const canStartDelivery = hasContainerLifecycle && !contractTerminal && !delivered && !returned &&
+    ["active", "approved", "issued", "scheduled"].includes(record.status)
   const invoiceMoney = (value: unknown) => {
     const numeric = Number(value)
     return Number.isFinite(numeric) && numeric > 0 ? money(numeric) : "—"
@@ -1781,7 +1626,7 @@ function ContractRecordDetails({
       { action: "approve", label: "اعتماد العقد", className: "bg-emerald-700 hover:bg-emerald-800" },
       { action: "reject", label: "رفض العقد", className: "border-rose-200 text-rose-700", variant: "outline" as const },
     ] : []),
-    ...(!delivered && !returned ? [
+    ...(canStartDelivery ? [
       { action: "assign", label: "إسناد مهمة التسليم", className: "border-cyan-200 text-cyan-900", variant: "outline" as const },
       { action: "deliver", label: "تسجيل التسليم الإداري", className: "bg-cyan-800 hover:bg-cyan-900", disabled: Boolean(openDeliveryOperation) },
     ] : []),
@@ -1789,10 +1634,33 @@ function ContractRecordDetails({
       { action: "emptying", label: "إنشاء مهمة تفريغ", className: "bg-amber-600 hover:bg-amber-700", disabled: Boolean(openOperation) },
       { action: "pickup", label: "إنشاء مهمة سحب / استرجاع", className: "border-cyan-200 text-cyan-900", variant: "outline" as const, disabled: Boolean(openOperation) },
     ] : []),
-    { action: "settle", label: "تصفية العقد", className: "border-emerald-200 text-emerald-800", variant: "outline" as const },
-    { action: "debt", label: "تحويل لمديونية", className: "border-rose-200 text-rose-700", variant: "outline" as const },
+    { action: "settle", label: "فتح كشف التسوية", className: "border-emerald-200 text-emerald-800", variant: "outline" as const },
     ...(returned ? [{ action: "close", label: "إنهاء العقد", className: "border-slate-200 text-slate-700", variant: "outline" as const, disabled: Boolean(openOperation) }] : []),
   ]
+  const contractStages = [
+    { label: "تسجيل العقد", done: true, detail: formatRecordDate(record.createdAt) },
+    {
+      label: "الاعتماد والتجهيز",
+      done: Boolean(payload.approvedAt) || ["approved", "active", "scheduled", "delivered", "returned", "closed"].includes(record.status),
+      detail: record.status === "rejected" ? "مرفوض" : payload.approvedAt ? formatRecordDate(String(payload.approvedAt)) : "بيانات العقد والأصل مكتملة",
+    },
+    {
+      label: "تسليم الأصل",
+      done: delivered,
+      detail: delivered ? formatRecordDate(String(payload.deliverAt ?? record.updatedAt)) : openDeliveryOperation ? "مهمة #" + openDeliveryOperation.id + " " + openDeliveryOperation.statusLabel : "بانتظار إتمام مهمة التسليم",
+    },
+    {
+      label: "الاسترجاع",
+      done: returned,
+      detail: returned ? formatRecordDate(String(payload.returnAt ?? record.updatedAt)) : openOperation ? "أكمل المهمة #" + openOperation.id + " أولاً" : delivered ? "بعد إتمام التشغيل" : "بعد التسليم",
+    },
+    {
+      label: "التسوية والإغلاق",
+      done: record.status === "closed",
+      detail: record.status === "closed" ? "تم إقفال العقد" : remainingAmount !== undefined && remainingAmount > 0.01 ? "متبقي " + money(remainingAmount) : "راجع الفواتير والترحيل المالي",
+    },
+  ]
+  const currentContractStage = contractTerminal ? -1 : contractStages.findIndex(stage => !stage.done)
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent dir="rtl" className="max-h-[94vh] max-w-5xl overflow-y-auto border-cyan-100 bg-[#f8fbfb] p-0">
@@ -1858,6 +1726,23 @@ function ContractRecordDetails({
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2"><div><h4 className="flex items-center gap-2 text-sm font-black text-emerald-950"><FileCheck2 size={17} /> صورة إثبات التنفيذ</h4><p className="mt-1 text-[11px] text-emerald-900/65">الصورة المرفوعة عند إكمال التسليم أو الاسترجاع.</p></div><a href={proofPhotoUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs font-bold text-emerald-700 hover:underline" data-testid={`link-contract-proof-${record.id}`}>فتح الصورة <ExternalLink size={13} /></a></div>
             <img src={proofPhotoUrl} alt="صورة إثبات تنفيذ العقد" className="max-h-80 w-full rounded-xl border border-emerald-100 bg-white object-contain" loading="lazy" data-testid={`img-contract-proof-${record.id}`} />
           </div>}
+          <section className="rounded-2xl border border-slate-200 bg-white p-4" data-testid={"section-contract-progress-" + record.id}>
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <div><h4 className="text-sm font-black text-slate-900">مسار دورة العقد</h4><p className="mt-1 text-[11px] text-slate-500">الحالة التالية تتحدد من إنجاز التشغيل والتسوية المالية.</p></div>
+              {currentContractStage >= 0 && <Badge variant="outline" className="border-cyan-200 bg-cyan-50 text-cyan-800">الخطوة الحالية: {contractStages[currentContractStage].label}</Badge>}
+              {contractTerminal && <Badge variant="outline" className="border-rose-200 bg-rose-50 text-rose-800">{record.status === "rejected" ? "توقف العقد بعد الرفض" : record.status === "closed" ? "اكتملت الدورة" : "العقد غير نشط"}</Badge>}
+              {!contractTerminal && currentContractStage < 0 && <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-800">اكتملت الدورة</Badge>}
+            </div>
+            <ol className="grid gap-2 sm:grid-cols-2 xl:grid-cols-5" aria-label="مراحل دورة العقد">
+              {contractStages.map((stage, index) => {
+                const active = index === currentContractStage
+                return <li key={stage.label} aria-current={active ? "step" : undefined} className={`rounded-xl border p-3 ${stage.done ? "border-emerald-100 bg-emerald-50/60" : active ? "border-amber-200 bg-amber-50/70" : "border-slate-100 bg-slate-50/70"}`}>
+                  <div className="flex items-center gap-2"><span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-black ${stage.done ? "bg-emerald-600 text-white" : active ? "bg-amber-400 text-slate-950" : "bg-slate-200 text-slate-500"}`}>{stage.done ? <CheckCircle2 size={15} /> : index + 1}</span><span className={`text-xs font-black ${stage.done ? "text-emerald-900" : active ? "text-amber-950" : "text-slate-500"}`}>{stage.label}</span></div>
+                  <p className="mt-2 min-h-8 text-[10px] leading-5 text-slate-500">{stage.detail}</p>
+                </li>
+              })}
+            </ol>
+          </section>
           <div className="rounded-2xl border border-amber-100 bg-amber-50/65 p-4" data-testid={`section-contract-lifecycle-${record.id}`}>
             <div className="mb-3 flex items-start gap-2"><CalendarDays size={18} className="mt-0.5 text-amber-700" /><div><h4 className="text-sm font-black text-amber-950">دورة العقد</h4><p className="mt-1 text-[11px] text-amber-900/70">الإجراء التالي يبقى مرتبطاً بأثر التشغيل والتحصيل.</p></div></div>
             {openOperation && <p className="mb-3 rounded-xl border border-amber-200 bg-white px-3 py-2 text-xs font-bold text-amber-900">أمر تشغيل قائم #{openOperation.id}: {openOperation.statusLabel} · {openOperation.assigned ? "تم الإسناد" : "غير مسند"}. ستبقى أزرار الاسترجاع والإغلاق معطلة حتى إكماله.</p>}
@@ -2286,7 +2171,8 @@ export default function ContainerSystem() {
     const locationSearch = location.includes("?") ? `?${location.split("?").slice(1).join("?")}` : ""
     return new URLSearchParams(browserSearch || locationSearch)
   }, [location])
-  const requestedView = queryParams.get("view") as ViewKey | null
+  const rawRequestedView = queryParams.get("view")
+  const requestedView = rawRequestedView && isViewKey(rawRequestedView) ? rawRequestedView : null
   const requestedCreate = queryParams.get("create") === "1"
   const requestedPrepare = queryParams.get("prepare") === "1"
   const requestedCustomerId = Number(queryParams.get("customerId") ?? 0) || null
@@ -2309,12 +2195,22 @@ export default function ContainerSystem() {
   const [detailRecord, setDetailRecord] = useState<ContainerSystemRecord | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [reportId, setReportId] = useState<ReportId | null>(null)
+  const selectView = useCallback((nextView: ViewKey, context: Record<string, string | number | null | undefined> = {}) => {
+    setView(nextView)
+    setSearch("")
+    if (nextView !== "reports") setReportId(null)
+    const params = new URLSearchParams({ view: nextView })
+    Object.entries(context).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && String(value).trim()) params.set(key, String(value))
+    })
+    navigate(`/admin/container-system?${params.toString()}`)
+  }, [navigate])
   useEffect(() => {
-    if (!requestedView) return
-    if (String(requestedView) === "container_type") {
+    if (rawRequestedView === "container_type") {
       navigate("/admin/container-system?view=container_types")
       return
     }
+    if (!requestedView) return
     setView(requestedView)
     if (requestedView === "contract") setContractWizardOpen(true)
     if (requestedCreate && ["customer", "receipt", "payment", "container"].includes(requestedView)) {
@@ -2324,7 +2220,7 @@ export default function ContainerSystem() {
     if (requestedView === "invoice" && requestedCreate) {
       setDialog({ open: true, kind: "invoice", record: null })
     }
-  }, [requestContext, requestedContractId, requestedCreate, requestedCustomerId, requestedView])
+  }, [requestContext, requestedContractId, requestedCreate, requestedCustomerId, requestedView, rawRequestedView])
   const collectionKind = viewKind[view] ?? (allKinds.includes(view as RecordKind) ? view as RecordKind : undefined)
   const isCollection = Boolean(collectionKind)
   const filterParams = useMemo(() => ({ kind: collectionKind, search: search.trim() || undefined }), [collectionKind, search])
@@ -2348,9 +2244,9 @@ export default function ContainerSystem() {
       setNotice(`تعذر العثور على العقد رقم ${requestedContractId}`)
       return
     }
-    setView("contracts_list")
+    selectView("contracts_list")
     setDetailRecord(contract)
-  }, [requestedContractId, requestedPrepare, snapshot?.records])
+  }, [requestedContractId, requestedPrepare, selectView, snapshot?.records])
   const records = useMemo(() => {
     const response = recordsQuery.data ?? []
     if (isCollection || search.trim()) return response
@@ -2611,9 +2507,11 @@ export default function ContainerSystem() {
   }
   const contractAction = (record: ContainerSystemRecord, action: string) => {
     if (action === "settle") {
-      setView("settlements")
-      setSearch(String(record.payload.customerName ?? record.reference ?? ""))
       setDetailRecord(null)
+      selectView("settlements", {
+        customerId: Number(record.payload.customerRecordId ?? 0) || null,
+        contractId: record.id,
+      })
       showSuccess("تم فتح شاشة التسوية الآمنة؛ سجّل الدفعة من كشف العقد")
       return
     }
@@ -2697,29 +2595,84 @@ export default function ContainerSystem() {
   const busy = createMutation.isPending || updateMutation.isPending || contractFlowBusy
   const loading = snapshotQuery.isLoading || (isCollection && recordsQuery.isLoading)
   const error = view !== "identity_review" && (snapshotQuery.isError || (isCollection && recordsQuery.isError))
+  const apiConnectionState = snapshotQuery.isError ? "disconnected" : snapshotQuery.isLoading ? "connecting" : "connected"
+  const apiConnectionLabel = apiConnectionState === "connected" ? "قاعدة البيانات متصلة" : apiConnectionState === "connecting" ? "جار الاتصال بقاعدة البيانات" : "قاعدة البيانات غير متصلة"
+  const priorityCounts = useMemo<WorkspaceAttention>(() => {
+    const sourceRecords = snapshot?.records ?? []
+    const terminalStates = new Set(["completed", "cancelled", "rejected", "closed", "archived"])
+    const today = new Date().toISOString().slice(0, 10)
+    const pendingContracts = sourceRecords.filter(record =>
+      record.kind === "contract" && ["draft", "pending_approval", "issued"].includes(record.status),
+    ).length
+    const overdueInvoices = sourceRecords.filter(record => {
+      if (record.kind !== "invoice" || record.status === "archived" || record.status === "draft") return false
+      const payload = record.payload as Record<string, unknown>
+      const total = Number(payload.total ?? payload.amount ?? 0)
+      const paid = Number(payload.paid ?? payload.paidAmount ?? 0)
+      const dueDate = String(payload.dueDate ?? payload.paymentDueDate ?? payload.endDate ?? "").slice(0, 10)
+      return dueDate !== "" && dueDate < today && total - paid > 0.01
+    }).length
+    const openOperations = (serviceRequestsQuery.data ?? []).filter(request =>
+      !terminalStates.has(String(request.status ?? "").toLowerCase()) &&
+      !terminalStates.has(String(request.driverStatus ?? "").toLowerCase()),
+    ).length
+    const maintenanceFallback = sourceRecords.filter(record =>
+      record.kind === "maintenance" && ["due", "overdue"].includes(record.status.toLowerCase()),
+    ).length
+    const summary = snapshot?.summary as Record<string, unknown> | undefined
+    return {
+      pendingContracts,
+      openOperations,
+      overdueInvoices,
+      maintenanceDue: numericSummary(summary, ["maintenanceDue"], maintenanceFallback),
+    }
+  }, [serviceRequestsQuery.data, snapshot?.records, snapshot?.summary])
 
   return (
-    <div className="container-system min-h-[calc(100dvh-4rem)] space-y-5" dir="rtl">
-      <div className="relative overflow-hidden rounded-[1.65rem] bg-[#123d4e] px-5 py-6 text-white shadow-[0_16px_42px_rgba(18,61,78,.18)] sm:px-8 sm:py-8">
-        <div className="absolute -left-14 -top-20 h-56 w-56 rounded-full border border-cyan-200/15" /><div className="absolute -left-2 -top-9 h-32 w-32 rounded-full border border-cyan-200/15" />
-        <div className="relative flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-          <div><div className="mb-3 flex items-center gap-2 text-xs font-bold text-cyan-200"><span className="h-2 w-2 rounded-full bg-amber-300 shadow-[0_0_0_5px_rgba(252,211,77,.13)]" /> مركز العمليات · نظام الحاويات الكامل</div><h1 className="text-2xl font-black tracking-tight sm:text-3xl">مرحباً بك في غرفة التحكم</h1><p className="mt-2 max-w-2xl text-sm leading-7 text-cyan-100/70">إدارة العقود، الأصول، الأسطول، التحصيل والتنبيهات من لوحة واحدة واضحة.</p></div>
-          <div className="flex flex-wrap gap-2"><Button onClick={() => openCreate()} className="gap-2 bg-amber-400 text-slate-900 hover:bg-amber-300" data-testid="button-header-add"><Plus size={16} /> إضافة سجل</Button><Button onClick={() => { snapshotQuery.refetch(); recordsQuery.refetch() }} variant="outline" className="gap-2 border-white/20 bg-white/5 text-white hover:bg-white/10" data-testid="button-refresh-container-system"><RefreshCw size={15} className={snapshotQuery.isFetching ? "animate-spin" : ""} /> تحديث</Button></div>
+    <div className="container-system min-h-[calc(100dvh-4rem)] space-y-4 pb-8" dir="rtl">
+      <header className="relative overflow-hidden rounded-3xl bg-[linear-gradient(115deg,#102f3a_0%,#123d4e_62%,#18576a_100%)] px-5 py-5 text-white shadow-[0_16px_42px_rgba(18,61,78,.14)] sm:px-7">
+        <div className="pointer-events-none absolute -left-10 -top-20 h-52 w-52 rounded-full border border-cyan-100/10" />
+        <div className="pointer-events-none absolute -left-1 -top-12 h-32 w-32 rounded-full border border-cyan-100/10" />
+        <div className="relative flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <div className="mb-2 flex items-center gap-2 text-[11px] font-bold text-cyan-200"><span className={`h-2 w-2 rounded-full ${apiConnectionState === "connected" ? "bg-emerald-300" : apiConnectionState === "connecting" ? "animate-pulse bg-amber-300" : "bg-rose-300"}`} /> {apiConnectionLabel} · الحاويات والعقود</div>
+            <h1 className="text-xl font-black tracking-tight sm:text-2xl">غرفة عمليات الحاويات</h1>
+            <p className="mt-1.5 max-w-2xl text-xs leading-6 text-cyan-100/70 sm:text-sm">تابع دورة العميل والأصل والمهمة والتحصيل من مساحة عمل واحدة.</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button onClick={() => openCreate("contract")} className="gap-2 bg-amber-400 text-slate-900 shadow-sm hover:bg-amber-300" data-testid="button-header-add-contract"><Plus size={16} /> عقد جديد</Button>
+            <Button onClick={() => { snapshotQuery.refetch(); recordsQuery.refetch() }} variant="outline" className="gap-2 border-white/20 bg-white/5 text-white hover:bg-white/10" data-testid="button-refresh-container-system"><RefreshCw size={15} className={snapshotQuery.isFetching ? "animate-spin" : ""} /> تحديث البيانات</Button>
+          </div>
         </div>
-      </div>
-      <div className="grid gap-5 lg:grid-cols-[15rem_minmax(0,1fr)]">
-        <aside className="order-2 lg:order-1">
-          <ContainerSidebar view={view} onSelect={nextView => { setView(nextView); setSearch(""); if (nextView !== "reports") setReportId(null) }} />
+      </header>
+      <div className="grid gap-4 lg:grid-cols-[17rem_minmax(0,1fr)] xl:gap-5">
+        <aside className="order-1 min-w-0 lg:sticky lg:top-20 lg:order-1 lg:self-start">
+          <ContainerSidebar
+            view={view}
+            attention={priorityCounts}
+            attentionState={snapshotQuery.isError || serviceRequestsQuery.isError ? "error" : snapshotQuery.isLoading ? "loading" : "ready"}
+            connectionState={apiConnectionState}
+            onSelect={selectView}
+            onNavigate={navigate}
+            onCreateContract={() => openCreate("contract")}
+          />
         </aside>
-        <main className="order-1 min-w-0 space-y-5 lg:order-2">
-           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><p className="text-xs font-bold text-cyan-700">نظام الحاويات الكامل / {view === "contracts_list" ? "مركز العقود" : view === "customer" ? "مركز العملاء" : viewLabel(view)}</p><h2 className="mt-1 text-xl font-black text-slate-900">{view === "contracts_list" ? "مركز العقود" : view === "customer" ? "مركز العملاء" : viewLabel(view)}</h2>{view === "contracts_list" && <p className="mt-1 text-xs leading-6 text-slate-500">قراءة سريعة لحالة كل عقد والعميل والموقع وقيمة الخدمة لاتخاذ الإجراء التالي.</p>}{view === "customer" && <p className="mt-1 text-xs leading-6 text-slate-500">ملفات العملاء وعلاقاتهم التشغيلية والمالية في شاشة واحدة واضحة.</p>}{view === "operations" && <p className="mt-1 text-xs leading-6 text-slate-500">متابعة التسليم والاسترجاع ونقل الحاويات من لحظة الإسناد حتى إغلاق الحركة.</p>}</div>{(isCollection || view === "container_search") && <div className="relative w-full sm:w-80"><Search size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" /><Input value={search} onChange={event => setSearch(event.target.value)} placeholder={view === "contracts_list" ? "ابحث برقم العقد أو العميل أو الموقع أو الجوال" : view === "customer" ? "ابحث باسم العميل أو المرجع أو الجوال أو المدينة" : view === "operations" ? "ابحث برقم الحركة أو الحاوية أو العقد أو العميل" : "رقم الحاوية أو اسم العميل أو الجوال"} className="h-10 border-slate-200 bg-white pr-9" data-testid="input-search-container-records" />{search && <button type="button" onClick={() => setSearch("")} className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700" data-testid="button-clear-container-search"><X size={15} /></button>}</div>}</div>
+        <main className="order-2 min-w-0 space-y-4 lg:order-2">
+          <section className="flex flex-col gap-3 rounded-2xl border border-slate-200/80 bg-white p-4 shadow-[0_8px_24px_rgba(15,44,58,.04)] sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0">
+              <p className="text-[10px] font-bold text-cyan-700">نظام الحاويات <span className="mx-1 text-slate-300">/</span> مساحة العمل الحالية</p>
+              <h2 className="mt-1 text-lg font-black text-slate-900 sm:text-xl">{viewLabel(view)}</h2>
+              <p className="mt-1 text-xs leading-5 text-slate-500">{view === "contracts_list" ? "تابع حالة العقد والعميل والأصل والإجراء التالي حتى الإغلاق." : view === "customer" ? "ملفات العملاء ومواقعهم وعقودهم وتاريخ التعامل في مكان واحد." : view === "operations" ? "تتبع تسليم الحاوية وتفريغها واسترجاعها مع ارتباط كل حركة بالعقد." : view === "financial_center" ? "راجع قيمة العقود والتحصيلات والذمم والإقفال المالي." : "سجلات مترابطة تساعد الفريق على متابعة دورة التشغيل كاملة."}</p>
+            </div>
+            {isCollection && <div className="relative w-full shrink-0 sm:w-80"><Search size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" /><Input value={search} onChange={event => setSearch(event.target.value)} placeholder={view === "contracts_list" ? "العقد أو العميل أو الموقع أو الجوال" : view === "customer" ? "العميل أو المرجع أو الجوال أو المدينة" : view === "operations" ? "الحركة أو الحاوية أو العقد أو العميل" : "ابحث في السجلات"} className="h-10 border-slate-200 bg-slate-50/60 pr-9" data-testid="input-search-container-records" />{search && <button type="button" onClick={() => setSearch("")} className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700" data-testid="button-clear-container-search"><X size={15} /></button>}</div>}
+          </section>
           {notice && <div className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-800" role="status" data-testid="status-container-success"><CheckCircle2 size={17} /> {notice}</div>}
           {error ? <Card className="border-rose-200 bg-rose-50/50"><CardContent className="flex flex-col items-center gap-3 p-12 text-center"><AlertCircle size={27} className="text-rose-500" /><h3 className="font-bold text-rose-900">تعذر تحميل بيانات النظام</h3><p className="text-sm text-rose-700">تحقق من الاتصال ثم حاول مرة أخرى.</p><Button onClick={() => { snapshotQuery.refetch(); recordsQuery.refetch() }} variant="outline" className="gap-2 border-rose-200 bg-white text-rose-800" data-testid="button-retry-container-system"><RefreshCw size={15} /> إعادة المحاولة</Button></CardContent></Card>
               : view === "overview" ? <Overview snapshot={snapshot} records={records} loading={loading} onAdd={openCreate} onOpen={setDetailRecord} onAssign={record => { setDetailRecord(null); setAssignmentContainerId(record.id); setAssignmentWizardOpen(true) }} />
-               : view === "financial_center" ? <FinancialControlCenter records={snapshot?.records ?? records} onAdd={kind => openCreate(kind)} onNavigate={nextView => { setView(nextView); setSearch(""); if (nextView !== "reports") setReportId(null) }} />
+              : view === "financial_center" ? <FinancialControlCenter records={snapshot?.records ?? records} onAdd={kind => openCreate(kind)} onNavigate={selectView} />
               : view === "reports" ? reportId ? <ReportPage reportId={reportId} records={snapshot?.records ?? records} onBack={() => setReportId(null)} /> : <ReportsHub onOpen={setReportId} />
                : view === "settlements" ? <ContractSettlementWorkspace records={snapshot?.records ?? records} initialCustomerId={requestedCustomerId} initialContractId={requestedContractId} />
-              : view === "financial_cycle" ? <FinancialCycleWorkspace records={snapshot?.records ?? records} onAdd={openCreate} onOpenSettlements={() => { setView("settlements"); setSearch("") }} />
+              : view === "financial_cycle" ? <FinancialCycleWorkspace records={snapshot?.records ?? records} onAdd={openCreate} onOpenSettlements={() => selectView("settlements")} />
               : view === "system_settings" ? <SettingsPage records={snapshot?.records ?? records} organization={organization} onSave={saveSettings} />
              : view === "audit" ? <AuditLog audits={auditQuery.data ?? []} loading={auditQuery.isLoading} />
               : view === "container_search" ? <ContainerSearchPanel records={records} loading={loading} onDetails={openRecordDetails} onEdit={openEdit} onDelete={deleteContainerRecord} />
