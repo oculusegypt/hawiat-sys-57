@@ -3,13 +3,14 @@ import { Link } from "wouter"
 import {
   Activity, AlertTriangle, Archive, ArrowDownLeft, ArrowLeftRight, ArrowUpLeft,
   ArrowUpRight, BarChart3, BellRing, BookOpenCheck, Box, CalendarDays, CarFront,
-  CheckCircle2, ClipboardList, Coins, FileCheck2, FileText, Gauge, HandCoins,
+  CheckCircle2, ClipboardList, Coins, FileCheck2, FileText, Gauge, HandCoins, Menu,
   Landmark, LayoutDashboard, MapPinned, PackageCheck, ReceiptText, Search,
   Settings2, ShieldCheck, Truck, UserCog, UserRound, Users, WalletCards, Warehouse,
   Wrench,
 } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { KIND_LABELS, type RecordKind } from "./ContainerSystemComponents"
 
 export type ViewKey = RecordKind | "overview" | "financial_center" | "container_search" | "contracts_list" | "settlements" | "financial_cycle" | "identity_review" | "container_types" | "reports" | "audit" | "rental" | "vouchers" | "operations" | "customer_payments" | "bookings" | "expenses" | "payroll" | "fleet" | "warehouses" | "system_settings"
@@ -184,12 +185,6 @@ export const viewLabel = (view: ViewKey) => {
   return item?.label ?? KIND_LABELS[view as RecordKind] ?? view
 }
 
-function itemValue(item: NavItem) {
-  if (item.key) return `view:${item.key}`
-  if (item.href) return `href:${item.href}`
-  return `action:${item.action}`
-}
-
 export function ContainerSidebar({
   view,
   attention,
@@ -211,15 +206,15 @@ export function ContainerSidebar({
     () => NAV_GROUPS.find(group => group.items.some(item => item.key === view || (view === "contract" && item.action === "new_contract"))) ?? NAV_GROUPS[0],
     [view],
   )
-  const [mobileGroup, setMobileGroup] = useState(currentGroup.id)
+  const [mobileOpen, setMobileOpen] = useState(false)
   const [expanded, setExpanded] = useState<Record<string, boolean>>({ [currentGroup.id]: true })
 
   useEffect(() => {
-    setMobileGroup(currentGroup.id)
     setExpanded(current => ({ ...current, [currentGroup.id]: true }))
   }, [currentGroup.id])
 
   const choose = (item: NavItem) => {
+    setMobileOpen(false)
     if (item.key) onSelect(item.key)
     else if (item.href) onNavigate(item.href)
     else if (item.action === "new_contract") onCreateContract()
@@ -232,8 +227,7 @@ export function ContainerSidebar({
     { label: "صيانة مستحقة", count: attention.maintenanceDue, onClick: () => onSelect("maintenance") },
   ].filter(item => item.count > 0)
 
-  const mobileItems = NAV_GROUPS.find(group => group.id === mobileGroup)?.items ?? currentGroup.items
-  const selectedMobileItem = mobileItems.find(item => item.key === view || (view === "contract" && item.action === "new_contract")) ?? mobileItems[0]
+  const totalAttention = attention.pendingContracts + attention.openOperations + attention.overdueInvoices + attention.maintenanceDue
   const connectionTone = connectionState === "connected"
     ? "border-emerald-300/20 bg-emerald-300/10 text-emerald-100"
     : connectionState === "connecting"
@@ -250,90 +244,109 @@ export function ContainerSidebar({
       ? "جار الاتصال"
       : "غير متصل"
 
+  const priorityPanel = (
+    <section className="mb-3 rounded-2xl border border-slate-200 bg-slate-50/80 p-3" aria-label="قائمة الأولويات">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <h3 className="text-xs font-black text-slate-800">الأولويات الآن</h3>
+        <span className="text-[10px] font-semibold text-slate-400">متابعة مباشرة</span>
+      </div>
+      {attentionState === "loading" ? (
+        <p className="rounded-xl bg-white px-2.5 py-2 text-[11px] font-bold text-slate-500">جار تحميل الأولويات…</p>
+      ) : attentionState === "error" ? (
+        <p className="rounded-xl bg-rose-50 px-2.5 py-2 text-[11px] font-bold text-rose-800">تعذر تحديث الأولويات؛ أعد الاتصال ثم حدّث البيانات.</p>
+      ) : attentionLinks.length === 0 ? (
+        <p className="flex items-center gap-2 rounded-xl bg-white px-2.5 py-2 text-[11px] font-bold text-emerald-800">
+          <CheckCircle2 size={14} /> لا توجد عناصر حرجة حاليًا
+        </p>
+      ) : (
+        <div className="space-y-1">
+          {attentionLinks.map(item => (
+            <button key={item.label} type="button" onClick={() => { setMobileOpen(false); item.onClick() }} className="flex min-h-10 w-full items-center justify-between gap-2 rounded-xl bg-white px-2.5 py-2 text-right text-[11px] font-bold text-slate-700 transition hover:bg-cyan-50 hover:text-cyan-900">
+              <span className="flex min-w-0 items-center gap-2"><AlertTriangle size={13} className="shrink-0 text-amber-600" /><span className="truncate">{item.label}</span></span>
+              <span className="min-w-6 rounded-full bg-amber-100 px-1.5 py-0.5 text-center text-[10px] font-black text-amber-900">{item.count}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </section>
+  )
+
+  const navigation = (
+    <nav className="space-y-1.5" aria-label="أقسام نظام الحاويات">
+      {NAV_GROUPS.map(group => {
+        const isOpen = Boolean(expanded[group.id])
+        const hasActive = group.items.some(item => item.key === view || (view === "contract" && item.action === "new_contract"))
+        const GroupIcon = group.icon
+        return (
+          <section key={group.id} className="rounded-2xl border border-transparent p-1 transition-colors hover:border-slate-100 hover:bg-slate-50/60">
+            <button type="button" onClick={() => setExpanded(current => ({ ...current, [group.id]: !current[group.id] }))} aria-expanded={isOpen} className={`flex min-h-11 w-full items-center gap-2.5 rounded-xl px-2.5 py-2.5 text-right transition ${hasActive ? "text-cyan-950" : "text-slate-600 hover:text-slate-900"}`}>
+              <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-xl ${hasActive ? "bg-cyan-100 text-cyan-800" : "bg-slate-100 text-slate-500"}`}><GroupIcon size={16} /></span>
+              <span className="min-w-0 flex-1"><span className="block text-xs font-black">{group.label}</span><span className="mt-0.5 block truncate text-[9px] font-medium text-slate-400">{group.description}</span></span>
+              <span className={`text-slate-400 transition-transform ${isOpen ? "rotate-180" : ""}`}><span className="text-xs">⌄</span></span>
+            </button>
+            {isOpen && <div className="mt-1 space-y-0.5 border-r border-slate-200 pr-2">
+              {group.items.map(item => {
+                const Icon = item.icon
+                const active = item.key === view
+                const badge = item.badge ? attention[item.badge] : 0
+                const className = `flex min-h-10 w-full items-center gap-2 rounded-xl px-2.5 py-2 text-right text-xs font-bold transition ${active ? "bg-cyan-50 text-cyan-950 ring-1 ring-inset ring-cyan-100" : "text-slate-600 hover:bg-white hover:text-slate-950"}`
+                const content = <><Icon size={14} className={active ? "text-cyan-700" : "text-slate-400"} /><span className="min-w-0 flex-1 truncate">{item.label}</span>{badge > 0 && <span className="min-w-5 rounded-full bg-amber-100 px-1.5 py-0.5 text-center text-[10px] font-black text-amber-900">{badge}</span>}{active && <span className="h-1.5 w-1.5 rounded-full bg-cyan-600" />}</>
+                if (item.href) return <Link key={item.href} href={item.href} onClick={() => setMobileOpen(false)} className={className}>{content}</Link>
+                return <button key={item.key ?? item.action} type="button" onClick={() => choose(item)} className={className}>{content}</button>
+              })}
+            </div>}
+          </section>
+        )
+      })}
+    </nav>
+  )
+
+  const workspaceHeader = (
+    <div className="mb-3 flex items-center justify-between gap-3 rounded-2xl bg-[#123d4e] px-3.5 py-3 text-white">
+      <div className="min-w-0">
+        <p className="text-[10px] font-bold text-cyan-200">مساحة العمل</p>
+        <p className="mt-0.5 text-sm font-black">عمليات الحاويات</p>
+      </div>
+      <span className={"inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2 py-1 text-[10px] font-bold " + connectionTone}>
+        <span className={"h-1.5 w-1.5 rounded-full " + connectionDot} /> {connectionLabel}
+      </span>
+    </div>
+  )
+
   return (
-    <Card className="border-slate-200/80 bg-white shadow-[0_12px_32px_rgba(15,44,58,.06)] lg:sticky lg:top-20 lg:max-h-[calc(100dvh-6rem)] lg:overflow-y-auto">
-      <CardContent className="p-3 sm:p-4">
-        <div className="mb-3 flex items-center justify-between gap-3 rounded-2xl bg-[#123d4e] px-3.5 py-3 text-white">
+    <>
+      <Card className="sticky top-14 z-20 border-slate-200/80 bg-white shadow-[0_8px_24px_rgba(15,44,58,.06)] lg:hidden sm:top-16">
+        <CardContent className="flex items-center justify-between gap-3 p-3">
           <div className="min-w-0">
-            <p className="text-[10px] font-bold text-cyan-200">مساحة العمل</p>
-            <p className="mt-0.5 text-sm font-black">عمليات الحاويات</p>
+            <p className="text-[10px] font-bold text-cyan-700">مساحة العمل · {connectionLabel}</p>
+            <p className="truncate text-sm font-black text-slate-900">{viewLabel(view)}</p>
           </div>
-          <span className={"inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2 py-1 text-[10px] font-bold " + connectionTone}>
-            <span className={"h-1.5 w-1.5 rounded-full " + connectionDot} /> {connectionLabel}
-          </span>
-        </div>
+          <Dialog open={mobileOpen} onOpenChange={setMobileOpen}>
+            <button type="button" onClick={() => setMobileOpen(true)} className="inline-flex min-h-11 shrink-0 items-center gap-2 rounded-xl bg-[#123d4e] px-3.5 text-xs font-black text-white shadow-sm hover:bg-cyan-900" aria-label="فتح قائمة نظام الحاويات">
+              <Menu size={17} /> <span>القائمة</span>{totalAttention > 0 && <span className="min-w-5 rounded-full bg-amber-300 px-1 text-center text-[10px] text-slate-900">{totalAttention}</span>}
+            </button>
+            <DialogContent className="left-auto right-0 top-0 m-0 flex h-[100dvh] max-h-[100dvh] w-[min(22rem,calc(100vw-1rem))] max-w-none translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden rounded-none border-0 bg-white p-0 text-right sm:rounded-l-2xl sm:p-0">
+              <DialogHeader className="shrink-0 border-b border-slate-100 bg-white p-4 pr-12 text-right">
+                <DialogTitle className="text-right text-base font-black text-slate-900">قائمة نظام الحاويات</DialogTitle>
+                <DialogDescription className="text-right text-xs text-slate-500">الأقسام والأولويات في مساحة العمل</DialogDescription>
+              </DialogHeader>
+              <div className="min-h-0 flex-1 overflow-y-auto p-3">
+                {workspaceHeader}
+                {priorityPanel}
+                {navigation}
+              </div>
+            </DialogContent>
+          </Dialog>
+        </CardContent>
+      </Card>
 
-        <section className="mb-3 rounded-2xl border border-slate-200 bg-slate-50/80 p-3" aria-label="قائمة الأولويات">
-          <div className="mb-2 flex items-center justify-between gap-2">
-            <h3 className="text-xs font-black text-slate-800">الأولويات الآن</h3>
-            <span className="text-[10px] font-semibold text-slate-400">متابعة مباشرة</span>
-          </div>
-          {attentionState === "loading" ? (
-            <p className="rounded-xl bg-white px-2.5 py-2 text-[11px] font-bold text-slate-500">جار تحميل الأولويات…</p>
-          ) : attentionState === "error" ? (
-            <p className="rounded-xl bg-rose-50 px-2.5 py-2 text-[11px] font-bold text-rose-800">تعذر تحديث الأولويات؛ أعد الاتصال ثم حدّث البيانات.</p>
-          ) : attentionLinks.length === 0 ? (
-            <p className="flex items-center gap-2 rounded-xl bg-white px-2.5 py-2 text-[11px] font-bold text-emerald-800">
-              <CheckCircle2 size={14} /> لا توجد عناصر حرجة حاليًا
-            </p>
-          ) : (
-            <div className="space-y-1">
-              {attentionLinks.map(item => (
-                <button key={item.label} type="button" onClick={item.onClick} className="flex w-full items-center justify-between gap-2 rounded-xl bg-white px-2.5 py-2 text-right text-[11px] font-bold text-slate-700 transition hover:bg-cyan-50 hover:text-cyan-900">
-                  <span className="flex min-w-0 items-center gap-2"><AlertTriangle size={13} className="shrink-0 text-amber-600" /><span className="truncate">{item.label}</span></span>
-                  <span className="min-w-6 rounded-full bg-amber-100 px-1.5 py-0.5 text-center text-[10px] font-black text-amber-900">{item.count}</span>
-                </button>
-              ))}
-            </div>
-          )}
-        </section>
-
-        <div className="grid gap-2 sm:grid-cols-2 lg:hidden">
-          <label className="text-[10px] font-bold text-slate-500">
-            المجال
-            <select aria-label="اختيار مجال النظام" value={mobileGroup} onChange={event => setMobileGroup(event.target.value)} className="mt-1 h-10 w-full rounded-xl border border-slate-200 bg-white px-2 text-xs font-bold text-slate-800">
-              {NAV_GROUPS.map(group => <option key={group.id} value={group.id}>{group.label}</option>)}
-            </select>
-          </label>
-          <label className="text-[10px] font-bold text-slate-500">
-            القسم
-            <select aria-label="اختيار قسم النظام" value={selectedMobileItem ? itemValue(selectedMobileItem) : ""} onChange={event => {
-              const next = mobileItems.find(item => itemValue(item) === event.target.value)
-              if (next) choose(next)
-            }} className="mt-1 h-10 w-full rounded-xl border border-slate-200 bg-white px-2 text-xs font-bold text-slate-800">
-              {mobileItems.map(item => <option key={itemValue(item)} value={itemValue(item)}>{item.label}</option>)}
-            </select>
-          </label>
-        </div>
-
-        <nav className="hidden space-y-1.5 lg:block" aria-label="أقسام نظام الحاويات">
-          {NAV_GROUPS.map(group => {
-            const isOpen = Boolean(expanded[group.id])
-            const hasActive = group.items.some(item => item.key === view || (view === "contract" && item.action === "new_contract"))
-            const GroupIcon = group.icon
-            return (
-              <section key={group.id} className="rounded-2xl border border-transparent p-1 transition-colors hover:border-slate-100 hover:bg-slate-50/60">
-                <button type="button" onClick={() => setExpanded(current => ({ ...current, [group.id]: !current[group.id] }))} aria-expanded={isOpen} className={`flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2.5 text-right transition ${hasActive ? "text-cyan-950" : "text-slate-600 hover:text-slate-900"}`}>
-                  <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-xl ${hasActive ? "bg-cyan-100 text-cyan-800" : "bg-slate-100 text-slate-500"}`}><GroupIcon size={16} /></span>
-                  <span className="min-w-0 flex-1"><span className="block text-xs font-black">{group.label}</span><span className="mt-0.5 block truncate text-[9px] font-medium text-slate-400">{group.description}</span></span>
-                  <span className={`text-slate-400 transition-transform ${isOpen ? "rotate-180" : ""}`}><span className="text-xs">⌄</span></span>
-                </button>
-                {isOpen && <div className="mt-1 space-y-0.5 border-r border-slate-200 pr-2">
-                  {group.items.map(item => {
-                    const Icon = item.icon
-                    const active = item.key === view
-                    const badge = item.badge ? attention[item.badge] : 0
-                    const className = `flex w-full items-center gap-2 rounded-xl px-2.5 py-2 text-right text-xs font-bold transition ${active ? "bg-cyan-50 text-cyan-950 ring-1 ring-inset ring-cyan-100" : "text-slate-600 hover:bg-white hover:text-slate-950"}`
-                    const content = <><Icon size={14} className={active ? "text-cyan-700" : "text-slate-400"} /><span className="min-w-0 flex-1 truncate">{item.label}</span>{badge > 0 && <span className="min-w-5 rounded-full bg-amber-100 px-1.5 py-0.5 text-center text-[10px] font-black text-amber-900">{badge}</span>}{active && <span className="h-1.5 w-1.5 rounded-full bg-cyan-600" />}</>
-                    if (item.href) return <Link key={item.href} href={item.href} className={className}>{content}</Link>
-                    return <button key={item.key ?? item.action} type="button" onClick={() => choose(item)} className={className}>{content}</button>
-                  })}
-                </div>}
-              </section>
-            )
-          })}
-        </nav>
+      <Card className="hidden border-slate-200/80 bg-white shadow-[0_12px_32px_rgba(15,44,58,.06)] lg:sticky lg:top-20 lg:block lg:max-h-[calc(100dvh-6rem)] lg:overflow-y-auto">
+      <CardContent className="p-3 sm:p-4">
+        {workspaceHeader}
+        {priorityPanel}
+        {navigation}
       </CardContent>
-    </Card>
+      </Card>
+    </>
   )
 }

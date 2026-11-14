@@ -15,7 +15,7 @@ import apiApp from './artifacts/api-server/src/app.ts';
 
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+  const PORT = Number(process.env.PORT || 3000);
   const isProd = process.env.NODE_ENV === 'production';
 
   // Allow iframe embedding in AI Studio and remove any frame blocking headers
