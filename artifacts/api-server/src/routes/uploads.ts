@@ -63,7 +63,11 @@ function hasImageSignature(filePath: string): boolean {
   }
 }
 
-function compressImage(filePath: string): { path: string; filename: string; size: number } {
+function isMissingExecutable(error: unknown): boolean {
+  return typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT";
+}
+
+function compressImage(filePath: string): { path: string; filename: string; size: number } | null {
   const optimizedPath = `${filePath}.tmp.webp`;
   try {
     execFileSync("magick", [
@@ -74,6 +78,13 @@ function compressImage(filePath: string): { path: string; filename: string; size
       "-quality", "86",
       optimizedPath,
     ], { stdio: "ignore", timeout: 30_000 });
+  } catch (error) {
+    fs.rmSync(optimizedPath, { force: true });
+    if (isMissingExecutable(error)) return null;
+    throw new Error("تعذر ضغط الصورة على الخادم");
+  }
+
+  try {
     const optimized = fs.statSync(optimizedPath);
     if (!optimized.size) throw new Error("empty optimized image");
     fs.rmSync(filePath, { force: true });
@@ -105,10 +116,12 @@ function safeUploadWith(middleware: ReturnType<typeof createUpload>) {
     if (req.file) {
       try {
         const optimized = compressImage(req.file.path);
-        req.file.path = optimized.path;
-        req.file.filename = optimized.filename;
-        req.file.size = optimized.size;
-        req.file.mimetype = "image/webp";
+        if (optimized) {
+          req.file.path = optimized.path;
+          req.file.filename = optimized.filename;
+          req.file.size = optimized.size;
+          req.file.mimetype = "image/webp";
+        }
       } catch (error) {
         fs.rmSync(req.file.path, { force: true });
         res.status(422).json({ error: "تعذر ضغط الصورة على الخادم" });
